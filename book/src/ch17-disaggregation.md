@@ -189,7 +189,8 @@ popular system prompt to one replica and overload it. Sampling two candidates an
 the less loaded blends locality with balance.
 
 `sgl-model-gateway/src/routers/` holds the request handling — `http/`, `grpc/`, `openai/`,
-plus `router_manager.rs` for multi-model serving and `mesh/` for distributed topologies.
+plus `sgl-model-gateway/src/routers/router_manager.rs` for multi-model serving and
+`sgl-model-gateway/src/routers/mesh/` for distributed topologies.
 `sgl-model-gateway/src/service_discovery.rs` tracks which instances exist, which matters
 because in a disaggregated deployment they are not interchangeable: prefill and decode
 instances are different pools with different roles.
