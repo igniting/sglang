@@ -41,6 +41,11 @@ SOURCE_SUFFIXES = (
 FULL_ANCHOR = re.compile(
     r"`(?P<path>[\w][\w./-]*\.(?:" + "|".join(SOURCE_SUFFIXES) + r")):(?P<line>\d+)`"
 )
+# `some/path/file.py` with no line. Establishes context for later `:123`
+# continuations, and is itself checked for existence at the pinned commit.
+BARE_PATH = re.compile(
+    r"`(?P<path>[\w][\w./-]*\.(?:" + "|".join(SOURCE_SUFFIXES) + r"))`"
+)
 # `:123` continuation
 CONT_ANCHOR = re.compile(r"`:(?P<line>\d+)`")
 # A symbol in backticks immediately following an anchor.
@@ -76,18 +81,31 @@ class FileCache:
 
 
 def extract_anchors(text: str):
-    """Yield (path, line, symbol_or_None, char_offset) for each anchor in a document."""
+    """Yield (path, line_or_None, symbol_or_None, char_offset) for each anchor.
+
+    A line of None means "the path was named without a line" — existence is still
+    checked, and the path becomes the context for later `:123` continuations.
+    """
     events = []
     for m in FULL_ANCHOR.finditer(text):
         events.append((m.start(), "full", m))
     for m in CONT_ANCHOR.finditer(text):
         events.append((m.start(), "cont", m))
+    # A bare path overlapping a full anchor is the same match minus the line, so
+    # keep only bare paths that do not start where a full anchor already does.
+    full_starts = {m.start() for _, kind, m in events if kind == "full"}
+    for m in BARE_PATH.finditer(text):
+        if m.start() not in full_starts:
+            events.append((m.start(), "bare", m))
     events.sort(key=lambda e: e[0])
 
     current_path = None
     for _, kind, m in events:
-        if kind == "full":
+        if kind in ("full", "bare"):
             current_path = m.group("path")
+        if kind == "bare":
+            yield current_path, None, None, m.start()
+            continue
         if current_path is None:
             continue  # a `:123` before any file was named; nothing to resolve against
         sym = TRAILING_SYMBOL.match(text, m.end())
@@ -126,6 +144,9 @@ def main() -> int:
         text = doc.read_text()
         rel = doc.relative_to(repo_root)
         for path, line, symbol, offset in extract_anchors(text):
+            # The book's own files are not part of the pinned upstream tree.
+            if path.startswith("book/"):
+                continue
             checked += 1
             where = f"{rel}:{line_number_of(text, offset)}"
             lines = cache.lines(path)
@@ -133,6 +154,8 @@ def main() -> int:
             if lines is None:
                 failures.append(f"{where}: no such file at pinned commit: {path}")
                 continue
+            if line is None:
+                continue  # bare path: existence was the whole check
             if not (1 <= line <= len(lines)):
                 failures.append(
                     f"{where}: {path}:{line} out of range (file has {len(lines)} lines)"
