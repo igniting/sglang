@@ -234,7 +234,7 @@ Strip away the specifics and both features have the same structure:
 | Varies per request | weights | input type |
 | Naive fix | separate batch per adapter | separate batch per modality |
 | Actual fix | per-request index into a buffer pool | splice encoder output into the token stream |
-| Pool | adapter slots (`lora/mem_pool.py`) | encoder cache (`mem_cache/multimodal_cache.py`) |
+| Pool | adapter slots (`python/sglang/srt/lora/mem_pool.py`) | encoder cache (`python/sglang/srt/mem_cache/multimodal_cache.py`) |
 | Admission constraint | adapter must be resident | encoder capacity |
 | Cache interaction | namespaced by `extra_key` | hashed and cached separately |
 
