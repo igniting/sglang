@@ -199,7 +199,8 @@ requests point at the scratch row and their work is harmlessly discarded.
 
 The cost is memory. Each captured graph holds its own static input and output buffers, and
 capturing forty shapes is forty sets. `python/sglang/srt/model_executor/cuda_graph_config.py`
-(`:123` `CudaGraphConfig`, `:88` `PhaseConfig`) is the configuration surface, and
+(`python/sglang/srt/model_executor/cuda_graph_config.py:123` `CudaGraphConfig`,
+`python/sglang/srt/model_executor/cuda_graph_config.py:88` `PhaseConfig`) is the configuration surface, and
 `python/sglang/srt/model_executor/graph_memory_usage.py` reports what it actually cost.
 `python/sglang/srt/model_executor/model_runner.py:885` `post_capture_resize_kv_pool` returns
 the slack to the KV pool afterwards.
