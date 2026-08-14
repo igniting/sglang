@@ -88,8 +88,9 @@ already computed, which is Chapter 6's `PREBUILT` forward mode:
 > ready to start decoding.
 
 The decode side has its own queues — waiting for transfer, transfer complete, ready to run —
-and `decode_schedule_batch_mixin.py`, `decode_kvcache_offload_manager.py`, and
-`decode_hicache_mixin.py` connect it to Chapters 8 and 10.
+and `python/sglang/srt/disaggregation/decode_schedule_batch_mixin.py`,
+`python/sglang/srt/disaggregation/decode_kvcache_offload_manager.py`, and
+`python/sglang/srt/disaggregation/decode_hicache_mixin.py` connect it to Chapters 8 and 10.
 
 ---
 
