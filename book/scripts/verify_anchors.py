@@ -41,8 +41,9 @@ SOURCE_SUFFIXES = (
 FULL_ANCHOR = re.compile(
     r"`(?P<path>[\w][\w./-]*\.(?:" + "|".join(SOURCE_SUFFIXES) + r")):(?P<line>\d+)`"
 )
-# `some/path/file.py` with no line. Establishes context for later `:123`
-# continuations, and is itself checked for existence at the pinned commit.
+# `some/path/file.py` with no line. Checked for existence at the pinned commit, but
+# deliberately does NOT rebind the continuation context — a passing mention of another
+# file must not silently retarget the `:123` anchors that follow it.
 BARE_PATH = re.compile(
     r"`(?P<path>[\w][\w./-]*\.(?:" + "|".join(SOURCE_SUFFIXES) + r"))`"
 )
@@ -101,11 +102,11 @@ def extract_anchors(text: str):
 
     current_path = None
     for _, kind, m in events:
-        if kind in ("full", "bare"):
-            current_path = m.group("path")
         if kind == "bare":
-            yield current_path, None, None, m.start()
+            yield m.group("path"), None, None, m.start()
             continue
+        if kind == "full":
+            current_path = m.group("path")
         if current_path is None:
             continue  # a `:123` before any file was named; nothing to resolve against
         sym = TRAILING_SYMBOL.match(text, m.end())

@@ -219,11 +219,12 @@ to pay for paths it will not use.
 The project is named for its **S**tructured **G**eneration **Lang**uage, and that language
 is still in the tree.
 
-`python/sglang/lang/api.py` holds the primitives: `:75` `gen`, `:236` `select`, and the
-role helpers `:253` `system`, `:257` `user`, `:261` `assistant`. A program looks like
-ordinary Python with these calls embedded, and `python/sglang/lang/ir.py` turns it into an
-IR — `:451` `SglGen`, `:533` `SglSelect`, `:552` `SglFork`, `:515` `SglRoleBegin` — that
-the runtime can reason about as a whole rather than as opaque strings.
+`python/sglang/lang/api.py:75` `gen`, `python/sglang/lang/api.py:236` `select`, and the role helpers
+`python/sglang/lang/api.py:253` `system`, `python/sglang/lang/api.py:257` `user`, `python/sglang/lang/api.py:261` `assistant` are the primitives. A program looks like
+ordinary Python with these calls embedded, and `python/sglang/lang/ir.py` turns it into an IR —
+`python/sglang/lang/ir.py:451` `SglGen`, `python/sglang/lang/ir.py:533` `SglSelect`,
+`python/sglang/lang/ir.py:552` `SglFork` — that the runtime can reason about as a whole
+rather than as opaque strings.
 
 The payoff is co-design. Two of the IR nodes are the argument:
 
