@@ -12,7 +12,7 @@ Planning notes for *SGLang Internals*. Not published — the book itself lives i
 | Kernel depth | **Read in-repo kernels as source; treat external ones as contracts.** See below. |
 | Diffusion (`multimodal_gen`) | **Out of scope.** |
 | Version pinning | **Pinned to a commit SHA**, enforced by a CI checker. See below. |
-| Publishing | **mdBook → GitHub Pages**, deployed by `.github/workflows/book-pages.yml`. |
+| Publishing | **mdBook → `gh-pages` branch**, pushed by `.github/workflows/book-pages.yml`. Classic branch-based Pages; no repo-settings toggle needed. |
 
 ## Kernel depth, precisely
 
