@@ -1,0 +1,29 @@
+[book]
+title = "SGLang Internals"
+description = "Reading a production LLM serving engine: concepts fused with the code that implements them."
+authors = ["Anshu Avinash"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "output"
+create-missing = false
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/igniting/sglang"
+edit-url-template = "https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/{path}"
+no-section-label = false
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
+limit-results = 30
+use-boolean-and = true
+
+[output.html.print]
+enable = true

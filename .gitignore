@@ -280,3 +280,6 @@ artifacts/
 
 # Internal, non-published docs
 internal-docs/
+
+# SGLang Internals book build output
+book/output/
