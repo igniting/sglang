@@ -228,8 +228,9 @@ actions (`python/sglang/srt/mem_cache/unified_cache/cache_action.py`).
 The motivation is visible in this chapter. `HiRadixCache` hardcodes two tiers with a third
 bolted on, and the pool-type dispatch in `__init__` grows a branch per pool variant. The
 unified core makes tiers and pool types compositional instead. Chapter 9's variants —
-`swa_radix_cache.py`, `mamba_radix_cache.py` — are the same pressure from the other
-direction.
+`python/sglang/srt/mem_cache/swa_radix_cache.py` and
+`python/sglang/srt/mem_cache/mamba_radix_cache.py` — are the same pressure
+from the other direction.
 
 If you are reading this code well after the pinned commit, this is the area most likely to
 have moved.
@@ -252,8 +253,9 @@ workload with long shared prefixes and a working set larger than HBM — the cas
 designed for — that is the difference between an 80% hit rate and a 20% one. For a workload
 of short, unique prompts, it is overhead with no benefit.
 
-`docs/docs/advanced_features/hicache_design.mdx` and `hicache_best_practices.mdx` carry the
-project's own tuning guidance.
+`docs/docs/advanced_features/hicache_design.mdx` and
+`docs/docs/advanced_features/hicache_best_practices.mdx` carry the project's own tuning
+guidance.
 
 ---
 
