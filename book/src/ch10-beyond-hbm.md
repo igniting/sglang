@@ -220,8 +220,10 @@ per-backend configuration, and `python/sglang/srt/mem_cache/hiradix_cache.py:317
 ## Where it is heading
 
 `python/sglang/srt/mem_cache/unified_cache/` is a newer structure generalizing all of this:
-`unified_tree_core.py` with a component registry (`component_type.py`,
-`tree_core_registry.py`) and explicit cache actions (`cache_action.py`).
+`python/sglang/srt/mem_cache/unified_cache/unified_tree_core.py` with a component
+registry (`python/sglang/srt/mem_cache/unified_cache/component_type.py`,
+`python/sglang/srt/mem_cache/unified_cache/tree_core_registry.py`) and explicit cache
+actions (`python/sglang/srt/mem_cache/unified_cache/cache_action.py`).
 
 The motivation is visible in this chapter. `HiRadixCache` hardcodes two tiers with a third
 bolted on, and the pool-type dispatch in `__init__` grows a branch per pool variant. The
