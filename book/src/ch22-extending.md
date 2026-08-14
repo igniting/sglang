@@ -1,29 +1,206 @@
 # 22. Extending SGLang
 
-> *The extension points are the architecture's seams, and walking them is the final check that the reader has understood where the boundaries are.*
+> *The extension points are the architecture's seams, and walking them is the final check
+> that the reader has understood where the boundaries are.*
 
-> **Status: outline.** This chapter is planned but not yet written. The beats below are the writing plan — each one pairs an idea with the code that implements it.
+---
 
-## Beats
+Every chapter has pointed at a place where something plugs in. This chapter collects them,
+in rough order of how often people need them.
 
-1. **Adding a model.** Config class, model class, weight mapping, registry entry, chat
-   template — and layer-by-layer comparison against HF via
-   `python/sglang/srt/debug_utils/comparator/` when the output is wrong.
+---
 
-2. **Adding a kernel.** The two paths: JIT (`python/sglang/kernels/jit/`, with its `csrc/`
-   tree) and AOT (`python/sglang/kernels/aot/`, the former top-level `sgl-kernel`), with
-   `python/sglang/kernels/registry.py` and `selector.py` as the dispatch layer.
-   Correctness tests and benchmarks are part of the deliverable, not follow-up work.
+## Adding a model
 
-3. **Adding an attention backend.** Implementing the Chapter 13 contract, and the CUDA-
-   graph obligations that catch every first attempt.
+The most common contribution, and the shortest checklist — because Chapter 12 established
+that a model is a `forward` and a `load_weights` over a shared layer vocabulary.
 
-4. **Porting to new hardware.** `python/sglang/srt/platforms/`,
-   `python/sglang/srt/hardware_backend/`, `python/sglang/srt/plugins/` — what a new
-   accelerator actually requires (communicators, attention backend, memory pool, graph
-   capture), with ROCm/AITER, Ascend, and Intel XPU as case studies of how far the
-   abstraction stretches.
+**1. Config.** A class in `python/sglang/srt/configs/` if the HF config needs translation,
+consumed by `python/sglang/srt/configs/model_config.py`.
 
-5. **How the project keeps this safe.** `test/run_suite.py`, `python/sglang/test/kits/`,
-   and why accuracy evals rather than unit tests are the real net. `.github/workflows/`
-   for gating and partitioning.
+**2. Model.** A file in `python/sglang/srt/models/`, built from Chapter 12's layers.
+`python/sglang/srt/models/llama.py` is the template. Copy the closest existing architecture
+rather than starting from HF code — the parallel layers, `RadixAttention` wiring, and
+`quant_config` threading are the parts that must be right, and they are identical across
+models.
+
+**3. Registry.** So `--model-path` resolves the architecture string.
+
+**4. Weight mapping.** `load_weights`, and the piece most likely to be wrong.
+
+**5. Chat template.** `docs/docs/references/custom_chat_template.mdx`.
+
+**6. Tests and docs.** `docs/docs/supported-models/support_new_models.mdx` is the official
+guide.
+
+### When the output is wrong
+
+A model that loads and produces fluent nonsense is the characteristic failure, and it is
+almost always the weight mapping — a transposed matrix, a QKV fusion split the wrong way, a
+sharded parameter sliced along the wrong axis. Chapter 11's `stacked_params_mapping` is the
+usual suspect.
+
+`python/sglang/srt/debug_utils/comparator/` is the tool: run the HF reference and the SGLang
+implementation on the same input, dump activations layer by layer, and find the first layer
+that diverges. The first divergence localizes the bug; everything after it is downstream
+noise.
+
+Order of suspicion, from experience: weight mapping, then rotary embedding configuration
+(Chapter 12 showed how many config keys govern it), then normalization placement, then
+attention mask.
+
+`python/sglang/srt/model_loader/ci_weight_validation.py` catches a class of these in CI, and
+`.claude/skills/kl-consistency-test/SKILL.md` is the systematic version — the prefill/decode
+logprob test that Chapter 7 described.
+
+---
+
+## Adding a kernel
+
+Two paths, and the choice is about compile time.
+
+**JIT** (`python/sglang/kernels/jit/`, with `python/sglang/kernels/jit/csrc/`) compiles at
+first use. Fast to iterate on, no build step for users, a first-call cost at runtime. Right
+for kernels that are specialized per shape or dtype.
+`.claude/skills/add-jit-kernel/SKILL.md` is the tutorial.
+
+**AOT** (`python/sglang/kernels/aot/`, formerly the top-level `sgl-kernel`) compiles at
+build time into a shipped extension. No runtime cost, a real build. Right for kernels used
+on every forward. `.claude/skills/add-sgl-kernel/SKILL.md` is the tutorial, and
+`python/sglang/kernels/aot/tests/` and `python/sglang/kernels/aot/benchmark/` show the
+expected deliverables.
+
+Both register through the same dispatch layer:
+
+```
+python/sglang/kernels/spec.py       KernelSpec — what a kernel declares about itself
+python/sglang/kernels/registry.py   :17 KernelRegistry, :76 register_kernel
+python/sglang/kernels/selector.py   :38 select_kernel, :92 get_kernel
+python/sglang/kernels/fused_op.py   fused operation base
+```
+
+`python/sglang/kernels/selector.py:34` `_platform` is where hardware detection happens, so
+one operation can have several implementations and the right one is chosen at runtime —
+Chapter 13's backend registry, generalized to every operation.
+
+**Tests and benchmarks are part of the contribution, not follow-up.** A kernel without a
+correctness test against a reference implementation cannot be safely modified by anyone
+else, and a kernel without a benchmark cannot be defended when someone proposes replacing
+it.
+
+---
+
+## Adding an attention backend
+
+Chapter 13's contract, restated as a checklist:
+
+1. Subclass `python/sglang/srt/layers/attention/base_attn_backend.py:33` `AttentionBackend`.
+2. Implement `:62` `init_forward_metadata` — or, for graph support, the out-of-graph and
+   in-graph split.
+3. Implement `:261` `forward_decode` and `:274` `forward_extend`.
+4. Implement `:160` `init_cuda_graph_state` and `:187`
+   `get_cuda_graph_seq_len_fill_value`.
+5. Register in `python/sglang/srt/layers/attention/attention_registry.py:34`.
+
+Step 4 is what catches every first attempt. The lint contract in
+`init_forward_metadata_in_graph`'s docstring — no `.item()`, no `.cpu()`, no dynamic-shape
+`torch.empty()` — is not advisory. Violating it produces a graph that captures successfully
+and then replays stale values, which is a wrong answer rather than an error.
+
+Test across every forward mode Chapter 6 lists that your backend claims to support.
+`ForwardMode` combinations are where backends break: a backend correct for `DECODE` and
+`EXTEND` may be wrong for `MIXED`, and `TARGET_VERIFY` (Chapter 18) has its own mask
+requirements.
+
+`python/sglang/srt/layers/attention/triton_backend.py` is the reference to read first.
+
+---
+
+## Porting to new hardware
+
+The largest undertaking, and the one that most tests whether the abstractions hold.
+
+`python/sglang/srt/platforms/` holds the platform abstraction,
+`python/sglang/srt/hardware_backend/` the per-vendor code, and
+`python/sglang/srt/plugins/` the plugin loading mechanism (called from
+`python/sglang/launch_server.py`, so out-of-tree backends can register before anything
+else runs).
+
+What a new accelerator actually needs:
+
+**Device communicators** (Chapter 15) — `python/sglang/srt/distributed/device_communicators/`.
+Without working collectives nothing beyond one device runs.
+
+**An attention backend** (Chapter 13) — the largest piece.
+
+**Memory pool support** (Chapter 8) — usually the least work, since the pools are mostly
+device-agnostic tensor allocation.
+
+**Graph capture** (Chapter 14) — or an honest admission that it is unsupported, which costs
+decode performance but does not block correctness.
+
+**Kernels** for quantization, MoE, and sampling, or fallbacks to portable implementations.
+
+The case studies show how far the abstraction stretches. **ROCm/AITER** is closest to
+NVIDIA and reuses most of the stack. **Ascend NPU** has its own everything — note the
+sampler backend registration Chapter 7 mentioned (`_forward_ascend_backend`), which exists
+because even sampling needed a vendor path. **Intel XPU and AMX** target CPUs and a
+different accelerator model. **TPU** went a different route entirely, as a separate
+`sglang-jax` project — evidence that the abstraction has limits.
+
+`docs/docs/hardware-platforms/` covers each, and
+`docs/docs/hardware-platforms/plugin.mdx` covers the plugin mechanism.
+
+---
+
+## How the project keeps this safe
+
+An inference engine has an unusual testing problem: the most important property — "the model
+produces correct output" — cannot be checked by unit tests. A model with a subtly wrong
+rotary embedding still produces fluent text.
+
+So the test pyramid is inverted relative to normal software. **Accuracy evaluations are the
+real safety net.** `test/lm_eval_configs/` holds the evaluation configs, and a change that
+does not move an eval score is far more trustworthy than one that passes unit tests.
+
+`test/run_suite.py` is the entry point, `test/README.md` the layout, and `test/registered/`
+the registration that puts a test in CI. `python/sglang/test/` provides the harness —
+`CustomTestCase`, server fixtures, and `python/sglang/test/kits/` for common patterns.
+`.claude/skills/write-sglang-test/SKILL.md` is the guide, and
+`.claude/rules/unit-test-admission.md` states what qualifies as a unit test at all — the
+project is deliberately restrictive, because a suite of tests that pass while the model is
+broken is worse than no suite.
+
+CI orchestration is in `.github/workflows/`, with
+`.claude/skills/ci-workflow-guide/SKILL.md` explaining stage ordering, fast-fail, gating,
+and partitioning across runners. Multi-GPU tests need multi-GPU runners, which are scarce,
+so gating decides what runs on every PR versus nightly.
+
+When something fails only in CI, `.claude/skills/sglang-bisect-ci-regression/SKILL.md` is
+the procedure: extract the signature, bisect the commit window, check runner specificity.
+
+---
+
+## Where to start
+
+If you are looking for a first contribution, in increasing order of scope:
+
+1. **Documentation** for something this book found unclear. The gap between what the code
+   does and what is written down is real, and you have just read enough to see it.
+2. **A model** whose architecture closely matches an existing one. Bounded, well-guided, and
+   immediately useful.
+3. **A kernel** for an operation with a slow fallback. Self-contained, with a clear
+   correctness oracle.
+4. **A quantization scheme** or **attention backend**. Larger, but the interfaces are
+   well-defined and Chapters 13 and 14 mapped them.
+5. **A hardware backend.** Months of work, and a real contribution.
+
+`docs/docs/developer_guide/contribution_guide.mdx` covers process, and
+`.claude/rules/` covers the conventions Chapter 2 introduced. Read those five rule files
+before your first patch; each one will otherwise cost you a review cycle.
+
+---
+
+That is the engine. Chapter 1 argued that decode is memory-bound and that memory capacity
+limits throughput; every chapter since has been a response to one or the other. The
+appendices collect the reference material.

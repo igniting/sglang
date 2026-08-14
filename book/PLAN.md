@@ -52,14 +52,13 @@ writing.
 To re-pin later: update `DEFAULT_PIN` in the script and the SHA in `src/introduction.md`,
 then run the checker and fix what it reports.
 
-## Writing order
+## Status
 
-1. **Ch. 2, 4, 6, 8, 9** — the topology, the loop, the executor, and the memory core.
-   These carry the book; if they work, the rest is infill.
-2. **Ch. 1, 3, 5, 7** — completing the request path into a coherent Part I–II.
-3. **Ch. 11–14** — the model layer.
-4. **Ch. 15–17** — scaling, which needs multi-GPU access to verify.
-5. **Ch. 18–22 + appendices.**
+All 22 chapters and 6 appendices are written (~43,000 words). Ch. 9 (RadixAttention) was
+drafted first as the pilot, to test the fused concept-plus-code format on the most
+beat-dense chapter before committing to the other 21; the rest followed in book order.
+
+816 code anchors verify against the pinned commit.
 
 ## Chapter map
 

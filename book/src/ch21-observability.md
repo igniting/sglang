@@ -1,28 +1,205 @@
 # 21. Observability and Tuning
 
-> *The instrumentation reveals the design — every metric the engine emits exists because someone needed it to answer a question this book has already raised.*
+> *The instrumentation reveals the design — every metric the engine emits exists because
+> someone needed it to answer a question this book has already raised.*
 
-> **Status: outline.** This chapter is planned but not yet written. The beats below are the writing plan — each one pairs an idea with the code that implements it.
+---
 
-## Beats
+## Reading the metrics as a map
 
-1. **What the engine measures, and why each one.**
-   `python/sglang/srt/observability/metrics_collector.py`, `forward_pass_metrics.py`,
-   `req_time_stats.py` — queue depth, cache hit rate, memory utilization, spec-decode
-   acceptance, per-phase timing. Each maps back to a specific chapter's tradeoff.
+`python/sglang/srt/observability/metrics_collector.py` is nearly 2,200 lines, and the
+fastest way to understand it is to notice that its collectors partition along the same lines
+as this book's chapters:
 
-2. **Tracing across processes.** `python/sglang/srt/observability/trace.py`,
-   `trace_async.py` — following one `rid` through the Chapter 2 topology; and
-   `startup_time.py` for the startup breakdown that explains slow boots.
+```
+:238   SchedulerMetricsCollector      the loop and its queues       (Ch. 4, 5)
+:1480  TokenizerMetricsCollector      request-level latency          (Ch. 3, 7)
+:1962  RadixCacheMetricsCollector     prefix cache behavior          (Ch. 9)
+:1849  StorageMetricsCollector        HiCache tiers                  (Ch. 10)
+:1947  ExpertDispatchCollector        MoE routing balance            (Ch. 16)
+:2160  EncoderMetricsCollector        multimodal encoding            (Ch. 20)
+```
 
-3. **Measuring honestly.** `python/sglang/bench_serving.py`,
-   `python/sglang/bench_offline_throughput.py`, `python/sglang/bench_one_batch_server.py`
-   — which to use when, what to hold fixed, and how to avoid measuring your own client.
+`:65` `SchedulerStats` is the core snapshot, and `:45` `QueueCount` breaks the queue down by
+state — because "queue depth" is not one number when requests can be waiting for admission,
+waiting for a grammar to compile (Chapter 19), or waiting for a KV transfer (Chapter 17).
 
-4. **Reading a profile.** `python/sglang/profiler.py` and the `/start_profile` endpoint
-   (`python/sglang/srt/entrypoints/http_server.py:1139`); kernel time vs gap time vs
-   communication, per `.claude/skills/llm-torch-profiler-analysis/SKILL.md`.
+`:172` `DPCooperationInfo` measures Chapter 15's imbalance, which matters because a
+data-parallel rank with nothing to do still runs an `IDLE` forward.
 
-5. **A tuning order of operations.** `--mem-fraction-static`, `--chunked-prefill-size`,
-   `--max-running-requests`, `--cuda-graph-max-bs`, attention backend, parallelism layout
-   — sequenced by which chapter's constraint each one relieves.
+`:215` `_StatLoggerDIMixin` is dependency injection for the logging backend, so the same
+collector serves Prometheus, logs, or a test double.
+
+### The five numbers that matter
+
+Everything else is diagnostic. These five tell you what the engine is doing:
+
+**Cache hit rate** (Chapter 9). The single highest-leverage number. If it is low on a
+workload with shared prefixes, something is wrong — the cache is too small, requests are
+being routed badly (Chapter 17), or the `extra_key` namespace is fragmenting (Chapter 20).
+
+**Token pool utilization** (Chapter 8). Consistently near 100% means you are memory-bound
+and admission is throttling. Consistently low means `--mem-fraction-static` is leaving
+memory unused.
+
+**Retraction count** (Chapter 5). Should be near zero. Anything else means admission is
+over-optimistic and work is being destroyed.
+
+**Queue depth** with **waiting time**. Growing queues mean you are past capacity; the
+question is whether to shed load or add replicas.
+
+**Spec acceptance length** (Chapter 18). Must be comfortably above 1 or speculation is
+costing you. `python/sglang/srt/managers/tokenizer_manager.py:2766`
+`_calculate_spec_decoding_metrics` computes it.
+
+`python/sglang/srt/observability/forward_pass_metrics.py` covers per-forward timing, and
+`python/sglang/srt/observability/req_time_stats.py` the per-request breakdown that turns a
+TTFT number into "queueing versus prefill."
+
+Wiring: `python/sglang/srt/managers/scheduler.py:718` `init_metrics_collector`, `:1191`
+`init_metrics_reporter`, and
+`python/sglang/srt/managers/scheduler_components/metrics_reporter.py`. `:1095`
+`emit_metrics_constants` publishes static facts — model name, parallelism sizes, pool
+capacity — so dashboards can label series without separate configuration.
+`docs/docs/references/production_metrics.mdx` is the reference.
+
+---
+
+## Tracing across processes
+
+Metrics tell you the aggregate. When one request is slow, you need its path.
+
+That path crosses Chapter 2's process boundaries, so a stack trace is useless — the request
+exists in the tokenizer process, then the scheduler, then the detokenizer, and no single
+call stack spans them.
+
+`python/sglang/srt/observability/trace.py` and
+`python/sglang/srt/observability/trace_async.py` propagate a trace context by `rid` across
+those hops. `python/sglang/srt/observability/mooncake_trace.py` extends it into Chapter 17's
+KV transfers, so a disaggregated request can be followed across machines.
+`docs/docs/references/production_request_trace.mdx` covers it, and
+`python/sglang/srt/entrypoints/http_server.py:1160` `set_trace_level` adjusts verbosity live.
+
+Startup gets its own instrumentation, because "why does the server take four minutes to
+start" is a real and frequent question. `python/sglang/srt/observability/startup_time.py`
+and
+`python/sglang/srt/observability/startup_func_log_and_timer.py` break it down;
+`python/sglang/srt/managers/scheduler.py:656` `init_startup_timing_begin` and `:659`
+`init_startup_timing_summary` produce the summary. The answer is usually weight loading
+(Chapter 11) or CUDA graph capture (Chapter 14), and the breakdown tells you which.
+
+`python/sglang/srt/observability/cpu_monitor.py` watches for the case where the CPU is the
+bottleneck — the condition Chapter 4's overlap scheduler and Chapter 14's graphs both exist
+to prevent.
+
+---
+
+## Measuring honestly
+
+Three harnesses, for three questions.
+
+**`python/sglang/benchmark/serving.py`** — online serving. Sends requests at a configured
+rate against a running server and reports TTFT, ITL, and throughput distributions. This is
+the one that answers "how will this behave in production," and the one most easily misused.
+
+**`python/sglang/benchmark/offline_throughput.py`** — maximum throughput with no latency
+constraint. Answers "what is this hardware capable of."
+
+**`python/sglang/benchmark/one_batch.py`** — one batch, no server, no scheduler. Chapter 1
+used it to demonstrate the prefill/decode gap. This is what you use when you have changed a
+kernel and want to know whether it is faster, without the scheduler in the way.
+
+`python/sglang/benchmark/one_batch_server.py` sits between the last two.
+
+The ways to get this wrong are consistent enough to list:
+
+- **Measuring your client.** At high request rates, a Python client can become the
+  bottleneck and you end up benchmarking `asyncio`.
+- **Not warming up.** First requests pay CUDA graph capture, JIT compilation, and allocator
+  warm-up — including the ROCm `torch.unique` case Chapter 8 quoted, which shows up
+  precisely as a slow *second* request.
+- **Accidental cache hits.** Sending the same prompt repeatedly measures Chapter 9's cache,
+  not the model. Sometimes that is the point; it should be deliberate.
+- **Reporting the mean.** Latency distributions are skewed. P50 and P99 differ by an order
+  of magnitude under load, and only one of them is your SLO.
+- **Comparing across configurations.** Changing `--mem-fraction-static` changes concurrency,
+  which changes batch size, which changes everything.
+
+`docs/docs/developer_guide/bench_serving.mdx` documents the harness.
+
+---
+
+## Reading a profile
+
+When benchmarks say "slow" and metrics do not say why, profile.
+
+`python/sglang/profiler.py` wraps the PyTorch profiler, and
+`python/sglang/srt/managers/scheduler_components/profiler_manager.py` runs it inside the
+scheduler process. The endpoints are
+`python/sglang/srt/entrypoints/http_server.py:1139` `start_profile_async` and `:1150`
+`stop_profile_async`, so you can profile a live server under real load rather than a
+synthetic reproduction.
+
+`.claude/skills/llm-torch-profiler-analysis/SKILL.md` is the project's own triage procedure,
+and `.claude/skills/generate-profile/SKILL.md` drives capture. What to look for, in order:
+
+**Gap time.** Space between kernels means the GPU is starved — a CPU-side problem. Chapter
+4's overlap loop and Chapter 14's graphs are the fixes. If gaps dominate, nothing you do to
+kernels will help.
+
+**Kernel time distribution.** Which kernels actually cost. Usually attention (Chapter 13) and
+the large GEMMs, but for MoE models often the all-to-all (Chapter 16).
+
+**Communication time.** Collectives on the critical path. If all-to-all dominates, Chapter
+16's two-batch overlap is the answer; if all-reduce dominates, the parallelism layout
+(Chapter 15) is wrong.
+
+**Fusion opportunities.** Adjacent elementwise kernels that could be one — Chapter 14's
+compilation.
+
+Two more tools: `python/sglang/kernel_api_logging.py` logs kernel API calls, which
+`.claude/skills/debug-cuda-crash/SKILL.md` uses to find the call that crashed; and
+`python/sglang/srt/debug_utils/comparator/` compares tensors layer-by-layer against a
+reference, which is how a model producing wrong output gets localized (Chapter 22).
+
+---
+
+## A tuning order of operations
+
+Tune in the order that relieves binding constraints, not in the order the flags appear in
+`--help`.
+
+**1. `--mem-fraction-static`** (Chapter 8). Sets the KV pool, which sets concurrency, which
+sets everything. Raise until you see OOM under load, then back off. Too high fails not at
+startup but under the first large batch, when activation memory is demanded from a pool that
+already took it.
+
+**2. Parallelism layout** (Chapters 15, 16). TP to fit the model, PP across nodes, DP
+attention for MLA, EP for MoE. Getting this wrong cannot be compensated for by anything
+below it.
+
+**3. `--chunked-prefill-size`** (Chapter 5). Smaller chunks lower ITL for active decodes and
+raise TTFT for long prompts. Set it by which latency you are being measured on.
+
+**4. `--max-running-requests`** (Chapter 5). Caps concurrency independently of memory. Useful
+when memory allows more than latency does.
+
+**5. Attention backend** (Chapter 13). Worth benchmarking; the default is not always best for
+your shapes, and prefill and decode can be set separately.
+
+**6. `--cuda-graph-max-bs`** (Chapter 14). Higher covers more batch sizes with graphs, at
+capture memory that comes out of the KV pool. Interacts with step 1.
+
+**7. Speculative decoding** (Chapter 18). Large wins at low batch size, negative at high.
+Check accepted length before keeping it.
+
+**8. HiCache** (Chapter 10) and **routing** (Chapter 17). Only pay off with real prefix
+sharing — check the cache hit rate first.
+
+`docs/docs/advanced_features/hyperparameter_tuning.mdx` carries the project's guidance, and
+`.claude/skills/sglang-prod-incident-triage/SKILL.md` is the replay-first procedure for when
+a live deployment is misbehaving rather than merely slow.
+
+The general rule: **measure which of Chapter 1's two phases you are bound by, and which
+resource within it, before changing anything.** Most tuning effort is spent optimizing a
+constraint that was not binding.

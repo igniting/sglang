@@ -2,8 +2,8 @@
 
 *Reading a production LLM serving engine.*
 
-> **Status: in progress.** The structure below is settled and every chapter has a
-> writing plan. Chapters are being written in the order given in the project plan.
+> **Status: complete first edition.** All 22 chapters and 6 appendices are written against
+> the pinned commit below, and every code reference is verified in CI.
 
 ---
 
