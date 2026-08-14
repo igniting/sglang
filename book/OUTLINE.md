@@ -1,1153 +1,666 @@
 # SGLang Internals — Book Outline
 
-**Working title:** *SGLang Internals: How a Production LLM Serving Engine Works*
-
-A book that teaches LLM inference serving from first principles, then shows exactly
-how each concept is realized in the SGLang codebase — with guided walkthroughs of the
-real source files.
+**Working title:** *SGLang Internals: Reading a Production LLM Serving Engine*
 
 ---
 
-## About this outline
+## The approach
 
-Every chapter follows the same three-part shape:
+Concepts and code are not separated. Each chapter is a single narrative in which an idea
+is introduced and immediately grounded in the code that *is* that idea — the explanation
+of paged KV memory is the walk through `PagedTokenToKVPoolAllocator`, not a preamble to it.
+The reader should never encounter theory they cannot point at.
 
-| Section | Purpose |
-| --- | --- |
-| **Concepts** | The idea, independent of SGLang. Why it exists, what problem it solves, the math/systems tradeoff. |
-| **Code walkthrough** | The actual implementation, traced through named files, classes, and functions. |
-| **Lab / Exercises** | Something the reader runs, instruments, or modifies to make the chapter stick. |
+Each chapter below is given as its **thesis** plus the sequence of **beats** that carry it.
+A beat is one idea welded to one piece of code.
 
-Code references use `path:line` anchors against the repository state at the time of
-writing (commit `7562e74`). Line numbers drift; the class/function names are the stable
-handle, and each chapter should re-verify anchors at publish time.
+**Format conventions**
+- Code anchors are `path:line`, verified against commit `7562e74`. Names are the stable
+  handle; line numbers get re-verified at publish.
+- Long files are read selectively and the outline says which parts. Nothing pretends to
+  read 9,000 lines.
+- No exercises, no labs. Where a claim is empirical, the book states the measurement and
+  its conditions rather than assigning it.
 
-**Reading paths:**
-- *Users / operators* — Parts I, II, VIII, and Appendix A.
-- *Contributors adding a model* — Parts I, II, IV, IX.
-- *Performance engineers* — Parts III, IV, V, VI, VIII.
-- *Systems researchers* — read straight through.
+**Prerequisites:** Python, PyTorch, transformer architecture. CUDA/Triton is read at a
+glance, never written.
 
-**Prerequisites:** Python, PyTorch basics, familiarity with transformer architecture,
-comfort reading C++/CUDA at a glance (not writing it). GPU access recommended but not
-required for most chapters.
+**Scope:** the serving runtime (`python/sglang/srt`), plus the frontend DSL, kernels layer,
+and Rust gateway where the request path crosses into them. The diffusion stack
+(`python/sglang/multimodal_gen`, ~400 files) is out of scope — see Open Questions.
+
+**Size:** 22 chapters in 7 parts, ~450–550 pages.
 
 ---
 
 # Part I — Foundations
 
-*Goal: by the end of Part I the reader can explain why an LLM serving engine exists at
-all, and can navigate the repo without getting lost.*
+## Chapter 1 — Why Serving Engines Exist
 
-## Chapter 1 — The LLM Inference Problem
+*Thesis: the cost structure of autoregressive decoding, not model quality, is what forces
+an engine to exist.*
 
-**Concepts**
-- Autoregressive generation: one token at a time, each conditioned on everything before it.
-- The two phases: **prefill** (compute-bound, parallel over the prompt) vs **decode**
-  (memory-bandwidth-bound, one token per step per sequence).
-- Why naive `model.generate()` in a `for` loop wastes 90%+ of a GPU: arithmetic intensity,
-  the roofline model, why decode is bandwidth-starved.
-- The KV cache: what it stores, why it turns O(n²) recompute into O(n) memory.
-- KV cache sizing math: `2 × layers × kv_heads × head_dim × dtype_bytes × seq_len` per request.
-  Worked example on Llama-3-70B — how quickly memory, not FLOPs, becomes the wall.
-- Serving metrics that matter: TTFT, ITL/TPOT, throughput, goodput, and how they trade off.
+1. **Two phases, two bottlenecks.** Prefill is compute-bound and parallel over the prompt;
+   decode is memory-bandwidth-bound and produces one token per sequence per step. The
+   roofline argument for why a naive generate-loop leaves 90% of a GPU idle.
+2. **The KV cache, and the bill it creates.** Trading O(n²) recompute for O(n) memory;
+   the sizing formula and a worked example on a 70B model showing memory — not FLOPs —
+   as the binding constraint. This is the number that every later chapter is fighting.
+3. **The problem in SGLang's own terms.** `python/sglang/bench_one_batch.py` is the
+   smallest thing in the repo that runs a real forward pass; reading its prefill and
+   decode timing paths turns the abstract argument into the engine's actual measurements.
+4. **What the metrics mean.** TTFT, ITL/TPOT, throughput, goodput, and how optimizing one
+   degrades another — the tradeoff space every subsequent design decision sits in.
+5. **The idea inventory.** `README.md:68` lists SGLang's feature set in one dense
+   paragraph. Decoding that list feature-by-feature into "what problem it solves and which
+   chapter covers it" gives the reader a map before the descent.
 
-**Code walkthrough**
-- A "from scratch" ~150-line reference decoder written for this book (`book/labs/ch01/`)
-  that we will keep returning to as the mental baseline SGLang optimizes away from.
-- `python/sglang/bench_one_batch.py` — the smallest end-to-end thing in the repo that
-  runs a real forward pass, to show the shape of the problem in SGLang's own terms.
+## Chapter 2 — The Shape of SGLang
 
-**Lab**
-- Measure prefill vs decode throughput on a small model. Plot tokens/sec vs batch size.
-  Observe where each phase saturates.
+*Thesis: the engine's process topology is its architecture; understanding the boundaries
+explains most design choices that follow.*
 
----
-
-## Chapter 2 — What Makes Serving Fast: The Idea Inventory
-
-A survey chapter. Each idea gets ~2 pages and a forward reference to its deep-dive.
-
-**Concepts**
-- **Continuous batching** — requests join and leave the batch every step instead of
-  waiting for the slowest one. → Ch. 9
-- **Paged / block KV memory** — stop reserving `max_len` per request; allocate in pages. → Ch. 12
-- **Prefix caching (RadixAttention)** — shared prompt prefixes computed once. SGLang's
-  signature contribution. → Ch. 14
-- **Chunked prefill** — split long prompts so they don't stall decode. → Ch. 9
-- **CUDA graphs** — amortize kernel launch overhead in decode. → Ch. 20
-- **Overlap / zero-overhead scheduling** — hide CPU scheduling behind GPU compute. → Ch. 27
-- **Speculative decoding** — draft cheap, verify in parallel. → Ch. 28
-- **Quantization** — fewer bits per weight/activation/KV entry. → Ch. 19
-- **Parallelism** — TP, PP, DP, EP, CP, and when each one is the right hammer. → Part V
-- **PD disaggregation** — separate prefill and decode onto different machines. → Ch. 25
-- **Hierarchical caching** — GPU → CPU → SSD/object store KV tiers. → Ch. 15
-
-**Code walkthrough**
-- `README.md:68` — the feature list, decoded feature-by-feature into "here's what that
-  actually means and where it lives."
-- `python/sglang/srt/server_args.py` — a tour of the flag surface as a map of the
-  feature space (~9,900 lines; we read it as a table of contents, not line by line).
-
-**Exercise**
-- For each feature in the README bullet list, locate the directory that implements it.
-  (Answer key in Appendix D.)
+1. **Several projects in one tree.** The runtime (`srt`), the frontend DSL (`lang`),
+   kernels (`kernels`, `sgl-kernel`), the Rust gateway (`sgl-model-gateway`) — and what
+   each is for. The `srt` layout presented as a dependency graph, not an alphabetical list.
+2. **Why multi-process, not multi-threaded.** The GIL, fault isolation, and the
+   tokenizer/scheduler/detokenizer split. `python/sglang/srt/entrypoints/engine.py:1052`
+   `_launch_subprocesses` is where the topology is literally constructed —
+   `:848` spawns schedulers per TP rank, `:966` the detokenizers.
+3. **Three front doors.** The HTTP server (`entrypoints/http_server.py:270` `lifespan`,
+   `:874` `generate_request`), the embeddable `Engine` (`engine.py:199`, `:352` `generate`)
+   used for offline batch and RL rollouts, and gRPC. `python/sglang/launch_server.py`
+   dispatches between them and is short enough to read whole.
+4. **The fourth front door: the DSL.** SGLang is named for its *Structured Generation
+   Language*. `lang/api.py` gives the primitives (`gen`, `select`, `fork`),
+   `lang/ir.py` the program IR, and `lang/interpreter.py:274` `StreamExecutor` the
+   execution engine. The payoff — `fork` becoming a radix-tree branch rather than *n*
+   independent generations — is the first hint of the frontend/runtime co-design that
+   Chapter 9 completes.
+5. **Reading the flag surface.** `srt/server_args.py` (~9,900 lines) is not read linearly;
+   it is read as a table of contents for the feature space, with each argument group
+   pointing at the subsystem that consumes it.
+6. **The repo's own rules as design documents.** `.claude/rules/no-dataclasses.md`,
+   `no-getattr-defensive.md`, `schedule-batch-out-of-place-mutation.md`, and
+   `forward-batch-init-new-purity.md` encode invariants that exist nowhere else. Each one
+   explains a hazard the architecture has already hit.
 
 ---
 
-## Chapter 3 — A Tour of the Repository
+# Part II — The Request Path
 
-**Concepts**
-- SGLang is really several projects in one tree: the Python runtime (`srt`), a frontend
-  DSL (`lang`), kernels (`kernels`, `sgl-kernel`), a Rust router/gateway
-  (`sgl-model-gateway`), a diffusion stack (`multimodal_gen`), and docs.
-- The `srt` ("SGLang RunTime") package layout as a dependency graph, not an alphabetical list.
-- Naming conventions and the project's own code rules.
+*One request, followed from socket to streamed token. Every later part is a labeled detour
+off this path.*
 
-**Code walkthrough**
-```
-python/sglang/
-├── srt/                    the serving runtime — 90% of this book
-│   ├── entrypoints/        HTTP/gRPC servers, Engine API           → Ch. 4
-│   ├── managers/           Scheduler, TokenizerManager, batches    → Ch. 5–9
-│   ├── model_executor/     ModelRunner, ForwardBatch, CUDA graphs  → Ch. 10, 20
-│   ├── mem_cache/          KV pools, allocators, radix cache       → Part III
-│   ├── layers/             attention, MoE, quant, linear, sampler  → Part IV
-│   ├── models/             218 model definitions                   → Ch. 17
-│   ├── distributed/        process groups, communicators           → Ch. 21
-│   ├── speculative/        EAGLE, MTP, ngram, DFlash               → Ch. 28
-│   ├── disaggregation/     prefill/decode split                    → Ch. 25
-│   ├── lora/, constrained/, function_call/, multimodal/            → Part VI
-│   └── observability/      metrics, tracing, profiling             → Ch. 36
-├── lang/                   the SGLang frontend DSL                 → Ch. 34
-├── kernels/                JIT + AOT kernel layer                  → Ch. 41
-└── test/                   test kits and harnesses                 → Ch. 38
-```
-- `.claude/rules/` — the repo's own enforced conventions: `no-dataclasses.md`,
-  `no-getattr-defensive.md`, `general-code-style.md`,
-  `schedule-batch-out-of-place-mutation.md`, `forward-batch-init-new-purity.md`.
-  These are load-bearing; a chapter that explains *why* each rule exists teaches the
-  architecture as much as the code does.
-- `.claude/skills/` — maintainer playbooks (`large-class-style`, `sglang-runtime-context`,
-  `speculative-naming`) that document design intent found nowhere else.
+## Chapter 3 — From HTTP to Token IDs
 
-**Lab**
-- Install from source, launch `sglang serve` with a 1B model, send a request, and read
-  the startup log top to bottom — identifying which subsystem prints each line.
+*Thesis: the front of the engine is an async/sync boundary, and most of its complexity is
+in making message passing look like `await`.*
 
----
+1. **Tokenization gets its own process and its own event loop.**
+   `managers/tokenizer_manager.py:374` `TokenizerManager` — `:755` `generate_request` is
+   the async entry, `:985` `_tokenize_one_request` and `:1359` `_create_tokenized_object`
+   the conversion.
+2. **Validation as a stability boundary.** `tokenizer_manager.py:1185`
+   `_validate_one_request` — length limits, vocab range, multimodal caps, logprob
+   constraints. Each check exists because something downstream would otherwise crash a
+   process shared by every other request.
+3. **Turning messages into futures.** `:1722` `_wait_one_response` is the per-request async
+   generator; `:2200` `handle_loop` and `:2215` `_handle_batch_output` are the return path
+   that resolves it. This pair is the whole trick.
+4. **The wire contract.** `managers/io_struct.py:160` `GenerateReqInput`,
+   `:941` `TokenizedGenerateReqInput`, `:1404` `BatchTokenIDOutput`, `:1504` `BatchStrOutput`
+   — the messages define the process boundaries more precisely than any diagram.
+5. **ZeroMQ patterns and their failure modes.** Socket setup at `scheduler.py:733`
+   `init_ipc_channels`; receipt at `scheduler.py:1872` `process_input_requests` and
+   `:1523` `init_request_dispatcher` (the type → handler table). Broadcast semantics under
+   TP: rank 0 receives, all ranks must agree. Serialization choices, and the CUDA-IPC path
+   at `scheduler.py:1906` `_materialize_cuda_vmm_inputs` that keeps image tensors off the
+   socket entirely.
 
-# Part II — The Life of a Request
+## Chapter 4 — The Scheduler Loop
 
-*The spine of the book. One request, followed from HTTP socket to streamed token, with a
-chapter per stage. Every later part is a detour off this path.*
+*Thesis: one synchronous loop owns the GPU and answers one question per iteration —
+what runs next? Everything else in the engine is input to that question.*
 
-## Chapter 4 — Entry Points: Server, Engine, and the API Surface
+1. **A request is a state machine with a lot of state.**
+   `managers/schedule_batch.py:811` `Req`, `:814` `__init__` read field-group by
+   field-group: tokens, prefix match, KV indices, sampling params, grammar state, logprob
+   accumulators, multimodal payloads. `:1298` `init_next_round_input` is the per-round
+   prefix match; `:223`–`:283` the finish-reason hierarchy.
+2. **Three batch types for three jobs.** `ScheduleBatch` (CPU scheduling view),
+   `ModelWorkerBatch` (transport), `ForwardBatch` (GPU execution view) — with
+   `prepare_for_extend`, `prepare_for_decode`, `retract_decode`, `filter_batch`,
+   `merge_batch` as the operations that move between them. Why the repo forbids in-place
+   batch mutation, per `.claude/rules/schedule-batch-out-of-place-mutation.md`.
+3. **The loop, honest version first.** `managers/scheduler.py:1714` `event_loop_normal` is
+   short and does exactly what it says. Read it before anything else in the file.
+4. **The loop, fast version, as a delta.** `:1749` `event_loop_overlap` — the zero-overhead
+   batch scheduler. The future-token trick that lets step *N+1* be prepared while step *N*
+   is still on the GPU, in `managers/overlap_utils.py` and `:1438` `init_overlap`; and
+   `:1823` `is_disable_overlap_for_batch` for when it cannot be done.
+5. **A 5,000-line class, and why it is shaped that way.** `scheduler.py:378` composes 22
+   mixins and `:388` `__init__` is a sequence of named `init_*` calls.
+   `.claude/skills/large-class-style/SKILL.md` documents this as deliberate; the extracted
+   collaborators in `managers/scheduler_components/` (`batch_result_processor.py`,
+   `output_streamer.py`, `invariant_checker.py`) show where the seams are.
+6. **Liveness.** `:4036` `on_idle`, `:4078` `is_fully_idle`, watchdogs, and why
+   `/health_generate` (`http_server.py:646`) runs a real forward pass instead of returning 200.
 
-**Concepts**
-- Three ways in: the HTTP server (OpenAI-compatible + native), the in-process `Engine`
-  (offline batch inference, RL rollouts), and gRPC.
-- Why the engine is multi-process, not multi-threaded: the GIL, fault isolation, and
-  the tokenizer/scheduler/detokenizer split.
-- The process topology:
-  `TokenizerManager` (async, front) → `Scheduler` × TP ranks (sync, GPU) → `DetokenizerManager`,
-  all connected by ZeroMQ.
+## Chapter 5 — Deciding What Runs Next
 
-**Code walkthrough**
-- `python/sglang/launch_server.py` — dispatch across HTTP / gRPC / Ray / encoder-only modes.
-- `python/sglang/srt/entrypoints/http_server.py:270` `lifespan` — server startup.
-- `http_server.py:874` `generate_request` — the native `/generate` endpoint.
-- `http_server.py:646` `health_generate` — how liveness is actually tested (a real forward pass).
-- `python/sglang/srt/entrypoints/engine.py:199` `class Engine` — the embeddable API.
-- `engine.py:1052` `_launch_subprocesses` — the fork/spawn that creates the topology;
-  `engine.py:848` `_launch_scheduler_processes`, `engine.py:966` `_launch_detokenizer_subprocesses`.
-- `engine.py:352` `Engine.generate` — the synchronous/offline path.
-- `python/sglang/srt/entrypoints/openai/serving_chat.py` and `serving_completions.py` —
-  OpenAI protocol adaptation; `openai/protocol.py` for the request/response models.
+*Thesis: continuous batching is an admission-control problem under a hard memory budget,
+and the memory system is what makes the decision interesting.*
 
-**Diagram**
-- Process-and-socket topology diagram, referenced throughout the rest of the book.
+1. **Admission, not scheduling.** `scheduler.py:3012` `get_next_batch_to_run` is the
+   central decision function; `:3154` `get_new_batch_prefill` and `:3478`
+   `update_running_batch` are its two halves.
+2. **The token budget.** `managers/schedule_policy.py:504` `PrefillAdder` — `:664`
+   `rem_total_tokens`, `:857` `_update_prefill_budget`, `add_one_req`. This is where
+   `max_total_tokens`, `max_prefill_tokens`, and `max_running_requests` stop being flags
+   and become arithmetic.
+3. **Predicting the future.** The new-token-ratio heuristic
+   (`scheduler_components/new_token_ratio_tracker.py`) estimates decode demand that has
+   not happened yet; over-optimism here is what makes retraction necessary.
+4. **Cache-aware ordering.** `schedule_policy.py:216` `SchedulePolicy`, `:237`
+   `calc_priority`, `:314` `_compute_prefix_matches`, `:374` `_sort_by_longest_prefix`,
+   `:387` `_sort_by_dfs_weight`. The scheduler consults the radix tree — this is the loop
+   between Chapters 5 and 9 closing, and the reason cache-aware routing works at all.
+5. **Chunked prefill.** `scheduler.py:1153` `init_chunked_prefill` — splitting long prompts
+   so a 100k-token request cannot stall every decode in flight, and the TTFT/ITL trade
+   that buys.
+6. **Fairness and its absence.** `:2715` `_add_request_to_queue`, `:2739`
+   `_set_or_validate_priority`, `:2813` `_abort_on_waiting_timeout` — starvation,
+   priorities, and queue timeouts.
 
-**Lab**
-- Run the same prompt through `/generate`, `/v1/chat/completions`, and `Engine.generate`.
-  Diff the resulting `TokenizedGenerateReqInput` with a print statement.
+## Chapter 6 — Executing a Batch
 
----
+*Thesis: the handoff from Python scheduling objects to GPU tensors is where the mode of the
+batch starts determining everything downstream.*
 
-## Chapter 5 — The Tokenizer Manager: Front Door of the Runtime
+1. **Mode determines the world.** `model_executor/forward_batch_info.py:98` `ForwardMode` —
+   `EXTEND`, `DECODE`, `MIXED`, `IDLE`, `TARGET_VERIFY`, `DRAFT_EXTEND`, `SPLIT_PREFILL`.
+   Attention backend, kernel choice, graph eligibility, and memory accounting all branch here.
+2. **The execution view.** `:412` `ForwardBatch` and `:739` `init_new`, plus
+   `.claude/rules/forward-batch-init-new-purity.md` on why construction must be pure.
+   `model_executor/forward_context.py` for the ambient per-forward context and the problem
+   it solves.
+3. **The worker boundary.** `managers/tp_worker.py:74` `BaseTpWorker`, `:299` `TpModelWorker`
+   — thin, and deliberately so.
+4. **Initialization as an ordered script.** `model_executor/model_runner.py:284`
+   `ModelRunner`, `:287` `__init__` — weights (`:1057` `load_model`), memory pool
+   (`:807` `alloc_memory_pool`), attention backend (`:927`), CUDA graphs (`:992`). The
+   order is a dependency chain, and reading it explains most startup failures.
+5. **The forward call.** `:1505` `forward` and `:1649` `_forward_raw` — mode dispatch,
+   graph replay vs eager, and the contract the model must satisfy.
 
-**Concepts**
-- Why tokenization lives in its own process and its own async event loop.
-- Request identity (`rid`), request state tracking, and the async future/queue pattern
-  that turns a message-passing backend into an `await`-able API.
-- Input validation as a security and stability boundary.
-- Streaming: how partial outputs get routed back to the right caller.
+## Chapter 7 — Sampling and the Return Path
 
-**Code walkthrough**
-- `python/sglang/srt/managers/tokenizer_manager.py:374` `class TokenizerManager`.
-- `tokenizer_manager.py:755` `generate_request` — the async entry.
-- `tokenizer_manager.py:985` `_tokenize_one_request` and `:1359` `_create_tokenized_object`.
-- `tokenizer_manager.py:1185` `_validate_one_request` — length limits, vocab range,
-  multimodal limits, logprob constraints.
-- `tokenizer_manager.py:1722` `_wait_one_response` — the per-request async generator.
-- `tokenizer_manager.py:2200` `handle_loop` / `:2215` `_handle_batch_output` — the return path.
-- `python/sglang/srt/managers/io_struct.py:160` `GenerateReqInput`,
-  `:941` `TokenizedGenerateReqInput` — the wire contract.
-- `managers/async_dynamic_batch_tokenizer.py` — batching tokenization itself.
+*Thesis: turning hidden states into user-visible text is three separate hard problems that
+happen to sit next to each other.*
 
-**Lab**
-- Add a custom validation rule and observe the error surface end-to-end.
-
----
-
-## Chapter 6 — Inter-Process Communication and the Message Protocol
-
-**Concepts**
-- ZeroMQ socket patterns used (PUSH/PULL, PUB/SUB) and why each was chosen.
-- Serialization: why `pickle` here, `msgpack`/`msgspec` there, and the CUDA-IPC path for
-  multimodal tensors that avoids copying pixels through the socket.
-- Broadcast semantics under tensor parallelism: rank 0 receives, all ranks must agree.
-- Failure modes: a dead scheduler, a full queue, a stale `rid`.
-
-**Code walkthrough**
-- `python/sglang/srt/managers/io_struct.py` — the full message catalog; the
-  `BaseReq`/`BaseBatchReq` hierarchy, `:1404` `BatchTokenIDOutput`, `:1504` `BatchStrOutput`.
-- `managers/scheduler_components/ipc_channels.py` and `scheduler.py:733` `init_ipc_channels`.
-- `managers/scheduler_components/request_receiver.py` and
-  `scheduler.py:1872` `process_input_requests`.
-- `scheduler.py:1523` `init_request_dispatcher` — the request-type → handler table.
-- `managers/communicator.py` — cross-rank coordination primitives.
-- `scheduler.py:1906` `_materialize_cuda_vmm_inputs` — zero-copy multimodal transport.
-
-**Exercise**
-- Trace one `AbortReq` through every process it touches.
-
----
-
-## Chapter 7 — The Scheduler Event Loop
-
-**Concepts**
-- The scheduler is the heart: a synchronous loop that owns the GPU and makes one decision
-  per iteration — "what runs next?"
-- Loop invariants: waiting queue, running batch, memory pool, cache tree.
-- Normal loop vs overlap loop (the "zero-overhead batch scheduler"): why the CPU work of
-  step *N+1* must happen while the GPU is still executing step *N*.
-- Idle handling, watchdogs, health checks, and graceful shutdown.
-
-**Code walkthrough**
-- `python/sglang/srt/managers/scheduler.py:378` `class Scheduler` — note the 22-mixin
-  composition, and read `.claude/skills/large-class-style/SKILL.md` on why `__init__`
-  is a sequence of named `init_*` calls (`scheduler.py:388`).
-- `scheduler.py:1658` `run_event_loop` — the dispatcher between loop variants.
-- `scheduler.py:1714` `event_loop_normal` — read this first; it is the honest, simple version.
-- `scheduler.py:1749` `event_loop_overlap` — then this, as a delta against the simple one.
-- `scheduler.py:3012` `get_next_batch_to_run` — the central decision function.
-- `scheduler.py:3623` `run_batch` and `:3917` `process_batch_result`.
-- `scheduler.py:4036` `on_idle` / `:4078` `is_fully_idle`.
-- `managers/overlap_utils.py`, `scheduler.py:1438` `init_overlap`.
-- `managers/scheduler_components/` — the extracted collaborators:
-  `batch_result_processor.py`, `output_streamer.py`, `new_token_ratio_tracker.py`,
-  `invariant_checker.py`.
-
-**Diagram**
-- One iteration of `event_loop_overlap` as a timeline showing CPU and GPU lanes.
-
-**Lab**
-- Instrument the loop to log its per-iteration decision for 100 steps under load;
-  reconstruct the schedule.
-
----
-
-## Chapter 8 — Requests and Batches: `Req` and `ScheduleBatch`
-
-**Concepts**
-- The request state machine: waiting → running → finished/retracted/aborted.
-- What a request must remember: token ids, output ids, prefix match, KV indices,
-  sampling params, grammar state, logprob accumulators, multimodal payloads.
-- `ScheduleBatch` (CPU-side scheduling view) vs `ModelWorkerBatch` (transport) vs
-  `ForwardBatch` (GPU-side execution view) — three different objects for three different jobs.
-- Retraction: what happens when the engine over-commits memory and must evict a *running*
-  request.
-- Why the repo bans in-place mutation of batches (`.claude/rules/schedule-batch-out-of-place-mutation.md`).
-
-**Code walkthrough**
-- `python/sglang/srt/managers/schedule_batch.py:811` `class Req`, `:814` `__init__` —
-  a guided read of the fields, grouped by subsystem.
-- `schedule_batch.py:1298` `init_next_round_input` — prefix matching per round.
-- `schedule_batch.py:223`–`:283` — the `FinishReason` hierarchy.
-- `schedule_batch.py` `class ScheduleBatch` — `prepare_for_extend`, `prepare_for_decode`,
-  `retract_decode`, `filter_batch`, `merge_batch`.
-- `schedule_batch.py:318` `MultimodalDataItem` / `:590` `MultimodalInputs`.
-- `scheduler.py:2363` `handle_generate_request` — where a wire message becomes a `Req`.
-
-**Exercise**
-- Write out the full field-level diff of a `Req` before and after one decode step.
-
----
-
-## Chapter 9 — Scheduling Policy: Continuous Batching in Practice
-
-**Concepts**
-- Continuous batching, precisely: the admission problem under a hard memory budget.
-- Policies: FCFS, LPM (longest prefix match), DFS-weight, priority, random — and the
-  cache-aware vs cache-agnostic split.
-- The token budget: `max_total_tokens`, `max_prefill_tokens`, `max_running_requests`,
-  and the "new token ratio" heuristic that predicts future decode demand.
-- Chunked prefill: why long prompts must be split, and the latency it buys.
-- Prefill/decode interleaving and the mixed-mode batch.
-- Starvation, fairness, priority scheduling, and queue timeouts.
-
-**Code walkthrough**
-- `python/sglang/srt/managers/schedule_policy.py:216` `class SchedulePolicy`,
-  `:237` `calc_priority`, `:314` `_compute_prefix_matches`, `:374` `_sort_by_longest_prefix`,
-  `:387` `_sort_by_dfs_weight`.
-- `schedule_policy.py:504` `class PrefillAdder` — the admission-control core;
-  `:664` `rem_total_tokens`, `:857` `_update_prefill_budget`, `add_one_req`.
-- `scheduler.py:3154` `get_new_batch_prefill` / `:3180` `_get_new_batch_prefill_raw`.
-- `scheduler.py:3478` `update_running_batch` — decode-side admission and retraction.
-- `scheduler.py:1153` `init_chunked_prefill`, `:1204` `init_schedule_policy`.
-- `scheduler.py:2715` `_add_request_to_queue`, `:2739` `_set_or_validate_priority`,
-  `:2813` `_abort_on_waiting_timeout`.
-
-**Lab**
-- Run a workload with shared prefixes under FCFS vs LPM; measure cache hit rate and TTFT.
-
----
-
-## Chapter 10 — Model Execution: `TpModelWorker`, `ModelRunner`, `ForwardBatch`
-
-**Concepts**
-- The handoff from scheduling (CPU, Python objects) to execution (GPU, tensors).
-- `ForwardMode`: `EXTEND`, `DECODE`, `MIXED`, `IDLE`, `TARGET_VERIFY`, `DRAFT_EXTEND`,
-  `SPLIT_PREFILL` — the mode determines nearly everything downstream.
-- Why `ForwardBatch.init_new` must be pure (`.claude/rules/forward-batch-init-new-purity.md`).
-- The forward pass contract: what the model receives, what it must return.
-
-**Code walkthrough**
-- `python/sglang/srt/managers/tp_worker.py:74` `BaseTpWorker`, `:299` `TpModelWorker`.
-- `python/sglang/srt/model_executor/model_runner.py:284` `class ModelRunner` —
-  `:287` `__init__` as an ordered initialization script (weights → memory pool →
-  attention backend → CUDA graphs).
-- `model_runner.py:1057` `load_model`, `:807` `alloc_memory_pool`,
-  `:927` `init_attention_backends`, `:992` `init_cuda_graphs`.
-- `model_runner.py:1505` `forward` / `:1649` `_forward_raw` — mode dispatch.
-- `model_runner.py:1766` `sample`.
-- `python/sglang/srt/model_executor/forward_batch_info.py:98` `ForwardMode`,
-  `:412` `class ForwardBatch`, `:739` `init_new`.
-- `model_executor/forward_context.py` — the ambient per-forward context and why it exists.
-- `model_executor/model_runner_components/` — extracted setup helpers.
-
-**Diagram**
-- `Req` → `ScheduleBatch` → `ModelWorkerBatch` → `ForwardBatch` field-flow diagram.
-
----
-
-## Chapter 11 — Logits, Sampling, and Constrained Choice
-
-**Concepts**
-- From hidden states to logits: the LM head, and why only the *last* position matters in
-  decode but every position may matter in prefill (logprobs, EAGLE, hidden-state capture).
-- Sampling: temperature, top-k, top-p, min-p, repetition/frequency/presence penalties.
-- Greedy vs stochastic, determinism, and seeded sampling.
-- Logprobs: input logprobs, output logprobs, top-k logprobs, and their cost.
-- Where grammar masking is applied (forward reference to Ch. 29).
-
-**Code walkthrough**
-- `python/sglang/srt/layers/logits_processor.py:282` `class LogitsProcessor`,
-  `:332` `forward`, `:427` `_get_pruned_states`, `:646` `_get_logits`, `:693` `_compute_lm_head`.
-- `logits_processor.py:96` `LogitsProcessorOutput`, `:149` `LogitsMetadata`.
-- `python/sglang/srt/layers/sampler.py:70` `class Sampler`, `:97` `forward`,
-  `:246` `_sample_from_probs`, `:563` `top_k_top_p_min_p_sampling_from_probs_torch`.
-- `sampler.py:684` `multinomial_with_seed` — reproducible sampling.
-- `python/sglang/srt/sampling/sampling_batch_info.py` — batched sampling parameters.
-- `sampling/penaltylib/` — penalty implementations.
-- `sampling/custom_logit_processor.py` — the user extension point.
-
-**Lab**
-- Implement a custom logit processor (e.g., banning a token list) and serve it.
-
----
-
-## Chapter 12 — Detokenization and Streaming Output
-
-**Concepts**
-- Incremental detokenization is genuinely hard: BPE merges, multi-byte UTF-8, and why you
-  cannot just `decode()` the new token.
-- Stop conditions: EOS ids, stop strings, stop regex, max tokens — and why stop *strings*
-  require lookback and trimming.
-- Streaming chunk coalescing and the latency/overhead tradeoff.
-
-**Code walkthrough**
-- `python/sglang/srt/managers/detokenizer_manager.py:91` `class DetokenizerManager`,
-  `:166` `event_loop`, `:290` `_decode_batch_token_id_output`, `:430` `handle_batch_token_id_out`.
-- `detokenizer_manager.py:176` `trim_matched_stop`.
-- `schedule_batch.py:1425` `init_incremental_detokenize`, `:1445` `_stop_match_tail_len`.
-- `tokenizer_manager.py:1641` `_coalesce_streaming_chunks`.
-- `entrypoints/openai/sse_utils.py` — SSE framing for OpenAI streaming.
-
-**Exercise**
-- Construct a prompt where naive per-token decoding produces mojibake; verify SGLang doesn't.
+1. **Not every position matters, except when it does.**
+   `layers/logits_processor.py:282` `LogitsProcessor`, `:332` `forward`,
+   `:427` `_get_pruned_states`, `:693` `_compute_lm_head`. Decode needs one position;
+   prefill may need all of them for logprobs, EAGLE, or hidden-state capture — and
+   `:96` `LogitsProcessorOutput` / `:149` `LogitsMetadata` encode which.
+2. **Sampling as batched tensor work.** `layers/sampler.py:70` `Sampler`, `:97` `forward`,
+   `:563` `top_k_top_p_min_p_sampling_from_probs_torch`. Temperature, top-k/p/min-p, and
+   penalties (`sampling/penaltylib/`) applied to a batch whose requests all asked for
+   different things — `sampling/sampling_batch_info.py` is how that is made possible.
+   `sampling/custom_logit_processor.py` is the user extension point.
+3. **Reproducibility, and why it is hard.** Non-deterministic reductions and batch-variant
+   kernels mean identical prompts can diverge across batch sizes.
+   `srt/batch_invariant_ops/`, `model_runner.py:764` `maybe_enable_batch_invariant_mode`,
+   `scheduler.py:1506` `init_deterministic_inference_config`, and `sampler.py:684`
+   `multinomial_with_seed`. `.claude/skills/kl-consistency-test/SKILL.md` states the two
+   independent conditions a zero-KL result requires.
+4. **Incremental detokenization is genuinely hard.** BPE merges and multi-byte UTF-8 mean
+   you cannot simply decode the newest token.
+   `managers/detokenizer_manager.py:91`, `:166` `event_loop`,
+   `:290` `_decode_batch_token_id_output`; `schedule_batch.py:1425`
+   `init_incremental_detokenize`.
+5. **Stopping, and un-emitting.** Stop strings require lookback and retraction of already-
+   produced text: `detokenizer_manager.py:176` `trim_matched_stop`,
+   `schedule_batch.py:1445` `_stop_match_tail_len`.
+6. **Streaming out.** `tokenizer_manager.py:1641` `_coalesce_streaming_chunks` and
+   `entrypoints/openai/sse_utils.py` — the chunk-size/latency trade at the very last hop.
 
 ---
 
 # Part III — Memory and Caching
 
-*The part that explains SGLang's most distinctive engineering.*
+## Chapter 8 — KV Cache Pools and Allocators
 
-## Chapter 13 — KV Cache Memory Management
+*Thesis: the engine's central data structure is a two-level indirection, and its shape
+explains both paged attention and everything Chapter 9 builds on top.*
 
-**Concepts**
-- The two-level indirection: request → token slots (`ReqToTokenPool`), token slot → KV
-  storage (`TokenToKVPool`). Why two levels instead of one.
-- Paged attention: pages, page size, fragmentation, and the allocator's job.
-- Layout choices: layer-major vs page-major, and their effect on transfer and locality.
-- KV dtype: FP16/BF16 vs FP8 vs FP4 caches.
-- Memory budgeting at startup: how `--mem-fraction-static` becomes a concrete pool size.
-- MLA (DeepSeek), sliding-window (SWA), and hybrid attention pools — one size does not fit all.
+1. **Two levels, not one.** `mem_cache/memory_pool.py:256` `ReqToTokenPool` maps request →
+   token slots; the `KVCache` hierarchy maps token slot → storage. Splitting them is what
+   lets a prefix be shared by requests that disagree about everything else.
+2. **Pages and the allocator's job.** `mem_cache/allocator/paged.py:105`
+   `PagedTokenToKVPoolAllocator` — `:149` `alloc`, `:172` `alloc_extend`,
+   `:222` `alloc_decode`, `:261` `free`. Page size as the knob that trades internal
+   fragmentation against metadata cost.
+3. **One abstraction, many pools.** `memory_pool.py:1624` `KVCache` and its implementations:
+   `:1755` `MHATokenToKVPool` (the common case), `:3932` `MLATokenToKVPool` (DeepSeek's
+   compressed cache — an order of magnitude smaller, which is why Chapter 15's DP attention
+   exists), `:3577` `HybridLinearKVPool` and `:335` `MambaPool` (state, not keys and values),
+   `:3135` `PageMajorMHATokenToKVPool` (layout as a transfer optimization).
+4. **From a percentage to a number.** `mem_cache/kv_cache_configurator.py` and
+   `allocation_sizing.py` turn `--mem-fraction-static` into a concrete pool size; this is
+   the calculation behind every "out of memory at 90% utilization" report.
+5. **Fewer bits per entry.** `mem_cache/kv_cache_dtype.py` and the FP8/FP4 pool variants,
+   with the accuracy question deferred to Chapter 14.
 
-**Code walkthrough**
-- `python/sglang/srt/mem_cache/memory_pool.py:256` `ReqToTokenPool`.
-- `memory_pool.py:1624` `class KVCache` (ABC) → `:1755` `MHATokenToKVPool`,
-  `:3932` `MLATokenToKVPool`, `:3577` `HybridLinearKVPool`, `:4348` `DSATokenToKVPool`,
-  `:3135` `PageMajorMHATokenToKVPool`.
-- `memory_pool.py:335` `MambaPool`, `:1153` `HybridReqToTokenPool`.
-- `mem_cache/allocator/paged.py:105` `PagedTokenToKVPoolAllocator`,
-  `:149` `alloc`, `:172` `alloc_extend`, `:222` `alloc_decode`, `:261` `free`.
-- `mem_cache/allocator/token.py`, `swa.py`, `mamba.py`, `hisparse.py`.
-- `mem_cache/kv_cache_configurator.py`, `allocation_sizing.py`, `kv_cache_dtype.py`.
-- `mem_cache/layout/` — physical layout selection.
+## Chapter 9 — RadixAttention
 
-**Diagram**
-- The full address translation: `rid` → `req_pool_idx` → `req_to_token[idx, :len]` →
-  KV page indices → tensor offsets.
+*Thesis: real workloads share long prefixes, and a radix tree over token sequences turns
+that redundancy into the engine's largest single win. This is SGLang's signature idea.*
 
-**Lab**
-- Compute the theoretical max concurrency for a given model/GPU, then verify against
-  `/get_server_info`.
+1. **The observation.** Chat history, few-shot prompts, agent loops, and system prompts all
+   mean the *n*-th request usually shares a long prefix with an earlier one. Recomputing it
+   is pure waste.
+2. **The key.** `mem_cache/radix_cache.py:59` `RadixKey` — token ids plus an extra key that
+   namespaces LoRA adapters and sessions apart (`:181` `match`, `:217` `child_key`,
+   `:150` `page_aligned`). Page alignment constrains every tree operation and is the source
+   of most of the code's subtlety.
+3. **The tree.** `:238` `TreeNode` (children, `lock_ref`, `last_access_time`, host tier)
+   and `:303` `RadixCache`. The three operations, read in order:
+   `:376` `match_prefix` / `:678` `_match_prefix_helper`, `:704` `_split_node`,
+   `:436` `insert` / `:737` `_insert_helper`.
+4. **Reference counting keeps live requests alive.** `:622` `inc_lock_ref`,
+   `:637` `dec_lock_ref`, `:458` `cache_finished_req`, `:515` `cache_unfinished_req`.
+   A node in use by a running request must survive eviction — this is the invariant that
+   makes the whole thing safe.
+5. **Eviction over a tree.** `:592` `evict` — LRU, but leaf-first, because interior nodes
+   are prefixes of their children.
+6. **Where the model touches it.** `layers/radix_attention.py:91` `RadixAttention` is the
+   layer every model instantiates; it is the reason model code needs no cache logic of
+   its own.
+7. **The contrast case.** `mem_cache/chunk_cache.py:35` `ChunkCache` implements the same
+   interface with no reuse at all, which makes the interface (`mem_cache/base_prefix_cache.py:230`
+   `BasePrefixCache`, with `MatchPrefixParams`/`MatchResult` at `:49`–`:166`) legible.
+8. **Variants.** `swa_radix_cache.py` (sliding window), `mamba_radix_cache.py` (state, not
+   tokens), `radix_cache_cpp.py` + `cpp_radix_tree/` (the same algorithm in C++, and why
+   Python became the bottleneck).
 
----
+*A worked example — three chat requests sharing a system prompt — runs through beats 3–5
+as the tree evolves.*
 
-## Chapter 14 — RadixAttention: Prefix Caching as a Tree
+## Chapter 10 — Caching Beyond HBM
 
-*The chapter the book exists for.*
+*Thesis: extending the cache hierarchy to host memory and disk is a bandwidth arbitrage,
+and it only pays above a computable prefix length.*
 
-**Concepts**
-- The insight: in real workloads (chat history, few-shot prompts, agent loops, system
-  prompts) prompts share long prefixes. Recomputing them is pure waste.
-- The radix tree over token sequences: nodes hold token runs and the KV indices for them.
-- Matching, splitting, insertion — and how page alignment constrains all three.
-- Reference counting and locking: a node in use by a running request must not be evicted.
-- LRU eviction over a tree, and why eviction must be leaf-first.
-- Cache-aware scheduling: the tree feeds the scheduler's priority function (Ch. 9), closing
-  the loop between memory and scheduling.
-- Variants: chunk cache (no reuse), SWA radix cache, Mamba radix cache, session-aware cache.
+1. **The arbitrage.** At what prefix length does loading KV from host DRAM beat recomputing
+   it? The answer sets every policy in this chapter.
+2. **A radix tree with tiers.** `mem_cache/hiradix_cache.py:76` `HiRadixCache` subclasses
+   `RadixCache` from Chapter 9; `:840` `write_backup` is write-through/write-back, and the
+   tier bookkeeping in `TreeNode` (`radix_cache.py:273` `backuped`, `:276` `protect_host`)
+   is what keeps tiers coherent.
+3. **Moving the bytes.** `mem_cache/memory_pool_host.py` and
+   `managers/cache_controller.py` — the transfer engine, its queues, and its overlap with
+   compute.
+4. **Pluggable storage.** `mem_cache/hicache_storage.py`,
+   `mem_cache/storage/backend_factory.py`, and the backends (Mooncake, 3FS, NIXL, LMCache,
+   file, mmap, shm) — with `:369` `attach_storage_backend` / `:487` `detach_storage_backend`
+   showing runtime attach as a first-class operation.
+5. **Where it is heading.** `mem_cache/unified_cache/` — the unified tree core and
+   component registry that generalizes the tiering.
 
-**Code walkthrough**
-- `python/sglang/srt/mem_cache/radix_cache.py:59` `class RadixKey` — the key abstraction
-  (token ids + optional extra key for LoRA/session namespacing); `:181` `match`,
-  `:217` `child_key`, `:150` `page_aligned`.
-- `radix_cache.py:238` `class TreeNode` — children, `lock_ref`, `last_access_time`, host tier.
-- `radix_cache.py:303` `class RadixCache` — the main event:
-  - `:376` `match_prefix` and `:678` `_match_prefix_helper`
-  - `:704` `_split_node`
-  - `:436` `insert` / `:737` `_insert_helper`
-  - `:458` `cache_finished_req`, `:515` `cache_unfinished_req`
-  - `:592` `evict`, `:622` `inc_lock_ref`, `:637` `dec_lock_ref`
-- `mem_cache/base_prefix_cache.py:230` `BasePrefixCache` and the params/results protocol
-  (`MatchPrefixParams`, `MatchResult`, `EvictParams`) at `:49`–`:166`.
-- `mem_cache/chunk_cache.py:35` `ChunkCache` — the no-reuse baseline, useful as contrast.
-- `mem_cache/swa_radix_cache.py`, `mamba_radix_cache.py`, `radix_cache_cpp.py`
-  (+ `cpp_radix_tree/` for the C++ implementation and why it exists).
-- `layers/radix_attention.py:91` `class RadixAttention` — the model-facing layer that
-  reads and writes the cache.
-
-**Diagram**
-- A worked example: three chat requests sharing a system prompt, drawn as the tree evolves
-  across insert/match/split/evict.
-
-**Lab**
-- Build the same three-request scenario, dump the tree with `pretty_print`
-  (`radix_cache.py:585`), and verify hit counts against `/get_server_info`.
-
----
-
-## Chapter 15 — Hierarchical Cache (HiCache) and KV Offloading
-
-**Concepts**
-- Extending the cache hierarchy past GPU HBM: GPU → host DRAM → SSD / object store.
-- Write-through vs write-back policies; when a prefetch pays for itself.
-- Bandwidth math: at what prefix length does loading from host beat recomputing?
-- Multi-tier prefix matching, and the bookkeeping to keep tiers coherent.
-- Storage backends and pluggability (Mooncake, 3FS, NIXL, LMCache, file, mmap, shm).
-
-**Code walkthrough**
-- `python/sglang/srt/mem_cache/hiradix_cache.py:76` `class HiRadixCache` — subclassing
-  `RadixCache` with a host tier; `:840` `write_backup`, `:369` `attach_storage_backend`,
-  `:487` `detach_storage_backend`.
-- `mem_cache/memory_pool_host.py` — the host-side pool.
-- `mem_cache/cache_controller.py` (`managers/cache_controller.py`) — the transfer engine.
-- `mem_cache/hicache_storage.py`, `mem_cache/storage/backend_factory.py` and the
-  per-backend directories.
-- `mem_cache/unified_cache/` — the newer unified tree core and its component registry.
-- Docs cross-read: `docs/docs/advanced_features/hicache_design.mdx` and
-  `hicache_best_practices.mdx`.
-
-**Lab**
-- Enable HiCache with a file backend; measure hit rate and TTFT on a long-prefix workload.
+*Cross-read: `docs/docs/advanced_features/hicache_design.mdx`.*
 
 ---
 
-# Part IV — The Model Execution Layer
+# Part IV — The Model Layer
 
-## Chapter 16 — Model Loading and Weights
+## Chapter 11 — Loading and Updating Weights
 
-**Concepts**
-- The model registry: how `--model-path` becomes a Python class.
-- HF config → SGLang config translation, and where architectures diverge.
-- Weight formats: safetensors, GGUF, sharded checkpoints, remote/object-store loading.
-- Sharded loading under TP: each rank loads only its slice; the `weight_loader` protocol
-  on each parameter.
-- Startup latency: parallel loading, `load_format` choices, and dummy weights for benchmarking.
-- Hot weight updates for RL (forward reference to Ch. 39).
+*Thesis: weight loading is a distributed sharding problem disguised as file I/O, and the
+same machinery serves both startup and reinforcement learning.*
 
-**Code walkthrough**
-- `python/sglang/srt/model_loader/loader.py` and `auto_loader.py`.
-- `model_loader/weight_utils.py` — the `default_weight_loader` and friends.
-- `model_runner.py:1057` `load_model`.
-- `models/llama.py:663` `load_weights` and `:743` `_load_weights_v2` — the two generations
-  of the loading protocol, side by side.
-- `python/sglang/srt/configs/` — per-model config classes (63 files) and `model_config.py`.
-- `srt/connector/` — remote weight sources (S3, Azure, Redis, remote instance).
+1. **From a path to a class.** The model registry, HF config → SGLang config translation
+   (`srt/configs/`, `model_config.py`), and where architectures diverge from their HF
+   definitions.
+2. **Each rank loads only its slice.** `model_loader/loader.py`, `auto_loader.py`, and the
+   `weight_loader` protocol attached to every parameter in `model_loader/weight_utils.py`.
+   `model_runner.py:1057` `load_model` orchestrates it.
+3. **Two generations of the protocol, side by side.** `models/llama.py:663` `load_weights`
+   and `:743` `_load_weights_v2` — a rare chance to see an interface migration mid-flight.
+4. **Formats and sources.** Safetensors, GGUF, sharded checkpoints; `srt/connector/` for S3,
+   Azure, Redis, and remote-instance loading; `load_format` as a startup-latency knob.
+5. **Updating weights without restarting.** `engine.py:1365`–`:1478` — from disk, from a
+   distributed group, from tensors, from IPC handles.
+   `model_runner_components/weight_updater.py` and `srt/checkpoint_engine/` implement it;
+   `engine.py:1573` `release_memory_occupation` / `:1579` `resume_memory_occupation` and
+   `scheduler.py:4576` `pause_generation` let training and inference share a GPU. This is
+   what makes SGLang an RL rollout backend rather than only a server.
 
----
+## Chapter 12 — Anatomy of a Model
 
-## Chapter 17 — Anatomy of a Model Implementation
+*Thesis: models are rewritten rather than imported because every layer must cooperate with
+parallelism, quantization, and the KV cache — and llama.py shows exactly how.*
 
-**Concepts**
-- What SGLang requires of a model: a `forward(input_ids, positions, forward_batch)` that
-  returns logits, plus `load_weights`.
-- Why models are rewritten rather than imported from HF: parallel layers, custom attention,
-  cache integration, quantization hooks.
-- The parallel layer vocabulary: `ColumnParallelLinear`, `RowParallelLinear`,
-  `QKVParallelLinear`, `MergedColumnParallelLinear`, `VocabParallelEmbedding`, `ParallelLMHead`.
-- Optional capabilities: `get_embed_and_head`, EAGLE layer capture, PP `start_layer`/`end_layer`,
-  split prefill.
+1. **The contract.** `forward(input_ids, positions, forward_batch) -> logits`, plus
+   `load_weights`. Everything else is optional capability.
+2. **A full read of `models/llama.py`.** `:70` `LlamaMLP` (merged gate/up column-parallel,
+   row-parallel down), `:138` `LlamaAttention` (fused QKV, rotary, and the `RadixAttention`
+   instantiation that connects Chapter 9), `:283` `LlamaDecoderLayer` (residual ordering and
+   fused add-RMSNorm), `:372` `LlamaModel`, `:496` `LlamaForCausalLM` with `:563` `forward`.
+3. **The parallel layer vocabulary.** `layers/linear.py:293` `ColumnParallelLinear`,
+   `:1392` `RowParallelLinear`, `:921` `QKVParallelLinear`, `:492` `MergedColumnParallelLinear`;
+   `layers/vocab_parallel_embedding.py:188` and `:587` `ParallelLMHead`. These are where
+   tensor parallelism physically lives — Chapter 15 only explains what they already do.
+4. **Optional capabilities as hooks.** `:640` `start_layer` / `:644` `end_layer` for
+   pipeline parallelism, `:599` `forward_split_prefill`, `:891` `set_eagle3_layers_to_capture`
+   for speculative decoding, `:854` `get_embed_and_head` for weight sync.
+5. **Three short contrast studies.** `models/deepseek_v2.py` (MLA + MoE),
+   a Qwen-VL variant (a vision tower on a decoder), `models/falcon_h1.py` (state instead of
+   attention) — enough to show what varies and what never does.
 
-**Code walkthrough** — a full line-by-line read of `python/sglang/srt/models/llama.py`
-- `:70` `LlamaMLP` — gate/up merged column-parallel, down row-parallel.
-- `:138` `LlamaAttention` — QKV fusion, rotary embedding, `RadixAttention` instantiation.
-- `:283` `LlamaDecoderLayer` — residual/normalization ordering and the fused-add-RMSNorm trick.
-- `:372` `LlamaModel` — embedding, layer stack, PP boundaries.
-- `:496` `LlamaForCausalLM` — `:563` `forward`, `:599` `forward_split_prefill`,
-  `:891` `set_eagle3_layers_to_capture`.
-- Supporting layers: `layers/linear.py:146`–`:1392` (the parallel linear family),
-  `layers/vocab_parallel_embedding.py:188` / `:587`, `layers/layernorm.py`,
-  `layers/activation.py`, `layers/rotary_embedding/`.
+## Chapter 13 — Attention Backends
 
-**Then, three contrast studies (short):**
-- `models/deepseek_v2.py` — MLA and MoE.
-- `models/qwen*_vl` (multimodal) — a vision tower bolted onto a decoder.
-- `models/falcon_h1.py` or a Mamba hybrid — non-attention state.
+*Thesis: attention is pluggable because hardware, sequence shape, and kernel maturity all
+vary independently — and the plug is a two-phase metadata/kernel contract.*
 
-**Lab**
-- Port a small HF model to SGLang, guided by `docs/docs/supported-models/support_new_models.mdx`.
+1. **The contract.** `layers/attention/base_attn_backend.py:33` `AttentionBackend` —
+   `:62` `init_forward_metadata` runs once per forward, `:261` `forward_decode` and
+   `:274` `forward_extend` run once per layer. Nearly every backend bug is a violation of
+   that split. `:160` `init_cuda_graph_state` is where Chapter 14's constraints intrude.
+2. **The reference implementation.** `layers/attention/flashinfer_backend.py` read in
+   depth — wrappers, page tables, and graph-safe buffers. Then
+   `triton_backend.py` as the portable fallback, short enough to read whole.
+3. **Registration and selection.** `attention_registry.py:34` `register_attention_backend`
+   and the factory table; `model_runner.py:927` `init_attention_backends`.
+4. **MLA needs its own everything.** `flashinfer_mla_backend.py`, `flashmla_backend.py`,
+   and their dependence on the Chapter 8 pool — the clearest case of memory layout dictating
+   kernel design.
+5. **Sparse attention.** `nsa/nsa_indexer.py` + `nsa_backend.py` — selecting which tokens
+   to attend to, and the indexer as a model component in its own right.
+6. **When it isn't attention at all.** `mamba/mamba.py` and `linear/gdn_backend.py` — SSMs
+   and linear attention carry state rather than a KV cache, which is why Chapter 8 needed
+   `MambaPool`. `hybrid_linear_attn_backend.py` for models that do both.
 
----
+## Chapter 14 — Making the Forward Pass Cheap
 
-## Chapter 18 — Attention Backends
+*Thesis: quantization attacks bytes moved, CUDA graphs attack launch overhead, and
+compilation attacks kernel count — three independent taxes on the same forward pass.*
 
-**Concepts**
-- Why attention is pluggable at all: hardware, sequence shape, and kernel maturity all vary.
-- The backend contract: metadata preparation (once per forward) vs kernel invocation
-  (once per layer).
-- The backend zoo: FlashInfer, FlashAttention-3, Triton, TRT-LLM, FlashMLA, CutlassMLA,
-  AITER (ROCm), Ascend, Intel AMX, torch-native — and how to choose.
-- MHA vs GQA vs MQA vs MLA, and why MLA needs its own pool and its own kernels.
-- Sparse attention: NSA / DSA (DeepSeek), MiniMax sparse — indexer-based token selection.
-- Linear attention and SSMs: Mamba2, GDN, KDA, short-conv — different state, different pool.
-- Hybrid backends: different layers, different attention.
-
-**Code walkthrough**
-- `python/sglang/srt/layers/attention/base_attn_backend.py:33` `class AttentionBackend` —
-  `:62` `init_forward_metadata`, `:160` `init_cuda_graph_state`, `:261` `forward_decode`,
-  `:274` `forward_extend`.
-- `layers/attention/attention_registry.py:34` `register_attention_backend` and the factory table.
-- `layers/attention/flashinfer_backend.py` — the reference implementation, read in depth
-  (metadata wrappers, page tables, CUDA-graph buffers).
-- `layers/attention/triton_backend.py` — the portable fallback, easier to read whole.
-- `layers/attention/flashinfer_mla_backend.py`, `flashmla_backend.py` — MLA paths.
-- `layers/attention/nsa/nsa_indexer.py` + `nsa_backend.py` — sparse selection.
-- `layers/attention/mamba/mamba.py`, `layers/attention/linear/gdn_backend.py`.
-- `layers/attention/hybrid_attn_backend.py`, `hybrid_linear_attn_backend.py`.
-- `layers/radix_attention.py:91` — where model code meets backend code.
-
-**Lab**
-- Benchmark two backends on the same workload with `--attention-backend`; explain the delta.
-
----
-
-## Chapter 19 — Quantization
-
-**Concepts**
-- What gets quantized: weights, activations, KV cache — independently.
-- Formats: FP8 (E4M3/E5M2), FP4/NVFP4/MXFP4, INT8, INT4, AWQ, GPTQ, blockwise schemes.
-- Per-tensor vs per-channel vs per-block scales; static vs dynamic activation scaling.
-- The `QuantizationConfig` → `QuantizeMethodBase` → per-layer `apply()` architecture.
-- Accuracy: where quantization hurts, and how the repo measures it.
-- MoE quantization as its own hard problem.
-
-**Code walkthrough**
-- `python/sglang/srt/layers/quantization/base_config.py` — `QuantizationConfig`,
-  `QuantizeMethodBase`, `LinearMethodBase`.
-- `layers/quantization/fp8.py` + `fp8_utils.py` — the most-used path, read end to end.
-- `layers/quantization/modelopt_quant.py`, `mxfp4.py`, `w4afp8.py`, `compressed_tensors/`,
-  `awq/`, `gptq/`.
-- `layers/quantization/kv_cache.py` — quantized KV, and its interaction with Ch. 13 pools.
-- `layers/parameter.py` — the parameter wrappers that make sharding + scales work together.
-- Docs cross-read: `docs/docs/developer_guide/quantization_contribution_guide.mdx`.
+1. **Three independent targets.** Weights, activations, and KV cache can each be quantized
+   separately, and the choice of scheme is per-target.
+2. **The quantization architecture.** `layers/quantization/base_config.py` —
+   `QuantizationConfig` → `QuantizeMethodBase` → per-layer `apply()`. Then
+   `fp8.py` + `fp8_utils.py` read end to end as the most-used path, with
+   `modelopt_quant.py`, `mxfp4.py`, `compressed_tensors/`, `awq/`, `gptq/` surveyed for
+   what differs. `layers/parameter.py` is what makes sharding and scale tensors coexist.
+3. **Quantized KV.** `layers/quantization/kv_cache.py` closing the loop with the Chapter 8
+   pools, and where accuracy actually degrades.
+4. **Decode is launch-bound.** Thousands of microsecond kernels mean CPU launch cost
+   dominates. CUDA graphs capture once and replay — at the price of static shapes and
+   static pointers.
+5. **Capture and replay.** `model_executor/runner/base_cuda_graph_runner.py`,
+   `decode_cuda_graph_runner.py`, `prefill_cuda_graph_runner.py`;
+   `model_runner.py:992` `init_cuda_graphs`; batch-size bucketing, padding, and the memory
+   cost of the capture matrix (`cuda_graph_config.py`, `graph_memory_usage.py`).
+6. **When part of the model cannot be captured.**
+   `runner_backend/breakable_cuda_graph_backend.py` and
+   `tc_piecewise_cuda_graph_backend.py` — keeping most of the graph when one region must
+   run eagerly.
+7. **Compilation.** `srt/compilation/` — the Inductor backend, custom passes
+   (`fix_functionalization.py`, `pass_manager.py`), and how it composes with graphs.
 
 ---
 
-## Chapter 20 — CUDA Graphs, `torch.compile`, and Launch Overhead
+# Part V — Scaling Out
 
-**Concepts**
-- Why decode is launch-bound: thousands of tiny kernels, microseconds each.
-- CUDA graphs: capture once, replay many; the constraints (static shapes, static pointers).
-- Batch-size bucketing and padding; the capture matrix and its memory cost.
-- Piecewise / breakable graphs: keeping graphs when part of the model can't be captured.
-- `torch.compile` integration and the custom Inductor passes.
-- Attention-backend cooperation: metadata buffers must be graph-safe.
+## Chapter 15 — Tensor, Pipeline, and Data Parallelism
 
-**Code walkthrough**
-- `python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py`,
-  `decode_cuda_graph_runner.py`, `prefill_cuda_graph_runner.py`.
-- `model_executor/runner_backend/full_cuda_graph_backend.py`,
-  `breakable_cuda_graph_backend.py`, `tc_piecewise_cuda_graph_backend.py`.
-- `model_executor/cuda_graph_config.py`, `cuda_graph_buffer_registry.py`,
-  `graph_memory_usage.py`.
-- `model_runner.py:992` `init_cuda_graphs`, `:1365` `init_decode_cuda_graph`,
-  `:1380` `init_prefill_cuda_graph`.
-- `srt/compilation/` — `backend.py`, `cuda_piecewise_backend.py`, `pass_manager.py`,
-  `fix_functionalization.py`.
-- Docs cross-read: `docs/docs/advanced_features/piecewise_cuda_graph.mdx`,
-  `breakable_cuda_graph.mdx`.
+*Thesis: the three classical parallelism axes differ in what they split and therefore in
+which interconnect they stress; SGLang adds a fourth because MLA broke the assumptions.*
 
-**Lab**
-- Compare decode latency with `--disable-cuda-graph` on and off; profile the launch gap.
+1. **Groups and collectives.** `distributed/parallel_state.py:237` `GroupCoordinator`,
+   `:2193` `init_distributed_environment`, `:2285` `initialize_model_parallel`;
+   `device_communicators/` for custom all-reduce, PyNCCL, and symmetric memory — with the
+   cost model for each collective on NVLink vs InfiniBand.
+2. **TP is already written.** The collectives live inside `ColumnParallelLinear` and
+   `RowParallelLinear` from Chapter 12; this beat only explains the two communication
+   points per block and why TP does not cross node boundaries cheaply.
+   `layers/communicator.py` is the per-layer strategy object.
+3. **PP splits layers.** `managers/scheduler_pp_mixin.py` for microbatch scheduling in the
+   loop, `models/llama.py:640` for the layer-range boundary, and bubbles as the cost.
+4. **MLA breaks TP.** A compressed KV cache replicated across ranks wastes the very thing
+   that made it small — the setup for DP attention.
+5. **Data-parallel attention.** `layers/dp_attention.py:338` `initialize_dp_attention`,
+   `:412` `get_dp_local_info`, `:76` `DpPaddingMode`, `:450`/`:494` the two gather
+   strategies. Each rank owns whole sequences for attention, then the batch is gathered for
+   the TP-sharded MLP.
+6. **The price: everyone must agree.** `forward_batch_info.py:1305` `prepare_mlp_sync_batch`
+   and `:1620` `post_forward_mlp_sync_batch` force every rank to a common batch shape,
+   which is why idle batches exist at all. `logits_processor.py:249`
+   `compute_dp_attention_metadata` carries it to the end.
+7. **The other DP.** `managers/data_parallel_controller.py` — whole-replica routing, an
+   unrelated mechanism with a colliding name.
 
----
+## Chapter 16 — Mixture-of-Experts and Expert Parallelism
 
-# Part V — Parallelism and Distributed Execution
+*Thesis: MoE inference is all-to-all-bound rather than GEMM-bound, which makes routing,
+placement, and communication overlap the whole game.*
 
-## Chapter 21 — Distributed Foundations
+1. **Routing.** `layers/moe/topk.py:392` `TopK` and the `TopKOutput` variants at `:274` —
+   top-k selection, and why its output format matters to the kernel that follows.
+2. **Computing the experts.** `layers/moe/fused_moe_triton/` as the portable path,
+   `layers/moe/moe_runner/` as the abstraction over backends.
+3. **Splitting experts across devices.** `layers/moe/ep_moe/` and
+   `layers/moe/token_dispatcher/` — DeepEP dispatch/combine, and why all-to-all latency
+   rather than FLOPs sets the step time.
+4. **Hot experts.** `srt/eplb/expert_distribution.py` measures imbalance;
+   `expert_location.py`, `eplb_manager.py`, `eplb_algorithms/`, and `lplb_solver.py`
+   rebalance and replicate. Recording expert distribution is exposed as a server endpoint
+   precisely because the imbalance is workload-dependent.
+5. **Hiding the all-to-all.** `srt/batch_overlap/two_batch_overlap.py` and
+   `single_batch_overlap.py` split a batch so communication overlaps computation, with
+   `operations.py`/`operations_strategy.py` as the scheduling abstraction and
+   `layers/attention/tbo_backend.py` on the attention side. This is the Chapter 4 overlap
+   idea applied one level down.
 
-**Concepts**
-- Process groups, ranks, and the four (five) axes: TP, PP, DP, EP, CP.
-- Collectives that matter: all-reduce, all-gather, reduce-scatter, all-to-all — cost models
-  for each on NVLink vs InfiniBand.
-- Custom all-reduce, symmetric memory, and when the built-in NCCL path is not enough.
-- Multi-node bootstrap: `--dist-init-addr`, node ranks, and what must match across nodes.
+## Chapter 17 — Disaggregation and Routing
 
-**Code walkthrough**
-- `python/sglang/srt/distributed/parallel_state.py:237` `class GroupCoordinator`,
-  `:2193` `init_distributed_environment`, `:2285` `initialize_model_parallel`.
-- `distributed/device_communicators/` — custom all-reduce, PyNCCL, quick all-reduce,
-  symmetric memory, and the per-vendor variants.
-- `distributed/communication_op.py`, `distributed/bootstrap.py`.
-- `model_runner.py:1037` `init_torch_distributed`.
+*Thesis: prefill and decode want different hardware and different SLOs, so at scale the
+right move is to stop running them on the same machine.*
 
----
-
-## Chapter 22 — Tensor and Pipeline Parallelism
-
-**Concepts**
-- TP: splitting weights within a layer; the column/row pattern and its exactly-two
-  communication points per block.
-- Why TP needs fast interconnect and doesn't scale past a node cheaply.
-- PP: splitting layers across devices; microbatching, bubbles, and schedule choice.
-- Attention-TP vs MLP-TP asymmetry, and sequence-parallel norms.
-
-**Code walkthrough**
-- `layers/linear.py:293` `ColumnParallelLinear`, `:1392` `RowParallelLinear`,
-  `:921` `QKVParallelLinear` — where the collectives actually live.
-- `layers/communicator.py` — the layer-level communication strategy object.
-- `managers/scheduler_pp_mixin.py` — pipeline scheduling in the scheduler loop.
-- `models/llama.py:372` `LlamaModel` PP boundaries; `:640` `start_layer` / `:644` `end_layer`.
-- `layers/model_parallel.py`, `model_runner.py:1404` `apply_torch_tp`.
-- Docs cross-read: `docs/docs/advanced_features/pipeline_parallelism.mdx`.
-
----
-
-## Chapter 23 — Data-Parallel Attention
-
-**Concepts**
-- The problem TP creates for MLA models: replicating a tiny KV cache across ranks wastes it.
-- DP attention: each rank owns whole sequences for attention, then the batch is gathered
-  for the (TP-sharded) MLP.
-- The gather/scatter dance, padding modes, and the cross-rank synchronization that makes
-  every rank agree on batch shape.
-- Why DP attention forces "MLP sync" and idle batches.
-
-**Code walkthrough**
-- `python/sglang/srt/layers/dp_attention.py:338` `initialize_dp_attention`,
-  `:412` `get_dp_local_info`, `:76` `DpPaddingMode`, `:450` `_dp_gather_via_all_reduce`,
-  `:494` `_dp_gather_via_all_gather`.
-- `model_executor/forward_batch_info.py:1305` `prepare_mlp_sync_batch`,
-  `:1620` `post_forward_mlp_sync_batch`.
-- `managers/scheduler_components/dp_attn.py`, `scheduler.py:2030` `init_dp_attn_adapter`.
-- `managers/data_parallel_controller.py` — the other DP (whole-replica routing).
-- `logits_processor.py:249` `compute_dp_attention_metadata`, `:757` `_gather_dp_attn_hidden_states`.
+1. **Why colocation compromises both.** Prefill wants large batches and compute; decode
+   wants low latency and bandwidth. Chunked prefill (Chapter 5) mitigates the conflict;
+   disaggregation removes it.
+2. **The two sides.** `disaggregation/prefill.py:119` `PrefillBootstrapQueue`,
+   `:485` `SchedulerDisaggregationPrefillMixin`, `:569` `event_loop_normal_disagg_prefill`;
+   and `disaggregation/decode.py` for the mirror image. Note these are *variant event
+   loops* — the Chapter 4 loop, respecialized.
+3. **The handshake.** How a decode instance learns where its KV lives:
+   `disaggregation/base/conn.py`, `common/conn.py`, and `managers/disagg_service.py`.
+4. **Moving KV between machines.** `disaggregation/mooncake/`, `nixl/`, `mori/` — RDMA
+   realities; `fake/` as the test double that makes the control flow readable.
+5. **Routing in front of it all.** `sgl-model-gateway/src/policies/` — cache-aware load
+   balancing beats round-robin precisely because Chapter 9 exists, and the router keeps an
+   approximate radix tree to do it. `src/routers/`, `service_discovery.rs`, and why it is
+   written in Rust.
 
 ---
 
-## Chapter 24 — Expert Parallelism and MoE
+# Part VI — Beyond Plain Decoding
 
-**Concepts**
-- MoE inference: routing, top-k selection, expert capacity, and why MoE is
-  all-to-all-bound rather than GEMM-bound.
-- EP vs TP for experts; the DeepEP dispatch/combine pattern.
-- Load imbalance: hot experts, and what EPLB (expert-parallel load balancing) does about it —
-  rebalancing and redundant experts.
-- Large-scale EP: the 96-GPU / GB200 deployments and what breaks at that scale.
+## Chapter 18 — Speculative Decoding
 
-**Code walkthrough**
-- `python/sglang/srt/layers/moe/topk.py:392` `class TopK` and the `TopKOutput` variants (`:274`).
-- `layers/moe/fused_moe_triton/` — the portable fused MoE kernel path.
-- `layers/moe/ep_moe/` — expert-parallel layers and kernels.
-- `layers/moe/token_dispatcher/` — DeepEP / all-to-all dispatch strategies.
-- `layers/moe/moe_runner/` — the runner abstraction over MoE backends.
-- `srt/eplb/expert_distribution.py`, `expert_location.py`, `eplb_manager.py`,
-  `eplb_algorithms/`, `lplb_solver.py`.
-- Docs cross-read: `docs/docs/advanced_features/expert_parallelism.mdx`.
+*Thesis: verifying k tokens costs nearly what generating one costs, so the only question is
+how good a draft you can produce cheaply.*
 
-**Lab**
-- Record an expert distribution (`/start_expert_distribution_record`), plot imbalance,
-  then enable EPLB and re-measure.
+1. **The bandwidth argument.** Why the acceptance rule preserves the target model's output
+   distribution, and why a memory-bound decode step has spare compute to give away.
+2. **Capabilities before implementations.** `speculative/spec_info.py:30`
+   `SpeculativeAlgorithm` — the predicate set (`is_eagle`, `has_draft_kv`,
+   `supports_ragged_verify`, `supports_grammar_overlap`) that gates behavior across the
+   entire engine. Read this before any worker.
+   `.claude/skills/speculative-naming/SKILL.md` first for the vocabulary.
+3. **EAGLE end to end.** `speculative/eagle_worker_v2.py:1008` `EAGLEWorkerV2` —
+   `:1105` `forward_batch_generation` as the step, `:1497` `verify` as the accept rule;
+   `:128` `EagleDraftWorker` with `:494` `draft`, `:557` `draft_forward`,
+   `:726` `draft_extend`. `eagle_info.py` for the tree metadata.
+4. **Trees, not chains.** Draft topology, and how `--speculative-eagle-topk` and
+   `--speculative-num-steps` trade acceptance against wasted compute.
+5. **What it costs the rest of the engine.** Extra `ForwardMode`s (Chapter 6), separate
+   CUDA graphs (`eagle_draft_cuda_graph_runner.py`), changed memory accounting in the
+   Chapter 5 budget, and grammar coordination with Chapter 19.
+6. **The other algorithms, briefly.** `ngram_worker.py` + `cpp_ngram/` (no draft model at
+   all), `frozen_kv_mtp_worker_v2.py`, `dflash_worker_v2.py`,
+   `standalone_worker_v2.py` — and `adaptive_runtime_state.py`, which turns speculation off
+   when acceptance drops.
 
----
+## Chapter 19 — Shaping and Reading the Output
 
-## Chapter 25 — Prefill/Decode Disaggregation
+*Thesis: constraining generation and parsing generation are the same problem seen from two
+sides, and both are made hard by streaming.*
 
-**Concepts**
-- The core observation: prefill and decode want different hardware, different batch shapes,
-  and different SLOs. Colocating them means one always compromises.
-- The architecture: prefill instances, decode instances, and a KV transfer path between them.
-- Bootstrap and handshake: how a decode instance learns where its KV lives.
-- Transfer backends: Mooncake, NIXL, MoRI, Ascend — and the RDMA reality.
-- Failure handling, and the extension to EPD (encode/prefill/decode) for multimodal.
+1. **Guarantees by masking.** `constrained/base_grammar_backend.py:52` `BaseGrammarObject`,
+   `:167` `BaseGrammarBackend`, `:311` `create_grammar_backend`; the mask lands in
+   `sampler.py:97` via the vocab-mask buffers at `base_grammar_backend.py:262`.
+2. **Compiling a grammar to token masks.** The FSM, the compressed FSM, and the real
+   difficulty — a grammar is defined over characters, a mask over tokens.
+   `xgrammar_backend.py` as the default, `outlines_backend.py` and `llguidance_backend.py`
+   for contrast.
+3. **Skipping the forward pass entirely.** `constrained/outlines_jump_forward.py` — when
+   the grammar admits exactly one continuation, emit it without inference.
+4. **Coordination costs.** `constrained/grammar_manager.py`, `scheduler.py:1962`
+   `init_grammar_manager`, `:1861` `_advance_pending_grammar` — grammar state advances
+   asynchronously, which is where it collides with Chapter 18.
+5. **Parsing, the mirror image.** `function_call/function_call_parser.py` and
+   `base_format_detector.py`; two detectors read in full and the other 37 skimmed for the
+   pattern. Streaming forces a decision about whether text is a tool call before the text
+   is complete.
+6. **Structural tags** as the convergence of the two halves — constraining generation to a
+   tool schema instead of parsing afterwards (`function_call/kimik3_structural_tag.py`).
+7. **Reasoning blocks.** `srt/parser/reasoning_parser.py`, `harmony_parser.py`, and why
+   `<think>` content must be excluded from grammar constraints.
 
-**Code walkthrough**
-- `python/sglang/srt/disaggregation/prefill.py:119` `PrefillBootstrapQueue`,
-  `:485` `SchedulerDisaggregationPrefillMixin`, `:569` `event_loop_normal_disagg_prefill`.
-- `disaggregation/decode.py` — the decode-side queues and `SchedulerDisaggregationDecodeMixin`.
-- `disaggregation/base/conn.py` and `common/conn.py` — the KV-manager interface.
-- `disaggregation/mooncake/`, `nixl/`, `mori/`, `fake/` (the test double).
-- `managers/disagg_service.py`, `disaggregation/kv_events.py`.
-- Docs cross-read: `docs/docs/advanced_features/pd_disaggregation.mdx`,
-  `epd_disaggregation.mdx`.
+## Chapter 20 — Per-Request Variation: LoRA and Multimodal
 
----
+*Thesis: both features break the assumption that every request in a batch needs the same
+weights and the same kind of input — and both are solved by extending the batch, not
+splitting it.*
 
-## Chapter 26 — Routing: The Model Gateway
-
-**Concepts**
-- Why a router: cache-aware load balancing beats round-robin when prefix caching exists.
-- Cache-aware routing policies and the approximate radix tree the router keeps.
-- PD-aware routing, service discovery, and multi-model serving.
-- Why it's written in Rust.
-
-**Code walkthrough**
-- `sgl-model-gateway/src/routers/` — the router implementations.
-- `sgl-model-gateway/src/policies/` — cache-aware, round-robin, power-of-two policies.
-- `sgl-model-gateway/src/core/`, `service_discovery.rs`, `server.rs`.
-- `sgl-model-gateway/bindings/` — the Python bridge.
-- Docs cross-read: `docs/docs/advanced_features/sgl_model_gateway.mdx`.
-
----
-
-# Part VI — Advanced Runtime Features
-
-## Chapter 27 — Overlap Scheduling and Batch Overlap
-
-**Concepts**
-- The zero-overhead batch scheduler: overlapping CPU scheduling with GPU execution, and
-  the future-token trick that lets step *N+1* be prepared before step *N*'s tokens exist.
-- Two-batch overlap (TBO): splitting a batch to overlap communication with computation.
-- Single-batch overlap (SBO) and the operation-graph abstraction.
-- Where overlap must be disabled, and why.
-
-**Code walkthrough**
-- `scheduler.py:1749` `event_loop_overlap`, `:1438` `init_overlap`,
-  `:1823` `is_disable_overlap_for_batch`.
-- `managers/overlap_utils.py` — future maps and resolution.
-- `srt/batch_overlap/two_batch_overlap.py`, `single_batch_overlap.py`,
-  `operations.py`, `operations_strategy.py`.
-- `layers/attention/tbo_backend.py`.
+1. **Batching across adapters.** `lora/lora_manager.py:59` `LoRAManager` — `:428`
+   `prepare_lora_batch` assembles per-request adapter indices so one kernel serves a batch
+   using different adapters; `lora/backend/` for the grouped-GEMM kernels that make it work.
+2. **Adapters as a memory pool.** `lora/mem_pool.py`, `lora/eviction_policy.py`, and
+   `:221` `load_lora_adapter` for runtime load/unload. Admission gains a new constraint at
+   `scheduler.py:3450` `_can_schedule_lora_req`.
+3. **Adapters must not share a prefix cache.** The `RadixKey` extra key from Chapter 9
+   (`radix_cache.py:64`) is what keeps two adapters' identical token sequences apart — a
+   correctness bug waiting for anyone who skips it.
+4. **Non-text input, spliced into text.** `multimodal/processors/` (53 of them) and
+   `managers/mm_utils.py`; `schedule_batch.py:318` `MultimodalDataItem`, `:590`
+   `MultimodalInputs`, `:569` `build_padded_input_ids` — encoder output replacing
+   placeholder tokens.
+5. **Position arithmetic moves into the scheduler.** `scheduler.py:2308`
+   `_maybe_compute_mrope_positions` and `forward_batch_info.py:1163`
+   `_compute_mrope_positions` — VLM 3D positions cannot be computed by the model alone.
+6. **Not sending pixels through a socket.** `scheduler.py:2209`
+   `_process_and_broadcast_mm_inputs` and the CUDA-IPC path from Chapter 3, plus
+   `mem_cache/multimodal_cache.py` for reusing encoder output.
 
 ---
 
-## Chapter 28 — Speculative Decoding
+# Part VII — Operating and Extending
 
-**Concepts**
-- The bandwidth argument: verifying *k* tokens costs almost the same as generating one.
-- Draft-then-verify: acceptance rules, and why the output distribution is preserved.
-- Algorithm families in SGLang: EAGLE / EAGLE-3 (feature-level drafting), MTP / frozen-KV MTP,
-  n-gram / lookup drafting, standalone draft models, DFlash, DSpark.
-- Tree drafting vs chain drafting; topk/depth/num-draft-token tuning.
-- The scheduling cost: speculative steps change memory accounting, CUDA graph shapes, and
-  grammar handling.
-- Adaptive speculation: turning it off when acceptance drops.
+## Chapter 21 — Observability and Tuning
 
-**Code walkthrough** — read `.claude/skills/speculative-naming/SKILL.md` first.
-- `python/sglang/srt/speculative/spec_info.py:30` `SpeculativeAlgorithm` — the capability
-  predicates that gate everything else.
-- `speculative/base_spec_worker.py`, `spec_registry.py`.
-- `speculative/eagle_worker_v2.py:1008` `EAGLEWorkerV2` — `:1105` `forward_batch_generation`,
-  `:1497` `verify`; and `:128` `EagleDraftWorker` — `:494` `draft`, `:557` `draft_forward`,
-  `:726` `draft_extend`.
-- `speculative/eagle_info.py` — the draft/verify batch metadata.
-- `speculative/eagle_draft_cuda_graph_runner.py` — graphs for the draft model.
-- `speculative/ngram_worker.py` + `cpp_ngram/`.
-- `speculative/frozen_kv_mtp_worker_v2.py`, `dflash_worker_v2.py`, `standalone_worker_v2.py`.
-- `speculative/adaptive_runtime_state.py`.
-- Docs cross-read: `docs/docs/advanced_features/speculative_decoding.mdx`,
-  `adaptive_speculative_decoding.mdx`.
+*Thesis: the instrumentation reveals the design — every metric the engine emits exists
+because someone needed it to answer a question this book has already raised.*
 
-**Lab**
-- Measure acceptance length and end-to-end speedup across `--speculative-num-steps` /
-  `--speculative-eagle-topk` sweeps.
+1. **What the engine measures, and why each one.**
+   `observability/metrics_collector.py`, `forward_pass_metrics.py`, `req_time_stats.py` —
+   queue depth, cache hit rate, memory utilization, spec-decode acceptance, per-phase
+   timing. Each maps back to a specific chapter's tradeoff.
+2. **Tracing across processes.** `observability/trace.py`, `trace_async.py` — following one
+   `rid` through the Chapter 2 topology; and `startup_time.py` for the startup breakdown
+   that explains slow boots.
+3. **Measuring honestly.** `bench_serving.py`, `bench_offline_throughput.py`,
+   `bench_one_batch_server.py` — which to use when, what to hold fixed, and how to avoid
+   measuring your own client.
+4. **Reading a profile.** `python/sglang/profiler.py` and the `/start_profile` endpoint
+   (`http_server.py:1139`); kernel time vs gap time vs communication, per
+   `.claude/skills/llm-torch-profiler-analysis/SKILL.md`.
+5. **A tuning order of operations.** `--mem-fraction-static`, `--chunked-prefill-size`,
+   `--max-running-requests`, `--cuda-graph-max-bs`, attention backend, parallelism layout —
+   sequenced by which chapter's constraint each one relieves.
 
----
+## Chapter 22 — Extending SGLang
 
-## Chapter 29 — Structured Outputs and Constrained Decoding
+*Thesis: the extension points are the architecture's seams, and walking them is the final
+check that the reader has understood where the boundaries are.*
 
-**Concepts**
-- Guaranteeing JSON/regex/EBNF-conforming output by masking logits.
-- Compiling a grammar to a token-level mask: the FSM, the compressed FSM, and why
-  tokenizer/grammar mismatch is the hard part.
-- Jump-forward decoding: emitting deterministic spans without a forward pass.
-- Backends: XGrammar, Outlines, LLGuidance — and their tradeoffs.
-- Interaction with speculative decoding and with reasoning models
-  (don't constrain the thinking block).
-
-**Code walkthrough**
-- `python/sglang/srt/constrained/base_grammar_backend.py:52` `BaseGrammarObject`,
-  `:167` `BaseGrammarBackend`, `:311` `create_grammar_backend`.
-- `constrained/xgrammar_backend.py`, `outlines_backend.py`, `llguidance_backend.py`.
-- `constrained/outlines_jump_forward.py` — jump-forward implementation.
-- `constrained/reasoner_grammar_backend.py`.
-- `constrained/grammar_manager.py` and `scheduler.py:1962` `init_grammar_manager`,
-  `:1861` `_advance_pending_grammar`.
-- Mask application: `sampler.py:97` `forward` and the vocab-mask buffers
-  (`base_grammar_backend.py:262` `register_vocab_mask_buffer`).
-
-**Lab**
-- Serve a strict JSON schema; measure the throughput cost of masking, then of jump-forward.
-
----
-
-## Chapter 30 — LoRA and Multi-Adapter Serving
-
-**Concepts**
-- LoRA math recap, and the serving question: how do you batch requests that use
-  *different* adapters?
-- Adapter memory pool, slot assignment, and eviction.
-- Batched LoRA kernels (SGEMM grouped / punica-style) vs merged weights.
-- Dynamic adapter load/unload at runtime; radix-cache namespacing so adapters don't share
-  a prefix cache incorrectly.
-- LoRA on MoE layers, and on MLA models.
-
-**Code walkthrough**
-- `python/sglang/srt/lora/lora_manager.py:59` `LoRAManager` — `:221` `load_lora_adapter`,
-  `:392` `fetch_new_loras`, `:428` `prepare_lora_batch`.
-- `lora/mem_pool.py`, `lora/lora_registry.py`, `lora/eviction_policy.py`.
-- `lora/layers.py` — the LoRA-aware layer wrappers.
-- `lora/backend/` — kernel backends; `lora/lora_moe_runners.py`.
-- `schedule_policy.py`/`scheduler.py:3450` `_can_schedule_lora_req` — admission with adapters.
-- `RadixKey` extra-key namespacing (`radix_cache.py:64`) as it applies to LoRA.
-
----
-
-## Chapter 31 — Multimodal Inputs
-
-**Concepts**
-- The pipeline: raw bytes → processor → embeddings → placeholder-token splicing → decoder.
-- Where the vision/audio encoder runs: in-process, DP-parallel, or a separate encode server.
-- Multimodal hashing and caching of encoder outputs.
-- mrope / 3D positions for VLMs, and why position computation moves into the scheduler.
-- CUDA IPC for image tensors, to avoid serializing pixels over ZMQ.
-
-**Code walkthrough**
-- `python/sglang/srt/multimodal/processors/` (53 processors) + `base_processor.py`.
-- `managers/multimodal_processor.py`, `managers/mm_utils.py`, `managers/mm_schedule.py`.
-- `schedule_batch.py:318` `MultimodalDataItem`, `:590` `MultimodalInputs`,
-  `:569` `build_padded_input_ids`.
-- `scheduler.py:2209` `_process_and_broadcast_mm_inputs`,
-  `:2308` `_maybe_compute_mrope_positions`.
-- `forward_batch_info.py:1163` `_compute_mrope_positions`.
-- `layers/attention/vision.py` — the vision attention path.
-- `mem_cache/multimodal_cache.py`.
-- Docs cross-read: `docs/docs/advanced_features/vlm_query.mdx`,
-  `cuda_graph_for_multi_modal_encoder.mdx`.
-
----
-
-## Chapter 32 — Tool Calling, Reasoning, and Output Parsing
-
-**Concepts**
-- Model-specific function-call formats, and why every model family invented its own.
-- Streaming-safe incremental parsing: you must decide "is this a tool call?" before the
-  message is complete.
-- Structural tags: constraining generation to a tool schema rather than parsing after.
-- Reasoning separation (`<think>` blocks) and its interaction with structured output.
-
-**Code walkthrough**
-- `python/sglang/srt/function_call/function_call_parser.py`,
-  `base_format_detector.py:` the detector protocol.
-- A survey of detectors: `qwen*_detector.py`, `deepseekv3_detector.py`,
-  `kimik2_detector.py`, `gpt_oss_detector.py`, `glm4_moe_detector.py` (39 files) —
-  read two in full, skim the rest for the pattern.
-- `srt/parser/reasoning_parser.py`, `srt/parser/harmony_parser.py`,
-  `entrypoints/harmony_utils.py`.
-- `entrypoints/openai/serving_chat.py` — where parsing plugs into the response path.
-- Docs cross-read: `docs/docs/advanced_features/tool_parser.mdx`, `separate_reasoning.mdx`.
-
----
-
-## Chapter 33 — Deterministic and Reproducible Inference
-
-**Concepts**
-- Why the same prompt can produce different tokens across batch sizes: non-deterministic
-  reductions, split-K, and batch-variant kernels.
-- Batch-invariant operators, and what they cost.
-- Seeded sampling and per-request determinism.
-- The prefill/decode logprob consistency (KL) test as the correctness oracle.
-
-**Code walkthrough**
-- `python/sglang/srt/batch_invariant_ops/` and
-  `model_runner.py:764` `maybe_enable_batch_invariant_mode`.
-- `scheduler.py:1506` `init_deterministic_inference_config`.
-- `sampler.py:684` `multinomial_with_seed`.
-- `.claude/skills/kl-consistency-test/SKILL.md` — the methodology, and the two independent
-  conditions a zero KL requires.
-- Docs cross-read: `docs/docs/advanced_features/deterministic_inference.mdx`.
-
----
-
-# Part VII — The Frontend Language
-
-## Chapter 34 — The SGLang DSL
-
-**Concepts**
-- The original research contribution: a language for *programs* over LLM calls, not just
-  single completions.
-- Primitives: `gen`, `select`, `fork`, `join`, system/user/assistant roles.
-- Why co-designing frontend and runtime pays: `fork` becomes a radix-tree branch, and
-  `select` becomes a scored comparison rather than *n* independent generations.
-- Interpreter mode vs compiler/tracer mode.
-
-**Code walkthrough**
-- `python/sglang/lang/api.py` — the user-facing primitives.
-- `python/sglang/lang/ir.py` — the program IR.
-- `python/sglang/lang/interpreter.py:274` `StreamExecutor`, `:852` `ProgramState`,
-  `:57` `run_program`, `:93` `run_program_batch`.
-- `python/sglang/lang/tracer.py` — compilation to a graph.
-- `python/sglang/lang/choices.py` — the `select` scoring methods.
-- `python/sglang/lang/backend/` — runtime, OpenAI, Anthropic backends.
-- Docs cross-read: `docs/docs/references/frontend/`.
-
-**Lab**
-- Write a branching agent program; show the radix cache hit rate that `fork` produces.
-
----
-
-## Chapter 35 — API Surfaces in Practice
-
-**Concepts**
-- Native `/generate` vs OpenAI Chat/Completions vs Anthropic vs Ollama compatibility layers.
-- Embeddings, reranking, scoring, and classification endpoints.
-- Sampling parameter reference, and the semantics that differ from other engines.
-- Sessions and the session-aware radix cache.
-
-**Code walkthrough**
-- `entrypoints/openai/serving_*.py` (chat, completions, embedding, rerank, score,
-  classify, responses, transcription).
-- `entrypoints/anthropic/`, `entrypoints/ollama/`.
-- `srt/session/` and `docs/docs/advanced_features/session_radix_cache.mdx`.
-- `sampling/sampling_params.py`.
-
----
-
-# Part VIII — Running It in Production
-
-## Chapter 36 — Observability
-
-**Concepts**
-- The metric taxonomy: throughput, queue depth, cache hit rate, memory utilization,
-  spec-decode acceptance, per-request timing.
-- Prometheus integration and the dashboards that matter.
-- Distributed request tracing across the process topology.
-- Structured logging, request dumping, and crash dumps.
-
-**Code walkthrough**
-- `python/sglang/srt/observability/metrics_collector.py`, `forward_pass_metrics.py`,
-  `req_time_stats.py`, `request_metrics_exporter.py`.
-- `observability/trace.py`, `trace_async.py`, `mooncake_trace.py`.
-- `scheduler.py:718` `init_metrics_collector`, `:1191` `init_metrics_reporter`,
-  `managers/scheduler_components/metrics_reporter.py`.
-- `observability/startup_time.py` and `startup_func_log_and_timer.py` — startup breakdown.
-- Docs cross-read: `docs/docs/references/production_metrics.mdx`,
-  `production_request_trace.mdx`, `advanced_features/observability.mdx`.
-
----
-
-## Chapter 37 — Benchmarking, Profiling, and Tuning
-
-**Concepts**
-- Benchmarking honestly: which knobs to hold fixed, what "throughput" means, and how to
-  avoid measuring your client.
-- The three benchmark harnesses and when to use each.
-- Reading a torch profiler trace: kernel time vs gap time vs communication.
-- A tuning playbook: `--mem-fraction-static`, `--chunked-prefill-size`,
-  `--max-running-requests`, `--cuda-graph-max-bs`, attention backend, TP/DP layout.
-
-**Code walkthrough**
-- `python/sglang/bench_serving.py` — the online serving benchmark.
-- `python/sglang/bench_offline_throughput.py`, `bench_one_batch.py`,
-  `bench_one_batch_server.py`.
-- `python/sglang/profiler.py`, `srt/managers/scheduler_components/profiler_manager.py`,
-  the `/start_profile` endpoint (`http_server.py:1139`).
-- `python/sglang/kernel_api_logging.py`.
-- Skills cross-read: `.claude/skills/llm-torch-profiler-analysis/SKILL.md`,
-  `generate-profile/SKILL.md`.
-- Docs cross-read: `docs/docs/advanced_features/hyperparameter_tuning.mdx`,
-  `developer_guide/benchmark_and_profiling.mdx`.
-
-**Lab**
-- Take an untuned deployment to a target SLO with a documented tuning trail.
-
----
-
-## Chapter 38 — Testing and CI
-
-**Concepts**
-- The test pyramid for an inference engine: unit, kernel-correctness, accuracy (evals),
-  performance regression, and multi-GPU integration.
-- Why accuracy tests are the real safety net, and how thresholds are chosen.
-- CI orchestration: stage ordering, fast-fail, gating, partitioning across runners.
-- Debugging a CI-only failure.
-
-**Code walkthrough**
-- `test/run_suite.py`, `test/README.md`, `test/registered/`.
-- `python/sglang/test/` — `CustomTestCase`, server fixtures, `test/kits/`.
-- `.github/workflows/` — the pipeline definition.
-- Skills cross-read: `.claude/skills/write-sglang-test/SKILL.md`,
-  `ci-workflow-guide/SKILL.md`, `sglang-bisect-ci-regression/SKILL.md`.
-
----
-
-## Chapter 39 — SGLang as an RL Rollout Backend
-
-**Concepts**
-- Why RL post-training needs an inference engine, and what it needs that serving doesn't:
-  fast in-place weight updates, memory release/resume, deterministic replay.
-- Weight update paths: from disk, from distributed group, from tensors, from IPC handles,
-  and via the checkpoint engine.
-- Memory occupation release/resume, so training and inference can share a GPU.
-- Integrations: verl, slime, AReaL, Miles, Tunix.
-
-**Code walkthrough**
-- `engine.py:1365`–`:1478` — the weight-update API family.
-- `srt/model_executor/model_runner_components/weight_updater.py`,
-  `startup_weight_load.py`.
-- `srt/checkpoint_engine/`, `srt/weight_sync/tensor_bucket.py`.
-- `engine.py:1573` `release_memory_occupation` / `:1579` `resume_memory_occupation`.
-- `scheduler.py:4576` `pause_generation` / `:4665` `continue_generation`.
-- Docs cross-read: `docs/docs/advanced_features/sglang_for_rl.mdx`,
-  `references/post_training_integration.mdx`.
-
----
-
-# Part IX — Extending SGLang
-
-*Each chapter here is a guided contribution, ending with a PR-shaped deliverable.*
-
-## Chapter 40 — Adding a Model
-
-- The checklist: config class, model class, weight mapping, registry entry, chat template,
-  test, docs.
-- Debugging a wrong-output model: layer-by-layer comparison against HF.
-- Code: `srt/models/`, `srt/configs/`, `srt/debug_utils/comparator/`,
-  `docs/docs/supported-models/support_new_models.mdx`.
-
-## Chapter 41 — Adding a Kernel
-
-- The two paths: lightweight JIT kernels (`python/sglang/kernels/jit/`) vs heavyweight AOT
-  kernels (`python/sglang/kernels/aot/`, `sgl-kernel`).
-- The registry/selector layer (`kernels/registry.py`, `kernels/selector.py`, `kernels/spec.py`).
-- Benchmarks and correctness tests as non-optional deliverables.
-- Skills cross-read: `.claude/skills/add-jit-kernel/SKILL.md`, `add-sgl-kernel/SKILL.md`.
-
-## Chapter 42 — Adding an Attention Backend
-
-- Implementing `AttentionBackend`; the metadata/CUDA-graph contract that trips everyone up.
-- Registering via `attention_registry.py`; testing across forward modes.
-
-## Chapter 43 — Hardware Backends and Platform Plugins
-
-- The platform abstraction (`srt/platforms/`, `srt/hardware_backend/`, `srt/plugins/`).
-- What porting to a new accelerator actually requires: device communicators, attention
-  backend, memory pool, graph capture.
-- Case studies: ROCm/AITER, Ascend NPU, Intel XPU/AMX, CPU, TPU (sglang-jax), Metal.
-- Docs cross-read: `docs/docs/hardware-platforms/`.
+1. **Adding a model.** Config class, model class, weight mapping, registry entry, chat
+   template — and layer-by-layer comparison against HF via `srt/debug_utils/comparator/`
+   when the output is wrong.
+2. **Adding a kernel.** The two paths: JIT (`python/sglang/kernels/jit/`) and AOT
+   (`kernels/aot/`, `sgl-kernel`), with `kernels/registry.py` and `selector.py` as the
+   dispatch layer. Correctness tests and benchmarks are part of the deliverable, not
+   follow-up work.
+3. **Adding an attention backend.** Implementing the Chapter 13 contract, and the
+   CUDA-graph obligations that catch every first attempt.
+4. **Porting to new hardware.** `srt/platforms/`, `hardware_backend/`, `srt/plugins/` —
+   what a new accelerator actually requires (communicators, attention backend, memory pool,
+   graph capture), with ROCm/AITER, Ascend, and Intel XPU as case studies of how far the
+   abstraction stretches.
+5. **How the project keeps this safe.** `test/run_suite.py`, `python/sglang/test/kits/`,
+   and why accuracy evals rather than unit tests are the real net. `.github/workflows/` for
+   gating and partitioning.
 
 ---
 
 # Appendices
 
-- **A. Server Arguments Reference** — annotated tour of `srt/server_args.py`, grouped by
-  subsystem, with "which chapter explains this" pointers.
-- **B. Environment Variables** — `srt/environ.py` and the conventions in
-  `.claude/skills/env-var-conventions/SKILL.md`.
+- **A. Server Arguments** — `srt/server_args.py` grouped by subsystem, each group pointing
+  at the chapter that explains it.
+- **B. Environment Variables** — `srt/environ.py` and its conventions.
 - **C. Glossary** — TTFT, ITL, MLA, GQA, EAGLE, MTP, EP/EPLB, PD, TBO, SWA, NSA/DSA,
-  radix cache, chunked prefill, and the rest.
-- **D. Repository Map** — every top-level directory, one paragraph each, with chapter links.
-- **E. Reading a Startup Log** — annotated line-by-line startup trace.
-- **F. Debugging Playbooks** — condensed from the repo's own skills: CUDA crashes,
-  distributed hangs, CI regressions, production incidents.
-- **G. Further Reading** — the SGLang papers, LMSYS blog posts, and the related work
-  (vLLM/PagedAttention, FlashAttention, Orca, FlashInfer, EAGLE, DeepSeek MLA).
+  chunked prefill, radix cache.
+- **D. Repository Map** — every top-level directory, one paragraph, with chapter links.
+- **E. Annotated Startup Log** — one real startup trace, line by line, as a synthesis of
+  Parts I–IV.
+- **F. Further Reading** — SGLang papers, LMSYS blogs, and related work (PagedAttention,
+  FlashAttention, Orca, FlashInfer, EAGLE, DeepSeek MLA).
 
 ---
 
-## Proposed sequencing for writing
+## What changed from the first draft
 
-The chapters are not equally expensive. A suggested order that produces a useful artifact
-early and de-risks the hard parts:
+- **43 chapters → 22.** Cut by merging rather than dropping: IPC folded into Chapter 3;
+  `Req`/`ScheduleBatch` into the scheduler loop; logits/sampling/detokenization/determinism
+  into one return-path chapter; distributed foundations + TP/PP + DP attention into
+  Chapter 15; quantization + CUDA graphs + compilation into Chapter 14; grammars + tool
+  parsers into Chapter 19; LoRA + multimodal into Chapter 20; the DSL into Chapter 2;
+  RL weight sync into Chapter 11; testing/CI into Chapter 22.
+- **Concepts fused with code.** No chapter has a theory section followed by a code section.
+  Each beat is one idea welded to the code that implements it.
+- **Labs removed** throughout.
+- **Overlap scheduling** is no longer its own chapter — the request-path version lives in
+  Chapter 4, and the MoE communication-overlap version in Chapter 16, where each is
+  motivated.
 
-1. **Ch. 3, 4, 7, 8, 10** — the skeleton. Once the request path is written, everything else
-   hangs off it.
-2. **Ch. 13, 14** — the memory/radix core. This is the book's differentiator; write it while
-   fresh.
-3. **Ch. 1, 2, 9, 11, 12** — fill in Parts I–II to make a coherent standalone "Volume 1."
-4. **Ch. 16–20** — the model execution layer.
-5. **Ch. 21–26** — parallelism, which needs multi-GPU access to verify.
-6. **Ch. 27–33** — advanced features, individually self-contained.
-7. **Ch. 34–43 + appendices** — frontend, production, extension.
+## Writing order
 
-**Volume split option:** if the material is too large for one book, Parts I–IV form
-*Volume 1: The Serving Engine* (~self-contained, single-GPU), and Parts V–IX form
-*Volume 2: Scale, Features, and Extension*.
+1. **Ch. 2, 4, 6, 8, 9** — the topology, the loop, the executor, and the memory core.
+   These carry the book; if they work, the rest is infill.
+2. **Ch. 1, 3, 5, 7** — completing the request path into a coherent Part I–II.
+3. **Ch. 11–14** — the model layer.
+4. **Ch. 15–17** — scaling, which needs multi-GPU access to verify.
+5. **Ch. 18–22 + appendices.**
 
-## Open questions for the author
+## Open questions
 
-1. **Target depth for kernels** — do we read CUDA/Triton source (Ch. 18, 41), or treat
-   kernels as black boxes with a described contract? This changes the prerequisite bar
-   significantly.
-2. **Diffusion / `multimodal_gen`** — currently out of scope. It is a large parallel stack
-   (~400 files) with its own pipelines, schedulers, and caching. Own book, appendix, or
-   a Part X?
-3. **Version pinning** — pin to a release tag so line anchors stay valid, or write against
-   `main` and maintain an anchor-verification script in CI?
-4. **Executable book** — should labs ship as runnable notebooks/scripts under `book/labs/`
-   with a small-model default so readers without an H100 can follow along?
+1. **Kernel depth (Ch. 13, 14, 22).** Read CUDA/Triton source, or treat kernels as
+   contracts with described semantics? This sets the prerequisite bar.
+2. **Diffusion.** `python/sglang/multimodal_gen` is a large parallel stack with its own
+   pipelines and caching. Out of scope entirely, or a single survey chapter?
+3. **Version pinning.** Pin to a release tag so anchors stay valid, or track `main` with an
+   anchor-verification script?
