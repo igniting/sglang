@@ -3,20 +3,23 @@
 > *Continuous batching is an admission-control problem under a hard memory budget, and the
 > memory system is what makes the decision interesting.*
 
----
+Chapter 4 left one call unopened: `get_next_batch_to_run`. This chapter opens it.
 
-## The decision, stated properly
+"Continuous batching" is usually explained as requests joining and leaving the batch every
+step instead of waiting for the slowest one to finish. That is true, and it is not the hard
+part. The hard part is that admitting a request commits memory whose size nobody knows —
+the prompt length is given, but how many tokens the model will generate in reply is not.
 
-"Continuous batching" is usually described as: requests join and leave the batch every
-step instead of waiting for the slowest one to finish. True, and not the hard part.
+So the scheduler is making an irreversible commitment under genuine uncertainty, hundreds of
+times a second, against a hard limit. Admit too few requests and the GPU idles. Admit too
+many and you run out of memory mid-generation, with a dozen requests half-finished and no
+way to make room except by destroying work.
 
-The hard part is that admitting a request commits KV cache memory you do not yet know the
-size of. A request's prompt length is known; its *output* length is not. Admit too few and
-the GPU is underutilized. Admit too many and you run out of memory mid-generation, with
-requests already half-decoded and no way to make room except by destroying work.
-
-So the scheduler is making a decision under uncertainty, every iteration, with a hard
-constraint. That is what this chapter is about.
+This chapter is about how that decision is made: the budget arithmetic, the heuristic that
+predicts demand that has not happened yet, what happens when the prediction is wrong, and
+the ordering policy that decides *which* requests get in. That last one turns out to depend
+on the cache we meet in Chapter 9, which is the first appearance of a loop between
+scheduling and memory that recurs throughout the book.
 
 ---
 

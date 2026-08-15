@@ -3,48 +3,25 @@
 > *The three classical parallelism axes differ in what they split and therefore in which
 > interconnect they stress; SGLang adds a fourth because MLA broke the assumptions.*
 
----
+Everything so far has quietly assumed one GPU. That assumption fails early: a 70-billion
+parameter model in half precision is 140 GB of weights, and the frontier models are several
+times larger.
 
-## Why there are several
+So the work has to be split. The interesting part is that "split" admits several different
+answers, they are not interchangeable, and choosing badly is not recoverable by tuning
+anything else.
 
-A 70B model in BF16 is 140 GB. No single GPU holds it, so it must be split. But "split"
-admits several answers, and they are not interchangeable — each cuts along a different
-dimension and pays a different communication bill.
+The classical three cut along different dimensions. Tensor parallelism splits *within* each
+layer, so every rank does part of every operation and they must talk twice per transformer
+block. Pipeline parallelism splits *between* layers, so communication is rare but ranks
+spend time idle. Data parallelism does not split the model at all.
 
-- **Tensor parallelism (TP)** cuts *within* each layer. Every rank does part of every
-  operation. Communication is frequent — twice per transformer block — and must be fast.
-- **Pipeline parallelism (PP)** cuts *between* layers. Rank 0 runs layers 0–19, rank 1 runs
-  20–39. Communication is rare (once per boundary) and tolerates slower links.
-- **Data parallelism (DP)** does not split the model at all: each rank holds a full replica
-  and serves different requests.
-- **Expert parallelism (EP)** splits MoE experts across ranks. Chapter 16.
-- **Context parallelism (CP)** splits the *sequence*.
+Which to use depends on a fact about hardware that governs this whole chapter: the network
+inside a machine is roughly an order of magnitude faster than the network between machines.
 
-`python/sglang/srt/distributed/parallel_state.py:2285` `initialize_model_parallel` names all
-of them in one signature:
-
-```python
-def initialize_model_parallel(
-    tensor_model_parallel_size: int = 1,
-    expert_model_parallel_size: int = 1,
-    pipeline_model_parallel_size: int = 1,
-    attention_data_parallel_size: int = 1,
-    attention_context_model_parallel_size: int = 1,
-    moe_data_model_parallel_size: int = 1,
-    decode_context_parallel_size: int = 1,
-    ...
-```
-
-Seven dimensions. Note that data parallelism appears *twice* — once for attention, once for
-MoE — which is the sign that this is not the textbook taxonomy. The docstring for
-`decode_context_parallel_size` is candid about its scope:
-
-> number of GPUs used for decode context parallelism, which splits the KV cache across GPUs
-> within each tensor-parallel group during decoding. Must be a divisor of
-> tensor_model_parallel_size and is currently only supported on the AMD HIP platform.
-
-That is the honest state of a fast-moving area: a real technique, constrained to one
-platform.
+Then there is a fourth axis, which SGLang added because DeepSeek's compressed cache broke
+the assumptions the classical answers were built on. That story — a memory optimization from
+Chapter 8 forcing a new form of parallelism — is the most interesting thing here.
 
 ---
 
@@ -263,3 +240,7 @@ The decision procedure, in order:
 `docs/docs/advanced_features/dcp.mdx` carry the project's current guidance, and
 `.claude/skills/debug-distributed-hang/SKILL.md` is what you want when a layout deadlocks —
 which, as the padding comment above shows, is the characteristic failure of this chapter.
+
+This chapter split a dense model. Chapter 16 turns to models that are sparse by
+construction, where the arithmetic barely moves but the communication bill changes shape
+entirely.

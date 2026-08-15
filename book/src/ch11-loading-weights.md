@@ -3,6 +3,24 @@
 > *Weight loading is a distributed sharding problem disguised as file I/O, and the same
 > machinery serves both startup and reinforcement learning.*
 
+Part IV opens the box that Chapter 6 handed a batch to.
+
+Before a model can run, a few hundred gigabytes of numbers have to get from files on disk
+into the right memory on the right GPUs. That sounds like file I/O and a progress bar. It is
+really a distributed sharding problem, because under the tensor parallelism of Chapter 15 no
+single rank ever holds a complete weight matrix — each holds a slice, and has to know which
+slice is its own without ever materializing the whole thing.
+
+This chapter follows a checkpoint from a model path to sharded parameters. Along the way we
+get an unusually good look at an interface migration caught mid-flight: two generations of
+the weight-loading protocol living side by side in the same file, selected by an environment
+variable, which is a rare chance to see why the newer one exists.
+
+The chapter then turns to a use of the same machinery that has nothing to do with startup.
+Reinforcement learning needs an inference engine whose weights can be replaced every few
+minutes, without restarting, while sharing a GPU with a trainer. That requirement is why
+SGLang is described as a rollout backend and not only a server.
+
 ---
 
 ## From a path to a class
@@ -267,3 +285,6 @@ that update only those.
 `docs/docs/references/post_training_integration.mdx` cover the integrations — verl, slime,
 AReaL, Miles, Tunix — that this API exists to serve. It is the reason SGLang is
 described as a rollout backend and not only a server.
+
+The weights are on the GPU. Chapter 12 opens one of the files that describes what to do with
+them.

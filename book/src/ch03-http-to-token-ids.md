@@ -3,22 +3,23 @@
 > *The front of the engine is an async/sync boundary, and most of its complexity is in
 > making message passing look like `await`.*
 
----
+A request has arrived. Over the next five chapters we follow it all the way to a token
+appearing on someone's screen, and this chapter covers the first leg: from an HTTP socket
+to a message sitting in the scheduler's queue.
 
-## Two worlds that must not touch
+Chapter 2 established the topology — a tokenizer process at the front, schedulers owning the
+GPUs, detokenizers at the back, ZeroMQ between them. What that diagram does not convey is
+the awkwardness of the boundary it creates. The web server is asynchronous, with thousands
+of coroutines in flight. The scheduler is a synchronous loop that would not know what an
+`await` was. Between them is a socket that has no concept of a request at all, only bytes.
 
-A FastAPI handler is an `async` function. It awaits, yields to the event loop, and expects
-its result to arrive as a resolved coroutine. Thousands may be in flight at once.
+Something has to reconcile those three worlds, and that something is `TokenizerManager`. It
+converts text to token ids, which is the job its name advertises. Its larger and more
+interesting job is making a fire-and-forget message protocol behave like an ordinary
+awaitable function call.
 
-The scheduler is the opposite: a synchronous `while True` loop with no `await` anywhere in
-it, running in a different process, owning a GPU, and processing one batch at a time.
-
-Between them is a ZeroMQ socket, which is neither. It offers `send` and `recv` on opaque
-bytes and has no notion of a request, a response, or a correlation between them.
-
-`TokenizerManager` is the adapter. It converts text to token ids, and — the larger job —
-converts a fire-and-forget message protocol into an awaitable per-request API. That
-conversion is the substance of this chapter.
+That trick — and the validation, batching, and zero-copy transport that surround it — is
+what this chapter is about.
 
 ---
 

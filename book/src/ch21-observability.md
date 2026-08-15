@@ -3,6 +3,24 @@
 > *The instrumentation reveals the design — every metric the engine emits exists because
 > someone needed it to answer a question this book has already raised.*
 
+You now understand what the engine does. This chapter is about seeing what it *is* doing —
+on a particular machine, under a particular workload, right now.
+
+There is a pleasant symmetry here. Every metric SGLang emits exists because someone needed
+it to answer a question, and by this point in the book you have asked most of those
+questions yourself. Queue depth is Chapter 5's admission problem. Cache hit rate is Chapter
+9. Retraction count is what happens when Chapter 5 guesses wrong. Acceptance length is
+Chapter 18 telling you whether it is earning its keep. The instrumentation is a map back to
+the design.
+
+The chapter has three parts. First, reading the metrics — including the five numbers that
+actually tell you what is happening, out of the hundreds available. Then measuring honestly,
+which is mostly a catalogue of ways benchmarks lie. Then a tuning procedure, ordered not by
+how the flags appear in `--help` but by which constraint each one relieves.
+
+That ordering is the chapter's main practical claim: most tuning effort is spent optimizing
+something that was not the bottleneck.
+
 ---
 
 ## Reading the metrics as a map
@@ -203,3 +221,6 @@ a live deployment is misbehaving rather than merely slow.
 The general rule: **measure which of Chapter 1's two phases you are bound by, and which
 resource within it, before changing anything.** Most tuning effort is spent optimizing a
 constraint that was not binding.
+
+One chapter left. Chapter 22 is about changing the engine rather than watching it — and it
+is the last check on whether everything before it landed.

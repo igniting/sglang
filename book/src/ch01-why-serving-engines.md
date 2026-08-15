@@ -3,6 +3,21 @@
 > *The cost structure of autoregressive decoding, not model quality, is what forces an
 > engine to exist.*
 
+Ask an engineer why running a large language model is expensive and you will usually hear
+that the models are enormous and matrix multiplication is costly. That answer is correct
+about training and almost entirely wrong about serving — and the difference is not a
+detail. It determines what an inference engine is for.
+
+This chapter works out what generating a token actually costs. The answer is strange enough
+to be worth stating up front: a graphics card producing one token for one user is idle
+more than 99% of the time, and it is idle not because the work is easy but because the data
+cannot reach the arithmetic units fast enough.
+
+Getting from there to a useful machine takes two steps, and the second creates the problem
+the rest of this book is about. By the end you will be able to compute, for a given model
+and GPU, roughly how many people it can serve at once — and see why that number, rather than
+any measure of speed, is the one everything else in the engine is organized around.
+
 ---
 
 ## Two phases, two bottlenecks

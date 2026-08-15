@@ -3,6 +3,27 @@
 > *MoE inference is all-to-all-bound rather than GEMM-bound, which makes routing, placement,
 > and communication overlap the whole game.*
 
+A mixture-of-experts model replaces the dense feed-forward block with many expert blocks and
+a router that sends each token to a few of them. DeepSeek-V3 has 256 experts and activates 8
+per token: 671 billion parameters total, roughly 37 billion active.
+
+For serving, that changes the cost structure in a way worth being precise about. Parameter
+count grows enormously; arithmetic per token barely moves. So MoE models need many more GPUs
+to hold their weights without needing proportionally more compute — and that is the setup
+for the real consequence.
+
+In a dense model every token in a batch takes the same path through the same weights. In an
+MoE model, a batch of 256 tokens scatters across 256 experts. If those experts live on
+different GPUs, the tokens must be *sent there and the results brought back* — twice per
+layer, for every layer.
+
+That communication, not matrix multiplication, is what dominates. Which means the
+interesting engineering is not in the expert computation at all. It is in routing, in
+deciding which expert lives where, and in hiding the communication behind other work.
+
+This chapter is also where the in-repo CUDA is densest, and where one trick that has already
+appeared twice in this book appears again in its clearest form.
+
 ---
 
 ## A different cost structure
@@ -236,3 +257,6 @@ combine everything in this chapter and the last:
 None of these is optional at that scale, and each was added because the previous
 combination hit a wall. `docs/docs/advanced_features/expert_parallelism.mdx` covers the
 configuration; the blog posts linked from `README.md` cover the results.
+
+Chapters 15 and 16 split the model. Chapter 17 splits the *work* — and stops asking one
+machine to be good at two opposite things.

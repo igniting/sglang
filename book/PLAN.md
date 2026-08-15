@@ -1,110 +1,71 @@
 # Book plan
 
-Planning notes for *SGLang Internals*. Not published — the book itself lives in `src/`.
+Working notes for *SGLang Internals*. Not published — the book itself is `src/`.
 
 ## Decisions
 
 | Question | Decision |
 | --- | --- |
-| Concepts vs code | **Fused.** No chapter separates theory from walkthrough. Each chapter is a sequence of beats; a beat is one idea welded to the code that implements it. |
-| Exercises / labs | **None.** Where a claim is empirical, the book states the measurement and its conditions. |
-| Length | **22 chapters, 7 parts**, ~450–550 pages, single volume. |
-| Kernel depth | **Read in-repo kernels as source; treat external ones as contracts.** See below. |
-| Diffusion (`multimodal_gen`) | **Out of scope.** |
-| Version pinning | **Pinned to a commit SHA**, enforced by a CI checker. See below. |
-| Publishing | **mdBook → `gh-pages` branch**, pushed by `.github/workflows/book-pages.yml`. Classic branch-based Pages; no repo-settings toggle needed. |
+| Shape | 22 chapters in 7 parts, each part opening with a page that frames its question. |
+| Concepts vs code | Fused. Each chapter is a narrative; ideas are grounded in the code that implements them, not preceded by it. |
+| Chapter openings | Every chapter opens by placing the reader in the journey — what came before, what this one answers, why it follows. |
+| Exercises / labs | None. |
+| Kernel depth | In-repo kernels read as source (Triton, and CUDA/C++ under `kernels/aot/csrc` and `kernels/jit/csrc`). FlashInfer and FlashAttention are treated as contracts — separately versioned, so the book cannot pin them. |
+| Diffusion (`multimodal_gen`) | Out of scope, stated in the front matter. |
+| Version pinning | Commit `7562e741e26a4818ee78f1e63140240ec59147c0`, enforced by a CI checker. |
+| Publishing | mdBook → `gh-pages`. Classic branch-based Pages, no repo-settings toggle. |
 
-## Kernel depth, precisely
+## Book production is not in the book
 
-The decision is "read the CUDA," but the boundary matters, so it is written down:
+Anything about how the book was made — pinning mechanics, the anchor checker, the build —
+lives here or in `src/colophon.md`. It does not appear in the chapters.
 
-- **Read as source** — Triton under `python/sglang/kernels/ops/` (it is Python and highly
-  readable), and in-repo CUDA/C++ under `python/sglang/kernels/aot/csrc/` and
-  `python/sglang/kernels/jit/csrc/` where it carries an idea the Python cannot show.
-- **Treat as a contract** — FlashInfer and FlashAttention. They are separately versioned
-  external dependencies (`flashinfer_python==0.6.17`, with a bot that bumps it), so
-  walking their source would take on a dependency the book cannot pin.
+## Typography
 
-Three chapters get an explicit "down to the kernel" beat: 13 (attention), 14
-(quantization), 16 (MoE), plus 18 (speculative verification). In-repo CUDA is unevenly
-distributed — MoE and elementwise are the densest, attention the thinnest — and the beats
-follow that distribution rather than pretending it is uniform.
+`theme/custom.css`. Serif body (Iowan Old Style → Palatino → Charter → Georgia), Inter
+headings, JetBrains Mono code. No webfonts: everything is system-resident, so pages render
+identically offline and on first paint. Warm off-white paper in light mode, desaturated
+blue-black in dark. Measure held near 72 characters. Inline code carries colour but no
+background box.
 
-Note: the former top-level `sgl-kernel/` directory no longer exists; it is now
-`python/sglang/kernels/aot/`. Text referring to `sgl-kernel` should say so.
+Palette selectors must use mdBook's own theme classes (`.light`/`.rust`, `.navy`/`.coal`/`.ayu`).
+An earlier `html:not(.dark)` outranked `.navy` and silently disabled dark mode.
 
-## Pinning
+## Diagrams
 
-```
-7562e741e26a4818ee78f1e63140240ec59147c0   (2026-08-15)
-```
+Inline SVG, hand-written, drawing with the page's colour tokens so one copy serves both
+themes. Five so far: process topology (Ch. 2), the overlap timeline (Ch. 4), address
+translation (Ch. 8), the radix tree evolving (Ch. 9), a disaggregated deployment (Ch. 17).
 
-This fork carries no release tags (`git ls-remote --tags` is empty), so the pin is a
-commit SHA rather than a version tag.
+**Gotcha:** CommonMark terminates an HTML block at a blank line, so a `<figure>` block must
+contain none — otherwise everything after the first gap renders as escaped text.
 
-`scripts/verify_anchors.py` validates every `path:line` anchor in `src/` against that
-commit — reading files out of the commit rather than the working tree — and checks that
-the symbol named beside an anchor is actually on that line (±3 lines for decorators and
-multi-line signatures). It runs in CI before every build. It caught a wrong-file
-continuation anchor on its first run, which is roughly the failure rate to expect while
-writing.
+## Anchors
 
-To re-pin later: update `DEFAULT_PIN` in the script and the SHA in `src/introduction.md`,
-then run the checker and fix what it reports.
+`scripts/verify_anchors.py` validates every `path:line` reference against the pinned commit,
+reading files out of the commit rather than the working tree, and checks that the symbol
+named beside an anchor is on that line (±3 for decorators and multi-line signatures).
 
-## Status
+`scripts/linkify_anchors.py` is an mdBook preprocessor that rewrites those references into
+links at the pinned commit. It skips fenced code blocks, and tracks the current file so
+`:123` continuations resolve.
 
-All 22 chapters and 6 appendices are written (~43,000 words). Ch. 9 (RadixAttention) was
-drafted first as the pilot, to test the fused concept-plus-code format on the most
-beat-dense chapter before committing to the other 21; the rest followed in book order.
-
-816 code anchors verify against the pinned commit.
-
-## Chapter map
-
-| # | Chapter | File |
-| --- | --- | --- |
-| 1 | Why Serving Engines Exist | `src/ch01-why-serving-engines.md` |
-| 2 | The Shape of SGLang | `src/ch02-shape-of-sglang.md` |
-| 3 | From HTTP to Token IDs | `src/ch03-http-to-token-ids.md` |
-| 4 | The Scheduler Loop | `src/ch04-scheduler-loop.md` |
-| 5 | Deciding What Runs Next | `src/ch05-deciding-what-runs.md` |
-| 6 | Executing a Batch | `src/ch06-executing-a-batch.md` |
-| 7 | Sampling and the Return Path | `src/ch07-sampling-and-return.md` |
-| 8 | KV Cache Pools and Allocators | `src/ch08-kv-pools.md` |
-| 9 | RadixAttention | `src/ch09-radixattention.md` |
-| 10 | Caching Beyond HBM | `src/ch10-beyond-hbm.md` |
-| 11 | Loading and Updating Weights | `src/ch11-loading-weights.md` |
-| 12 | Anatomy of a Model | `src/ch12-anatomy-of-a-model.md` |
-| 13 | Attention Backends | `src/ch13-attention-backends.md` |
-| 14 | Making the Forward Pass Cheap | `src/ch14-cheap-forward-pass.md` |
-| 15 | Tensor, Pipeline, and Data Parallelism | `src/ch15-parallelism.md` |
-| 16 | Mixture-of-Experts and Expert Parallelism | `src/ch16-moe.md` |
-| 17 | Disaggregation and Routing | `src/ch17-disaggregation.md` |
-| 18 | Speculative Decoding | `src/ch18-speculative-decoding.md` |
-| 19 | Shaping and Reading the Output | `src/ch19-shaping-output.md` |
-| 20 | Per-Request Variation: LoRA and Multimodal | `src/ch20-per-request-variation.md` |
-| 21 | Observability and Tuning | `src/ch21-observability.md` |
-| 22 | Extending SGLang | `src/ch22-extending.md` |
+Notation rules the checker enforces:
+- Full paths only — `python/sglang/benchmark/one_batch.py`, not `benchmark/one_batch.py`.
+- A bare backticked path is existence-checked but does **not** rebind continuation context.
+- Casual prose mentions of a file should be unstyled, not backticked.
 
 ## Building locally
 
 ```sh
-# https://github.com/rust-lang/mdBook/releases
-mdbook serve book        # live preview at http://localhost:3000
+mdbook serve book        # live preview
 mdbook build book        # static site into book/output/ (gitignored)
 
-python3 book/scripts/verify_anchors.py    # validate every code anchor
+python3 book/scripts/verify_anchors.py
 ```
 
 ## Open threads
 
-- **Diagrams.** Several chapters lean on one (process topology in Ch. 2, the address
-  translation in Ch. 8, the radix tree evolving in Ch. 9, the overlap timeline in Ch. 4).
-  Decide on a toolchain — inline SVG keeps them theme-aware and diffable; Mermaid needs an
-  mdBook preprocessor.
-- **Anchor linkification.** Anchors are currently inline code. An mdBook preprocessor could
-  turn them into links to GitHub at the pinned SHA, which would make the book far easier
-  to read alongside an editor.
-- **Re-pin cadence.** Pinning to one commit is what keeps the book true, but the pin will
-  age. Decide whether to re-pin per major release or leave it fixed for the book's life.
+- **More diagrams.** Chapters 13, 16, and 18 would each carry one (page tables, expert
+  dispatch, the draft tree).
+- **Re-pin cadence.** Fixed for this edition. Chapters 13, 14, and 18 age fastest.

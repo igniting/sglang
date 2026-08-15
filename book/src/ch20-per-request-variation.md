@@ -3,27 +3,26 @@
 > *Both features break the assumption that every request in a batch needs the same weights
 > and the same kind of input — and both are solved by extending the batch, not splitting it.*
 
----
+Every chapter so far has assumed a batch is homogeneous — same weights, same kind of input,
+one kernel over all of it. That assumption is precisely what makes batching profitable, and
+Chapter 1 established that batching is everything.
 
-## The shared assumption they break
+Two features break it.
 
-Every chapter so far has assumed a batch is homogeneous: same weights, same input type, one
-kernel over all of it. That assumption is what makes batching profitable (Chapter 1).
+Some requests want **different weights**: one is using a summarization adapter, another a
+code adapter, a third the base model. Some requests carry **different input types**: text,
+or three images, or audio.
 
-Two features violate it.
+The obvious response in both cases is to split the batch — group by adapter, group by
+modality, run them separately. That would destroy the thing being protected. With twenty
+adapters you get twenty tiny batches instead of one large one, and the GPU goes back to
+being idle.
 
-**LoRA** — requests want *different weights*. One is using a summarization adapter, another
-a code adapter, a third the base model.
-
-**Multimodal** — requests carry *different input types*. One is text, another has three
-images, a third has audio.
-
-The naive fix in both cases is to split: group by adapter, group by modality, run separate
-batches. That destroys the batching Chapter 1 said was everything — with 20 adapters you get
-20 tiny batches instead of one large one.
-
-So both are solved the same way: **keep one batch, and make the per-request variation a
-tensor the kernel indexes into.** That parallel is why they share a chapter.
+So both are solved the same way instead: keep one batch, and turn the per-request variation
+into a tensor the kernel indexes into. If that sounds familiar, it should — it is the same
+move as the page table in Chapter 8, the sorted expert order in Chapter 16, and the page
+directory passed to the attention kernel in Chapter 13. This chapter is where the pattern
+becomes impossible to miss.
 
 ---
 
@@ -241,3 +240,6 @@ Strip away the specifics and both features have the same structure:
 Both convert what looks like control flow into a data structure the kernel indexes. That is
 the same move as Chapter 8's page table, Chapter 13's `kv_indptr`, and Chapter 16's
 expert-major sort — probably the single most repeated idea in this codebase.
+
+Part VI ends here. You now have the whole engine. Part VII is about living with it: seeing
+what it is doing, and changing what it does.

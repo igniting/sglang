@@ -1,6 +1,6 @@
 [book]
 title = "SGLang Internals"
-description = "Reading a production LLM serving engine: concepts fused with the code that implements them."
+description = "How a production LLM serving engine works, told by following one request through it."
 authors = ["Anshu Avinash"]
 language = "en"
 src = "src"
@@ -9,12 +9,17 @@ src = "src"
 build-dir = "output"
 create-missing = false
 
+# Rewrites `path/to/file.py:123` references into links at the pinned commit.
+[preprocessor.linkify]
+command = "python3 book/scripts/linkify_anchors.py"
+
 [output.html]
-default-theme = "rust"
+default-theme = "light"
 preferred-dark-theme = "navy"
+additional-css = ["theme/custom.css"]
 git-repository-url = "https://github.com/igniting/sglang"
 edit-url-template = "https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/{path}"
-no-section-label = false
+no-section-label = true
 
 [output.html.fold]
 enable = true

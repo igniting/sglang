@@ -3,37 +3,25 @@
 > *Real workloads share long prefixes, and a radix tree over token sequences turns that
 > redundancy into the engine's largest single win. This is SGLang's signature idea.*
 
----
-
-## The observation
-
-Chapter 8 left us with a memory system that can hand out KV slots a page at a time and
-hand them back. It has no memory: two identical prompts arriving a second apart are
+Chapter 8 built a memory system that can hand out KV cache a page at a time and take it
+back. It has no memory of its own: two identical prompts arriving a second apart are
 computed twice, stored twice, and freed twice.
 
-That is a strange thing to accept, because production LLM traffic is not made of
-independent prompts. It is made of prompts that overlap, usually heavily:
+That is a strange thing to accept once you look at real traffic. Production requests are not
+independent — they overlap, usually heavily. A chat turn re-sends the entire conversation. A
+system prompt of several thousand tokens is identical across every request an application
+makes. An agent loop re-sends its whole trajectory on each step, appending one observation.
+In all of these the shared part is a *prefix*, and a prefix is exactly the thing a language
+model computes left to right.
 
-- **A chat turn** re-sends the entire conversation. Turn 12 is turn 11 plus two messages.
-- **A system prompt** — often 500 to 5,000 tokens of instructions and tool schemas — is
-  identical across every request an application makes.
-- **Few-shot prompting** puts the same exemplars in front of every query.
-- **An agent loop** re-sends the full trajectory on each step, appending one observation.
-- **Branching** — sampling *n* completions, or exploring several tool calls — shares
-  everything up to the branch point.
+If the first 4,000 tokens of two requests agree, their first 4,000 KV entries are identical,
+bit for bit. Computing them twice is not an approximation being refined. It is arithmetic
+being repeated.
 
-In all of these the shared part is a *prefix*, and a prefix is exactly the thing an
-autoregressive model computes left to right. If the first 4,000 tokens of two requests
-agree, their first 4,000 KV entries are bit-for-bit identical. Recomputing them is not an
-approximation being refined; it is arithmetic being repeated.
-
-RadixAttention is the mechanism that stops the repetition. The name describes the whole
-design: attention that reads its KV cache out of a radix tree keyed by token sequence.
-
-The chapter's shape follows the data structure. We build the key, then the node, then the
-three operations over them (match, split, insert), then the invariant that keeps the whole
-thing safe under concurrency, then eviction. The scheduler's use of the tree — the part
-that turns a cache into a scheduling policy — closes the chapter.
+RadixAttention is the mechanism that stops the repetition, and the name describes the whole
+design: attention that reads its cache out of a radix tree keyed by token sequence. This
+chapter builds that tree from the key up, then shows the invariant that keeps it safe while
+hundreds of requests read and write it concurrently.
 
 ---
 
@@ -662,6 +650,50 @@ keeps `["2+2"]` out of the candidate set entirely. Only after both tails are fre
 `["what is "]` become a leaf and join the heap, and only after that the system prompt
 itself — exactly the reverse of the order in which the nodes were created, and exactly the
 order that preserves the most reuse per byte freed.
+
+<figure>
+<svg viewBox="0 0 640 330" role="img" aria-label="A radix tree evolving across three requests">
+  <title>The tree after each of three requests</title>
+  <text class="dgm-small" x="90" y="16" text-anchor="middle" font-weight="600">after request A</text>
+  <circle class="dgm-box" cx="90" cy="40" r="9"/>
+  <text class="dgm-small" x="106" y="44">root</text>
+  <path class="dgm-line" d="M90 49 L90 74"/>
+  <rect class="dgm-box" x="20" y="76" width="140" height="26" rx="4"/>
+  <text class="dgm-small" x="90" y="93" text-anchor="middle">S + "what is 2+2"</text>
+  <text class="dgm-small" x="320" y="16" text-anchor="middle" font-weight="600">after request B — a split</text>
+  <circle class="dgm-box" cx="320" cy="40" r="9"/>
+  <path class="dgm-line" d="M320 49 L320 74"/>
+  <rect class="dgm-box-accent" x="256" y="76" width="128" height="26" rx="4"/>
+  <text class="dgm-small" x="320" y="93" text-anchor="middle">S + "what is "</text>
+  <path class="dgm-line" d="M300 102 L272 126"/>
+  <path class="dgm-line" d="M340 102 L368 126"/>
+  <rect class="dgm-box" x="224" y="128" width="76" height="24" rx="4"/>
+  <text class="dgm-small" x="262" y="144" text-anchor="middle">"2+2"</text>
+  <rect class="dgm-box" x="340" y="128" width="76" height="24" rx="4"/>
+  <text class="dgm-small" x="378" y="144" text-anchor="middle">"3+3"</text>
+  <text class="dgm-small" x="540" y="16" text-anchor="middle" font-weight="600">after request C</text>
+  <circle class="dgm-box" cx="540" cy="40" r="9"/>
+  <path class="dgm-line" d="M540 49 L540 68"/>
+  <rect class="dgm-box-accent" x="500" y="70" width="80" height="24" rx="4"/>
+  <text class="dgm-small" x="540" y="86" text-anchor="middle">S</text>
+  <path class="dgm-line" d="M540 94 L540 112"/>
+  <rect class="dgm-box" x="486" y="114" width="108" height="24" rx="4"/>
+  <text class="dgm-small" x="540" y="130" text-anchor="middle">"what is "</text>
+  <path class="dgm-line" d="M520 138 L496 160"/>
+  <path class="dgm-line" d="M560 138 L584 160"/>
+  <rect class="dgm-box" x="458" y="162" width="72" height="24" rx="4"/>
+  <text class="dgm-small" x="494" y="178" text-anchor="middle">"2+2"</text>
+  <rect class="dgm-box" x="552" y="162" width="72" height="24" rx="4"/>
+  <text class="dgm-small" x="588" y="178" text-anchor="middle">"3+3"</text>
+  <line class="dgm-dash" x1="30" y1="216" x2="610" y2="216"/>
+  <text class="dgm-small" x="320" y="242" text-anchor="middle">Nobody planned the node holding the system prompt S. The third request's shape carved it.</text>
+  <text class="dgm-small" x="320" y="262" text-anchor="middle">The tree converges on the branch points of the workload without being told what they are.</text>
+  <text class="dgm-small" x="320" y="292" text-anchor="middle">Eviction runs the other way: leaves first, so "2+2" and "3+3" go before "what is ",</text>
+  <text class="dgm-small" x="320" y="308" text-anchor="middle">and S — shared by everything — goes last.</text>
+</svg>
+<figcaption>Three chat requests sharing a system prompt. Splitting is not a failure mode; it
+is how the tree learns where the workload actually branches.</figcaption>
+</figure>
 
 `pretty_print` (`:585`) will dump this structure from a live server, which is the fastest
 way to check that a workload is sharing what you think it is.

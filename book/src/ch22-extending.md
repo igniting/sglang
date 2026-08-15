@@ -3,6 +3,25 @@
 > *The extension points are the architecture's seams, and walking them is the final check
 > that the reader has understood where the boundaries are.*
 
+Every chapter in this book has pointed at a place where something plugs in. This one
+collects them.
+
+That is the last useful test of whether the preceding chapters landed. The extension points
+are the architecture's seams, and a seam only makes sense once you know what is on both
+sides of it. Adding an attention backend is a short checklist — but only because Chapter 13
+explained what the two-phase contract is protecting. Adding a model is bounded work — but
+only because Chapter 12 showed how little of the work is actually in the model file.
+
+The chapter is ordered by how often people need each one: adding a model, adding a kernel,
+adding an attention backend, porting to new hardware. Each gets the checklist and, more
+usefully, the part that catches people the first time.
+
+It closes on a problem specific to this kind of software. An inference engine's most
+important property — *the model produces correct output* — cannot be checked by unit tests.
+A model with a subtly wrong rotary embedding still produces fluent, plausible text. What the
+project does about that says more about engineering an inference engine than any amount of
+architecture description.
+
 ---
 
 Every chapter has pointed at a place where something plugs in. This chapter collects them,
@@ -204,3 +223,18 @@ before your first patch; each one will otherwise cost you a review cycle.
 That is the engine. Chapter 1 argued that decode is memory-bound and that memory capacity
 limits throughput; every chapter since has been a response to one or the other. The
 appendices collect the reference material.
+
+---
+
+That is the engine.
+
+Chapter 1 made a claim: that generating text is memory-bound, and that memory capacity —
+not arithmetic — decides how many people a GPU can serve. Every chapter since has been a
+response to one half of that sentence or the other. Paged pools and prefix trees and
+hierarchical caching are about the memory. Batching, graphs, quantization, speculation, and
+expert parallelism are about wasting less of the compute that the memory wall leaves idle.
+Disaggregation is about refusing to compromise between them.
+
+None of it is arbitrary, and none of it is finished. The appendices that follow are
+reference material; the code is still moving; and the argument, once you can see it, is the
+part that will still be true when the implementations have changed.

@@ -3,6 +3,25 @@
 > *Extending the cache hierarchy to host memory and disk is a bandwidth arbitrage, and it
 > only pays above a computable prefix length.*
 
+Chapter 9's tree lives entirely in GPU memory, which means it competes for the same scarce
+resource as everything else. A server with 50 GB of KV pool holds perhaps 150,000 cached
+tokens; a busy deployment with long system prompts exhausts that in minutes, and after that
+every eviction is future work being destroyed.
+
+Meanwhile the machine has a terabyte or two of host memory sitting nearly idle, and possibly
+an NVMe array or an object store behind that.
+
+The obvious move is to spill the cold parts of the cache down the hierarchy. The
+non-obvious part is that this is not free, and not always worth doing: loading a cached
+prefix over PCIe competes with simply recomputing it on hardware that is very good at
+prefill. Whether the trade pays is an arithmetic question with a computable answer, and it
+depends on how long the prefix is.
+
+This chapter covers that arbitrage, the tier bookkeeping it requires, and the invariant —
+one rule about which nodes may be backed up — that makes the whole thing coherent. It also
+covers the third tier, where SGLang stops implementing and starts integrating with shared
+KV stores that let a whole cluster behave like one cache.
+
 ---
 
 ## The arbitrage
@@ -232,8 +251,8 @@ unified core makes tiers and pool types compositional instead. Chapter 9's varia
 `python/sglang/srt/mem_cache/mamba_radix_cache.py` — are the same pressure
 from the other direction.
 
-If you are reading this code well after the pinned commit, this is the area most likely to
-have moved.
+Of everything in Part III, this is the area most likely to look different by the time you
+read the code.
 
 ---
 

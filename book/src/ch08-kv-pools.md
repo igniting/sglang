@@ -3,6 +3,23 @@
 > *The engine's central data structure is a two-level indirection, and its shape explains
 > both paged attention and everything Chapter 9 builds on top.*
 
+Part II kept hitting the same wall. The scheduler could not admit requests because memory
+was full; it evicted running requests when it guessed wrong; its priorities depended on a
+cache. Chapter 1 predicted this: memory capacity, not arithmetic, is what limits how many
+people a GPU serves.
+
+This chapter is about how that memory is actually organized — and the organization is more
+interesting than "a big array," because the obvious approach fails badly.
+
+Give each request a contiguous buffer sized for its maximum length and you get two problems.
+A request that could have generated 4,000 tokens but stopped at 100 has reserved forty times
+what it used, and that reservation helps nobody. Worse, two requests with identical prompts
+cannot share anything, because each owns a private buffer.
+
+SGLang's answer is two levels of indirection, and that structure is what makes the rest of
+Part III possible. It is also where `--mem-fraction-static` — the flag people tune first and
+understand last — stops being a percentage and becomes a concrete number of tokens.
+
 ---
 
 ## Two levels, not one
@@ -245,20 +262,41 @@ some of that slack by returning unused capture memory after graphs are built.
 
 Putting both levels together, for token *t* of request *r*:
 
-```
-  r.req_pool_idx                    row in req_to_token       (ReqToTokenPool)
-       │
-       ▼
-  req_to_token[req_pool_idx, t]  =  kv_index                  (level 1)
-       │
-       ▼
-  kv_index // page_size          =  page id                   (allocator)
-  kv_index %  page_size          =  offset within page
-       │
-       ▼
-  k_buffer[layer][kv_index]                                   (level 2)
-  v_buffer[layer][kv_index]
-```
+<figure>
+<svg viewBox="0 0 640 300" role="img" aria-label="Two-level address translation from a request to KV storage">
+  <title>Address translation, request to KV storage</title>
+  <rect class="dgm-box-accent" x="20" y="40" width="130" height="46" rx="5"/>
+  <text class="dgm-label" x="85" y="60" text-anchor="middle">request r</text>
+  <text class="dgm-small" x="85" y="77" text-anchor="middle">req_pool_idx</text>
+  <path class="dgm-line" d="M150 63 L196 63" marker-end="url(#a3)"/>
+  <rect class="dgm-box" x="200" y="26" width="190" height="74" rx="5"/>
+  <text class="dgm-label" x="295" y="46" text-anchor="middle">ReqToTokenPool</text>
+  <text class="dgm-small" x="295" y="66" text-anchor="middle">req_to_token[idx, t]</text>
+  <text class="dgm-small" x="295" y="84" text-anchor="middle">→ kv_index</text>
+  <text class="dgm-small" x="295" y="14" text-anchor="middle">level 1 — where are my tokens?</text>
+  <path class="dgm-line" d="M390 63 L436 63" marker-end="url(#a3)"/>
+  <rect class="dgm-box" x="440" y="26" width="180" height="74" rx="5"/>
+  <text class="dgm-label" x="530" y="50" text-anchor="middle">allocator</text>
+  <text class="dgm-small" x="530" y="70" text-anchor="middle">kv_index ÷ page_size = page</text>
+  <text class="dgm-small" x="530" y="88" text-anchor="middle">kv_index mod page_size = offset</text>
+  <path class="dgm-line" d="M530 100 L530 138" marker-end="url(#a3)"/>
+  <rect class="dgm-box-accent" x="200" y="142" width="420" height="86" rx="5"/>
+  <text class="dgm-small" x="410" y="130" text-anchor="middle">level 2 — where does token index i live?</text>
+  <text class="dgm-label" x="410" y="166" text-anchor="middle">KVCache</text>
+  <text class="dgm-small" x="410" y="188" text-anchor="middle">k_buffer[layer][kv_index]   ·   v_buffer[layer][kv_index]</text>
+  <text class="dgm-small" x="410" y="210" text-anchor="middle">one contiguous tensor pair per layer, indexed by page</text>
+  <text class="dgm-small" x="320" y="262" text-anchor="middle">The indirection is what lets two requests hold the same kv_index at different positions —</text>
+  <text class="dgm-small" x="320" y="278" text-anchor="middle">which is the mechanical precondition for the prefix sharing in Chapter 9.</text>
+  <defs>
+    <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/>
+    </marker>
+  </defs>
+</svg>
+<figcaption>Two levels of indirection. Attention kernels do not walk this chain per token —
+they receive the <code>req_to_token</code> row as a page table and index it inside the
+kernel, which is what "paged attention" names.</figcaption>
+</figure>
 
 Two lookups per token per layer. The attention backends of Chapter 13 do not walk this
 chain per token — they receive the `req_to_token` slice as a *page table* and index it
@@ -267,3 +305,5 @@ inside the kernel, which is what "paged attention" names.
 Every other chapter in this book is spending the resource this chapter allocates. Chapter 5
 budgets it, Chapter 9 shares it, Chapter 10 tiers it, Chapter 14 shrinks it, Chapter 15
 avoids replicating it, and Chapter 17 moves it between machines.
+
+This chapter built a memory system with no memory of its own. Chapter 9 gives it one.

@@ -3,6 +3,27 @@
 > *Prefill and decode want different hardware and different SLOs, so at scale the right move
 > is to stop running them on the same machine.*
 
+Chapter 1 showed that prefill and decode are opposite workloads. Chapter 5 showed the
+scheduler negotiating between them every single iteration, and chunked prefill softening the
+conflict without removing it.
+
+This chapter is about giving up on the negotiation.
+
+Look at what each phase actually wants and every row conflicts: prefill is compute-bound and
+wants large batches; decode is bandwidth-bound and wants many concurrent sequences and a
+huge cache. Prefill is measured on time-to-first-token, decode on the gap between tokens.
+They even want different parallelism layouts. On one machine you must pick a middle setting
+for each and be mediocre at both.
+
+Disaggregation refuses the compromise: separate fleets of prefill and decode instances, each
+configured for its own job, with the KV cache shipped between them over the network. The
+cost is that the shipping is now on the critical path — a 4,000-token prefill produces over
+a gigabyte of cache that has to arrive before the first output token.
+
+The chapter ends one level further out, with the router that decides which instance gets
+each request. That decision turns out to depend on Chapter 9, and the dependence is strong
+enough that routing policy can matter more than any kernel in this book.
+
 ---
 
 ## Why colocation compromises both
@@ -209,21 +230,43 @@ has no reason to touch a GPU, so nothing pulls it toward the Python ecosystem.
 
 ## What a full deployment looks like
 
-```
-                      ┌──────────────────────────┐
-   clients ─────────► │   sgl-model-gateway      │  cache-aware routing
-                      │   (Rust, approx. tree)   │  + service discovery
-                      └───────────┬──────────────┘
-                       ┌──────────┴──────────┐
-                       ▼                     ▼
-              ┌─────────────────┐   ┌─────────────────┐
-              │ Prefill pool    │   │ Decode pool     │
-              │ TP for compute  │   │ DP attn for KV  │
-              │ big batches     │   │ many sequences  │
-              └────────┬────────┘   └─────────────────┘
-                       │  KV transfer (RDMA: Mooncake / NIXL / MoRI)
-                       └───────────────────────►
-```
+<figure>
+<svg viewBox="0 0 640 340" role="img" aria-label="A disaggregated deployment with a cache-aware router in front">
+  <title>A disaggregated deployment</title>
+  <text class="dgm-label" x="320" y="20" text-anchor="middle">clients</text>
+  <path class="dgm-line" d="M320 28 L320 48" marker-end="url(#a4)"/>
+  <rect class="dgm-box-accent" x="170" y="52" width="300" height="62" rx="6"/>
+  <text class="dgm-label" x="320" y="76" text-anchor="middle" font-weight="600">sgl-model-gateway</text>
+  <text class="dgm-small" x="320" y="94" text-anchor="middle">Rust · cache-aware routing over an approximate radix tree</text>
+  <text class="dgm-small" x="320" y="108" text-anchor="middle">· service discovery</text>
+  <path class="dgm-line" d="M250 114 L160 156" marker-end="url(#a4)"/>
+  <path class="dgm-line" d="M390 114 L480 156" marker-end="url(#a4)"/>
+  <rect class="dgm-box" x="40" y="160" width="240" height="96" rx="6"/>
+  <text class="dgm-label" x="160" y="184" text-anchor="middle">Prefill pool</text>
+  <text class="dgm-small" x="160" y="206" text-anchor="middle">compute-bound</text>
+  <text class="dgm-small" x="160" y="222" text-anchor="middle">TP for arithmetic · large batches</text>
+  <text class="dgm-small" x="160" y="240" text-anchor="middle">never decodes</text>
+  <rect class="dgm-box" x="360" y="160" width="240" height="96" rx="6"/>
+  <text class="dgm-label" x="480" y="184" text-anchor="middle">Decode pool</text>
+  <text class="dgm-small" x="480" y="206" text-anchor="middle">bandwidth-bound</text>
+  <text class="dgm-small" x="480" y="222" text-anchor="middle">DP attention · huge KV pool</text>
+  <text class="dgm-small" x="480" y="240" text-anchor="middle">many concurrent sequences</text>
+  <path class="dgm-line-accent" d="M280 208 L356 208" marker-end="url(#a5)"/>
+  <text class="dgm-small" x="318" y="198" text-anchor="middle">KV</text>
+  <text class="dgm-small" x="320" y="288" text-anchor="middle">The cache transfer is RDMA — Mooncake, NIXL, or MoRI — and it is on the critical path:</text>
+  <text class="dgm-small" x="320" y="304" text-anchor="middle">a 4,000-token prefill produces over a gigabyte that must land before the first output token.</text>
+  <defs>
+    <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/>
+    </marker>
+    <marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="dgm-fill-accent"/>
+    </marker>
+  </defs>
+</svg>
+<figcaption>Every box in this picture is a chapter: the pools are Chapter 8, the routing
+tree is Chapter 9, the parallelism choices are Chapters 15 and 16.</figcaption>
+</figure>
 
 Every box is a chapter. The pools are Chapter 8, the routing is Chapter 9, the parallelism
 choices are Chapters 15 and 16, and the transfer is this one.
@@ -233,3 +276,6 @@ request's critical path and a great deal of operational complexity. Below a few 
 that is a bad trade. At the scale the LMSYS blog posts describe — 96 H100s, GB200 racks —
 the prefill/decode conflict is the binding constraint, and removing it is worth more than
 anything else available.
+
+Part V ends here, and with it the story of making the engine bigger. Part VI is about making
+it do more.

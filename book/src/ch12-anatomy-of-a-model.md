@@ -3,29 +3,22 @@
 > *Models are rewritten rather than imported because every layer must cooperate with
 > parallelism, quantization, and the KV cache — and llama.py shows exactly how.*
 
----
+Hugging Face already ships a `LlamaForCausalLM`. SGLang has its own, and so do the other 217
+models in this repository. That duplication needs justifying.
 
-## Why not just import it?
+The justification is that the reference implementation makes four assumptions a serving
+engine cannot accept — about whether weights are whole, whether attention is self-contained,
+whether numbers are dense floats, and whether shapes can change between calls. None of them
+can be patched from outside, because they are properties of every layer.
 
-Hugging Face already has a `LlamaForCausalLM`. SGLang has its own, and so do the other 217
-models in `python/sglang/srt/models/`. That duplication needs justifying, and the
-justification is that the reference implementation makes four assumptions SGLang cannot
-accept.
+This chapter reads the Llama implementation closely enough that you will be able to open any of the other
+217 files and know what you are looking at. It is the most concrete chapter in the book: a
+single file, top to bottom, with the reason for each decision.
 
-**Weights are whole.** HF's `nn.Linear` holds a complete matrix. SGLang's holds a shard,
-and knows how to load its own slice (Chapter 11) and which collective to run around it.
-
-**Attention is self-contained.** HF attention computes K and V and uses them. SGLang's must
-*write* them into Chapter 8's paged pool at positions Chapter 9's tree chose, and read back
-a mixture of cached and new entries through a page table.
-
-**Weights are dense floats.** SGLang layers must accept a `quant_config` and dispatch to a
-quantized kernel (Chapter 14).
-
-**Shapes are dynamic.** CUDA graph capture (Chapter 14) needs static shapes and stable
-buffer addresses.
-
-None of these can be bolted on from outside. They are properties of every layer.
+Watch for one thing in particular. Almost nothing in the file is about caching, sharding,
+quantization, or graph capture, even though all four are happening. They live in the layers
+the model is built from. That is what makes adding a model a bounded task rather than an
+expert one, and it is why Chapter 22's checklist is as short as it is.
 
 ---
 
@@ -262,3 +255,6 @@ Across all three, what stays fixed is the shape of a model file: a config-driven
 constructor, layers from the shared vocabulary, a `forward` taking `forward_batch`, and a
 `load_weights` mapping checkpoint names to sharded parameters. What varies is everything
 else — which is exactly why the abstraction is drawn where it is.
+
+One line of that file has been standing in for the hardest operation in the model. Chapter
+13 goes behind it.

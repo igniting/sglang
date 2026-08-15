@@ -3,6 +3,22 @@
 > *The handoff from Python scheduling objects to GPU tensors is where the mode of the batch
 > starts determining everything downstream.*
 
+A batch has been chosen. Now it has to run.
+
+This chapter covers the handoff from the scheduler's world — Python objects, lists of
+requests, CPU-side bookkeeping — to the GPU's world of tensors and kernels. It is a short
+chapter about a boundary, but the boundary matters more than its size suggests, because
+this is where a single enum starts determining almost everything downstream.
+
+That enum is `ForwardMode`, and it has nine values. Whether the batch is a prefill or a
+decode, whether it is verifying speculative tokens, whether it is a placeholder for a rank
+with no work — every one of those changes which attention kernel runs, whether a CUDA graph
+can be replayed, and how memory is accounted. When you find yourself lost in unfamiliar code
+later in this book, the first useful question is almost always *which modes reach this line*.
+
+We will also meet `ModelRunner`, the object that owns the GPU, and read its initialization
+as what it actually is: a dependency chain that explains most of the ways startup can fail.
+
 ---
 
 ## Mode determines the world
@@ -293,3 +309,6 @@ Four representations for one request in one step. Each exists because its consum
 different subset with different mutability rules — and the rules files in `.claude/rules/`
 exist because keeping those boundaries straight under an overlapping scheduler is where the
 bugs are.
+
+The batch has run. What comes back is logits — not tokens, and certainly not text. Chapter 7
+covers the last leg, and closes Part II.

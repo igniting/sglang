@@ -1,0 +1,530 @@
+/* ==========================================================================
+   SGLang Internals — typography and palette
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Type stack
+
+   Body is a transitional serif: this is long-form prose meant to be read at
+   length, and a serif holds the eye across a paragraph better than a UI sans.
+   Headings are a grotesque, so structure reads as structure and does not blur
+   into the text. Code is a mono with a large x-height and unambiguous
+   0/O/1/l/I, since a mis-read identifier is a real cost here.
+
+   All families are system-resident or common; nothing is fetched over the
+   network, so pages render identically offline and on first paint.
+   -------------------------------------------------------------------------- */
+
+:root {
+  --bk-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter,
+              "Bitstream Charter", "Source Serif 4", Georgia, Cambria, serif;
+  --bk-sans: "Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont,
+             "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --bk-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", "Fira Code",
+             ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --bk-measure: 40rem;      /* ~72 characters at the body size */
+  --bk-body-size: 1.05rem;
+  --bk-leading: 1.72;
+}
+
+/* --------------------------------------------------------------------------
+   Palette — warm paper, ink, and a single accent
+
+   Light is a warm off-white rather than pure #fff: less glare over long
+   sessions, and it lets code blocks sit slightly darker without a border.
+   Dark is a desaturated blue-black, not neutral grey, which keeps syntax
+   colour from looking muddy against it.
+   -------------------------------------------------------------------------- */
+
+.light,
+.rust {
+  --bg: #faf8f5;
+  --fg: #23201c;
+  --sidebar-bg: #f2ede6;
+  --sidebar-fg: #3d3830;
+  --sidebar-non-existant: #a8a096;
+  --sidebar-active: #9a4b1f;
+  --sidebar-spacer: #e0d8cd;
+
+  --scrollbar: #c9bfb2;
+
+  --icons: #8c8378;
+  --icons-hover: #4a443c;
+
+  --links: #9a4b1f;
+
+  --inline-code-color: #8a3d12;
+
+  --theme-popup-bg: #f2ede6;
+  --theme-popup-border: #ddd4c7;
+  --theme-hover: #e6ded2;
+
+  --quote-bg: #f2ede1;
+  --quote-border: #dccfb8;
+
+  --table-border-color: #e2dacd;
+  --table-header-bg: #ece5da;
+  --table-alternate-bg: #f5f1ea;
+
+  --searchbar-border-color: #d8cfc0;
+  --searchbar-bg: #fffdfa;
+  --searchbar-fg: #23201c;
+  --searchbar-shadow-color: #d4cabb;
+  --searchresults-header-fg: #7a7166;
+  --searchresults-border-color: #e2dacd;
+  --searchresults-li-bg: #f2ede6;
+  --search-mark-bg: #e8c48a;
+
+  --bk-rule: #e2dacd;
+  --bk-muted: #6f665b;
+  --bk-code-bg: #f4efe7;
+  --bk-callout-bg: #f3ede2;
+}
+
+.navy,
+.coal,
+.ayu {
+  --bg: #16181d;
+  --fg: #d6d3cd;
+  --sidebar-bg: #1b1e24;
+  --sidebar-fg: #b3afa8;
+  --sidebar-non-existant: #5e6068;
+  --sidebar-active: #e0a35c;
+  --sidebar-spacer: #262a32;
+
+  --scrollbar: #3a3f49;
+
+  --icons: #6d7079;
+  --icons-hover: #b3afa8;
+
+  --links: #e0a35c;
+
+  --inline-code-color: #e3a76f;
+
+  --theme-popup-bg: #1b1e24;
+  --theme-popup-border: #2c313a;
+  --theme-hover: #242830;
+
+  --quote-bg: #1c2027;
+  --quote-border: #333944;
+
+  --table-border-color: #2b2f38;
+  --table-header-bg: #21252c;
+  --table-alternate-bg: #1a1d23;
+
+  --searchbar-border-color: #2c313a;
+  --searchbar-bg: #1b1e24;
+  --searchbar-fg: #d6d3cd;
+  --searchbar-shadow-color: #0e1013;
+  --searchresults-header-fg: #8b8f98;
+  --searchresults-border-color: #2b2f38;
+  --searchresults-li-bg: #1b1e24;
+  --search-mark-bg: #6b5424;
+
+  --bk-rule: #2b2f38;
+  --bk-muted: #93979f;
+  --bk-code-bg: #1b1e24;
+  --bk-callout-bg: #1c2027;
+}
+
+/* --------------------------------------------------------------------------
+   Body text
+   -------------------------------------------------------------------------- */
+
+html {
+  font-family: var(--bk-serif);
+  font-size: 100%;
+}
+
+.content {
+  font-family: var(--bk-serif);
+  font-size: var(--bk-body-size);
+  line-height: var(--bk-leading);
+  hanging-punctuation: first last;
+}
+
+.content main {
+  max-width: var(--bk-measure);
+  margin: 0 auto;
+  padding-bottom: 5rem;
+}
+
+.content p {
+  margin: 0 0 1.15em;
+  text-wrap: pretty;
+}
+
+/* Opening paragraph of a chapter carries slightly more weight, so the eye
+   lands somewhere deliberate. */
+.content h1 + p {
+  font-size: 1.1em;
+  color: var(--fg);
+}
+
+/* --------------------------------------------------------------------------
+   Headings
+   -------------------------------------------------------------------------- */
+
+.content h1,
+.content h2,
+.content h3,
+.content h4,
+.content h5 {
+  font-family: var(--bk-sans);
+  font-weight: 620;
+  letter-spacing: -0.014em;
+  line-height: 1.22;
+  text-wrap: balance;
+}
+
+.content h1 {
+  font-size: 2.05em;
+  margin: 0 0 1.1rem;
+  padding-bottom: 0.5rem;
+  letter-spacing: -0.022em;
+}
+
+.content h2 {
+  font-size: 1.42em;
+  margin: 2.9rem 0 0.9rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--bk-rule);
+}
+
+.content h3 {
+  font-size: 1.13em;
+  margin: 2rem 0 0.7rem;
+}
+
+.content h4 {
+  font-size: 1em;
+  margin: 1.5rem 0 0.5rem;
+  color: var(--bk-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.82em;
+}
+
+/* --------------------------------------------------------------------------
+   The chapter epigraph — the italic line under each title
+   -------------------------------------------------------------------------- */
+
+.content h1 + blockquote {
+  border: none;
+  background: none;
+  margin: 0 0 2.2rem;
+  padding: 0 0 0 1.1rem;
+  border-left: 3px solid var(--links);
+  color: var(--bk-muted);
+  font-size: 1.06em;
+}
+
+.content h1 + blockquote p {
+  margin: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Quotes and callouts
+   -------------------------------------------------------------------------- */
+
+.content blockquote {
+  background: var(--bk-callout-bg);
+  border-left: 3px solid var(--quote-border);
+  border-top: none;
+  border-bottom: none;
+  border-right: none;
+  margin: 1.5rem 0;
+  padding: 0.9rem 1.2rem;
+  font-size: 0.97em;
+}
+
+.content blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Code
+   -------------------------------------------------------------------------- */
+
+.content code,
+.content pre,
+.content kbd {
+  font-family: var(--bk-mono);
+  font-variant-ligatures: none;
+}
+
+.content code {
+  font-size: 0.855em;
+}
+
+/* Inline code: no background box. At this density the boxes stripe the page
+   and fight the prose. Colour alone is enough to mark an identifier. */
+.content :not(pre) > code {
+  background: none;
+  padding: 0;
+  color: var(--inline-code-color);
+  white-space: nowrap;
+}
+
+/* A linkified code anchor. A dotted rule marks it as clickable without
+   turning the paragraph into a field of underlines. */
+.content a > code {
+  color: var(--links);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--links);
+  padding-bottom: 1px;
+}
+
+.content a:hover > code {
+  border-bottom-style: solid;
+}
+
+.content pre {
+  background: var(--bk-code-bg) !important;
+  border: 1px solid var(--bk-rule);
+  border-radius: 5px;
+  padding: 0.9rem 1.05rem;
+  margin: 1.4rem 0;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+
+.content pre code {
+  font-size: 0.83em;
+  white-space: pre;
+  background: none !important;
+  padding: 0;
+  border: none;
+}
+
+/* --------------------------------------------------------------------------
+   Tables
+   -------------------------------------------------------------------------- */
+
+.content table {
+  font-family: var(--bk-sans);
+  font-size: 0.87em;
+  border-collapse: collapse;
+  margin: 1.6rem 0;
+  width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+
+.content table thead th {
+  font-weight: 600;
+  text-align: left;
+  border-bottom: 2px solid var(--bk-rule);
+}
+
+.content table td,
+.content table th {
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-bottom: 1px solid var(--bk-rule);
+}
+
+.content table tbody tr:nth-child(2n) {
+  background: var(--table-alternate-bg);
+}
+
+/* --------------------------------------------------------------------------
+   Lists
+   -------------------------------------------------------------------------- */
+
+.content ul,
+.content ol {
+  padding-left: 1.35rem;
+}
+
+.content li {
+  margin-bottom: 0.45em;
+}
+
+.content li > p {
+  margin-bottom: 0.5em;
+}
+
+/* --------------------------------------------------------------------------
+   Rules
+   -------------------------------------------------------------------------- */
+
+.content hr {
+  border: none;
+  border-top: 1px solid var(--bk-rule);
+  margin: 2.6rem 0;
+}
+
+/* A markdown rule followed by a section heading would draw two lines. */
+.content hr + h2 {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Figures — inline SVG diagrams
+   -------------------------------------------------------------------------- */
+
+.content figure {
+  margin: 2rem 0;
+  text-align: center;
+}
+
+.content figure svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.content figcaption {
+  font-family: var(--bk-sans);
+  font-size: 0.8em;
+  color: var(--bk-muted);
+  margin-top: 0.8rem;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* Diagrams draw with currentColor and these tokens so they follow the theme. */
+.content figure svg {
+  --dgm-ink: var(--fg);
+  --dgm-rule: var(--bk-muted);
+  --dgm-accent: var(--links);
+  --dgm-fill: var(--bk-callout-bg);
+  --dgm-muted: var(--bk-muted);
+}
+
+.content figure svg text {
+  font-family: var(--bk-sans);
+  fill: var(--dgm-ink);
+}
+
+.content figure svg .dgm-label {
+  font-size: 12px;
+}
+
+.content figure svg .dgm-small {
+  font-size: 10.5px;
+  fill: var(--dgm-muted);
+}
+
+.content figure svg .dgm-box {
+  fill: var(--dgm-fill);
+  stroke: var(--dgm-rule);
+  stroke-width: 1.2;
+}
+
+.content figure svg .dgm-box-accent {
+  fill: var(--dgm-fill);
+  stroke: var(--dgm-accent);
+  stroke-width: 1.8;
+}
+
+.content figure svg .dgm-line {
+  stroke: var(--dgm-rule);
+  stroke-width: 1.2;
+  fill: none;
+}
+
+.content figure svg .dgm-line-accent {
+  stroke: var(--dgm-accent);
+  stroke-width: 1.6;
+  fill: none;
+}
+
+.content figure svg .dgm-dash {
+  stroke: var(--dgm-rule);
+  stroke-width: 1.1;
+  stroke-dasharray: 4 3;
+  fill: none;
+}
+
+.content figure svg .dgm-fill-accent {
+  fill: var(--dgm-accent);
+}
+
+.content figure svg .dgm-fill-muted {
+  fill: var(--dgm-rule);
+  opacity: 0.18;
+}
+
+/* --------------------------------------------------------------------------
+   Sidebar
+   -------------------------------------------------------------------------- */
+
+.sidebar {
+  font-family: var(--bk-sans);
+  font-size: 0.845rem;
+}
+
+.sidebar .sidebar-scrollbox {
+  padding: 1.2rem 1rem;
+}
+
+.chapter li.chapter-item {
+  line-height: 1.42;
+  margin: 0.45rem 0;
+}
+
+.chapter li.part-title {
+  font-family: var(--bk-sans);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--bk-muted);
+  margin: 1.8rem 0 0.55rem;
+}
+
+.chapter li.chapter-item a.active {
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   Menu bar and misc chrome
+   -------------------------------------------------------------------------- */
+
+.menu-title {
+  font-family: var(--bk-sans);
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+}
+
+.nav-chapters {
+  font-family: var(--bk-sans);
+}
+
+#searchbar,
+.searchresults-header,
+.searchresult {
+  font-family: var(--bk-sans);
+}
+
+/* --------------------------------------------------------------------------
+   Print
+   -------------------------------------------------------------------------- */
+
+@media print {
+  .content main {
+    max-width: none;
+  }
+  .content h2 {
+    border-top: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Narrow screens
+   -------------------------------------------------------------------------- */
+
+@media only screen and (max-width: 1080px) {
+  :root {
+    --bk-body-size: 1rem;
+  }
+  .content main {
+    padding-left: 1.1rem;
+    padding-right: 1.1rem;
+  }
+}

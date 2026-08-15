@@ -1,73 +1,132 @@
 # SGLang Internals
 
-*Reading a production LLM serving engine.*
-
-> **Status: complete first edition.** All 22 chapters and 6 appendices are written against
-> the pinned commit below, and every code reference is verified in CI.
+*How a production LLM serving engine works, told by following one request through it.*
 
 ---
 
-## The approach
+## What this book is about
 
-Concepts and code are not separated. Each chapter is a single narrative in which an idea
-is introduced and immediately grounded in the code that *is* that idea — the explanation
-of paged KV memory is the walk through `PagedTokenToKVPoolAllocator`, not a preamble to
-it. You should never meet theory you cannot point at.
+Somewhere right now, a person types a question into a chat box and watches words appear
+one at a time. Between their keystroke and those words is a machine doing something
+genuinely difficult: holding a hundred billion numbers in memory, sharing one graphics card
+among several hundred strangers, and deciding — thousands of times a second — whose turn it
+is next.
 
-Each chapter is built from **beats**. A beat is one idea welded to one piece of code.
+This book is about that machine. Specifically it is about **SGLang**, an open-source
+serving engine that runs on more than 400,000 GPUs and moves trillions of tokens a day.
 
-## Where the book descends to CUDA
+It is not a manual. It will not teach you to deploy a server, and it is not organized
+around the tasks you might want to accomplish. It is a book about *how the thing works* —
+the kind of book you read to understand a system rather than to operate one.
 
-Kernels are read, not black-boxed — but only the ones that live in this repository.
+The central claim is that a serving engine is not a collection of clever tricks. It is a
+single sustained argument, and the argument goes like this:
 
-- **Triton kernels** (`python/sglang/kernels/ops/`) are read as source. They are Python,
-  and they are the clearest place to watch paging, masking, and online-softmax
-  accumulation actually happen.
-- **In-repo CUDA/C++** (`python/sglang/kernels/aot/csrc/`, `python/sglang/kernels/jit/csrc/`)
-  is read where it carries an idea the Python cannot show — MoE grouped GEMM, quantized
-  GEMM epilogues, speculative verification.
-- **External kernel libraries** — FlashInfer, FlashAttention — are treated as *contracts*:
-  the book states what they guarantee and what they cost, and does not walk their source.
-  They live in separately versioned repositories (FlashInfer is a pinned dependency with
-  its own bump cadence), so walking them would take on a dependency this book cannot pin.
+> Generating text is **memory-bound**, not compute-bound. The graphics card spends over 99%
+> of its time waiting for weights to arrive from memory rather than multiplying them. The
+> only way to make it efficient is to serve many requests at once so each weight fetch does
+> more work. But every concurrent request needs memory of its own — its *KV cache* — and so
+> **memory capacity, not arithmetic, sets how many people a GPU can serve.**
 
-The practical effect: you should be able to read CUDA at a glance. You are never asked to
-write it.
+Everything else follows. Prefix caching, paged memory, continuous batching, quantization,
+speculative decoding, expert parallelism, prefill/decode disaggregation — every one of them
+is a response to that sentence. Once you can see the argument, the codebase stops looking
+like a pile of features and starts looking like a series of answers to one question.
 
-## Version pinning
+## Who this book is for
 
-Every code reference is pinned to a single commit of the upstream repository:
+You will get the most from it if you can read Python comfortably, know roughly what a
+transformer is, and have at some point wondered what happens after you call an inference
+API.
 
-```
-7562e741e26a4818ee78f1e63140240ec59147c0   (2026-08-15)
-```
+You do **not** need to have worked on inference systems, and you do not need a GPU to read
+it. Some chapters go down to CUDA and Triton kernels; you are expected to read those at a
+glance, never to write them.
 
-References are written as `path:line`, sometimes with a bare `:line` continuation when the
-file is already established in context. A checker (`book/scripts/verify_anchors.py`) runs
-in CI and validates every anchor against the pinned tree — both that the line exists and
-that the symbol named beside it is actually there. If the build is green, the anchors are
-real.
+Three kinds of reader, and what each will find:
 
-SGLang moves quickly. Pinning is what lets a book about it stay true; the tradeoff is that
-the newest features may not appear here.
+**The curious engineer** who uses LLM APIs and wants to know what is behind them. Parts I
+and II are written for you, and they stand alone — you can stop after Chapter 7 with a
+complete picture of a request's life and be glad you did.
 
-## Scope
+**The practitioner** running SGLang in production. Parts III through V explain what your
+configuration flags actually do, and Chapter 21 turns that into a tuning procedure. Chapter
+1 is worth reading first anyway, because most tuning mistakes come from optimizing a
+constraint that was not binding.
 
-The subject is the serving runtime, `python/sglang/srt`, plus the frontend DSL, the kernel
-layer, and the Rust gateway where the request path crosses into them.
+**The contributor** about to change something. Read straight through. Chapter 22 collects
+the extension points, but the chapters before it are what make those seams make sense.
 
-The diffusion stack (`python/sglang/multimodal_gen`) is **out of scope**. It is a large
-parallel system with its own pipelines, schedulers, and caching, and it deserves separate
-treatment rather than a compressed chapter.
+## The journey
 
-## Prerequisites
+The book is a descent. It starts where a request arrives and ends where the electrons are,
+and each part goes one level below the last.
 
-Python and PyTorch. Familiarity with transformer architecture. The ability to read
-CUDA/C++ at a glance — no CUDA is written. GPU access is not required to follow the book,
-though it helps for the performance discussions.
+**Part I — Why any of this exists.** Two chapters. The first establishes the cost model
+above, in enough detail that you can compute it yourself. The second is a tour of the
+machine's shape: four processes, connected by sockets, each doing one job.
+
+**Part II — The life of a request.** Five chapters following one request from an HTTP
+socket to a streamed token. This is the spine of the book. Everything after it is a detour
+off this path, and the book keeps telling you which detour you are on.
+
+**Part III — The scarce resource.** Three chapters on memory, because Part II keeps running
+into it. This is where the book's signature idea lives: *RadixAttention*, which notices
+that real conversations share long prefixes and stores each one only once.
+
+**Part IV — What actually runs.** Four chapters on the model itself — how weights get onto
+the GPU, what a model file looks like, how attention is computed, and the three separate
+techniques that make each forward pass cheaper.
+
+**Part V — When one GPU is not enough.** Three chapters on splitting the work: across the
+chips in a machine, across machines in a rack, and eventually into separate fleets that do
+different halves of the job.
+
+**Part VI — Beyond plain generation.** Three chapters on features that break the
+assumptions the earlier parts relied on — guessing tokens before the model produces them,
+forcing output to match a schema, and serving requests that need different weights or carry
+images.
+
+**Part VII — Living with it.** Two chapters: how the engine reports on itself, and how you
+change it.
+
+Then six appendices: a flag reference, the environment-variable system, a glossary, a map
+of the repository, an annotated startup log, and further reading.
 
 ## How to read it
 
-Part II follows a single request from socket to streamed token, one chapter per stage.
-Everything after it is a labeled detour off that path. If you read Parts I and II in
-order, you can then take the rest in any sequence you like.
+**Read Parts I and II in order.** They are a single argument and a single narrative, and the
+rest of the book assumes both.
+
+**After that, follow your interest.** Every later chapter names its dependencies in its
+opening, and cross-references are specific — "Chapter 9's reference counting," not "as
+discussed earlier."
+
+**Do not try to hold the code in your head.** Code references are links: every
+`path/to/file.py:123` in the text goes to that exact line of SGLang on GitHub. Follow them
+when you want to see more than the excerpt; ignore them when you want the argument. The
+prose is written to stand on its own either way.
+
+**Expect the same idea to recur.** A handful of moves appear over and over — turning
+irregular control flow into an index table, trading memory for compute, hiding one
+resource's latency behind another's work. When you notice a repeat, that is the book
+working.
+
+## A note on what is not here
+
+Code references are pinned to one commit of SGLang, `7562e74` (August 2026). The project
+moves fast, and a book that chased it would be wrong in a different way every month.
+
+What ages well: the cost model of Chapter 1, the process topology of Chapter 2, the request
+path of Part II, and the memory system of Part III. These have been stable for the
+project's life. What ages quickly: specific kernel backends, quantization formats, and
+speculative algorithms — Chapters 13, 14, and 18 name implementations that will change.
+
+The diffusion stack for image and video generation is out of scope. It is a large parallel
+system with its own scheduler and its own caching, and it deserves separate treatment
+rather than a compressed chapter.
+
+---
+
+Chapter 1 begins with a question that sounds simple and is not: why does generating text
+one token at a time waste almost an entire GPU?

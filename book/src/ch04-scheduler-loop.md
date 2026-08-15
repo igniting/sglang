@@ -3,17 +3,25 @@
 > *One synchronous loop owns the GPU and answers one question per iteration — what runs
 > next? Everything else in the engine is input to that question.*
 
----
+Our request has crossed the socket. It is now inside the scheduler process, which is where
+the interesting decisions happen and where most of this book's later chapters will keep
+returning.
 
-## The center of the engine
+The scheduler file is about 5,000 lines, and it is easy to open it and immediately feel lost.
+The useful thing to know before you do is that the loop at its center is roughly thirty
+lines long and does four things: receive requests, decide what to run, run it, and process
+the results. Everything else in the file — and a substantial fraction of the rest of the
+runtime — exists to inform, constrain, or serve those four steps.
 
-`python/sglang/srt/managers/scheduler.py` is about 5,000 lines, and almost every other
-subsystem in this book exists to inform, constrain, or serve the loop inside it. The loop
-is not complicated. What surrounds it is.
+This chapter builds up to that loop in four moves. First the request object the scheduler
+manipulates, which has to remember something for nearly every feature in the engine. Then
+the three different batch types it moves requests between, and why there are three. Then the
+loop in its simple form. Then the same loop rearranged so the CPU is always one step ahead
+of the GPU — the optimization SGLang calls its zero-overhead scheduler, and the reason
+several style rules elsewhere in the codebase exist.
 
-This chapter builds up to that loop in four moves: the request object it schedules, the
-batch objects it moves them between, the simple loop, and then the fast loop as a delta
-against the simple one.
+One decision inside that loop is large enough to need its own chapter, so we will name it
+here and open it in Chapter 5.
 
 ---
 
@@ -310,25 +318,50 @@ work, not by answering a question.
 
 Two decode steps of the overlap loop, with time running down:
 
-```
-   CPU (scheduler process)                GPU
-   ─────────────────────────────────      ─────────────────────────
-t0 recv + process_input_requests
-   get_next_batch_to_run  ──► batch N
-   run_batch(N)  ─────────────────────►   forward N launched
-   result_queue.append(N.copy())          │
-   pop_and_process(N-1)                   │  (running N)
-     ├ append sampled tokens              │
-     ├ check stop conditions              │
-     ├ free KV of finished reqs           │
-     └ stream output                      │
-   launch_batch_sample_if_needed(N)  ─►   │  sample N
-                                          ▼
-t1 recv + process_input_requests          forward N complete
-   get_next_batch_to_run  ──► batch N+1
-   run_batch(N+1)  ───────────────────►   forward N+1 launched
-   pop_and_process(N)                     │  (running N+1)
-```
+<figure>
+<svg viewBox="0 0 640 340" role="img" aria-label="Timeline showing CPU scheduling work hidden behind GPU compute">
+  <title>One iteration of the overlap loop</title>
+  <text class="dgm-label" x="150" y="20" text-anchor="middle" font-weight="600">CPU (scheduler process)</text>
+  <text class="dgm-label" x="470" y="20" text-anchor="middle" font-weight="600">GPU</text>
+  <line class="dgm-dash" x1="320" y1="30" x2="320" y2="300"/>
+  <text class="dgm-small" x="18" y="52">t0</text>
+  <rect class="dgm-box" x="40" y="38" width="250" height="22" rx="3"/>
+  <text class="dgm-small" x="165" y="53" text-anchor="middle">recv + process_input_requests</text>
+  <rect class="dgm-box" x="40" y="66" width="250" height="22" rx="3"/>
+  <text class="dgm-small" x="165" y="81" text-anchor="middle">get_next_batch_to_run → batch N</text>
+  <rect class="dgm-box-accent" x="40" y="94" width="250" height="22" rx="3"/>
+  <text class="dgm-small" x="165" y="109" text-anchor="middle">run_batch(N) — launch</text>
+  <path class="dgm-line-accent" d="M290 105 L400 105" marker-end="url(#a2)"/>
+  <rect class="dgm-box-accent" x="404" y="94" width="180" height="130" rx="5"/>
+  <text class="dgm-label" x="494" y="122" text-anchor="middle">forward N</text>
+  <text class="dgm-small" x="494" y="142" text-anchor="middle">80 layers</text>
+  <text class="dgm-small" x="494" y="158" text-anchor="middle">attention + GEMMs</text>
+  <text class="dgm-small" x="494" y="182" text-anchor="middle">the CPU column at left</text>
+  <text class="dgm-small" x="494" y="196" text-anchor="middle">runs entirely inside</text>
+  <text class="dgm-small" x="494" y="210" text-anchor="middle">this box</text>
+  <rect class="dgm-box" x="40" y="126" width="250" height="86" rx="3" style="fill:var(--dgm-fill)"/>
+  <text class="dgm-small" x="52" y="144">pop_and_process(N−1):</text>
+  <text class="dgm-small" x="64" y="160">append sampled tokens</text>
+  <text class="dgm-small" x="64" y="176">check stop conditions</text>
+  <text class="dgm-small" x="64" y="192">free KV of finished requests</text>
+  <text class="dgm-small" x="64" y="208">stream output</text>
+  <rect class="dgm-box" x="40" y="218" width="250" height="22" rx="3"/>
+  <text class="dgm-small" x="165" y="233" text-anchor="middle">launch_batch_sample_if_needed(N)</text>
+  <text class="dgm-small" x="18" y="262">t1</text>
+  <line class="dgm-line" x1="40" y1="250" x2="584" y2="250"/>
+  <rect class="dgm-box" x="40" y="258" width="250" height="22" rx="3"/>
+  <text class="dgm-small" x="165" y="273" text-anchor="middle">… and again for batch N+1</text>
+  <text class="dgm-small" x="320" y="312" text-anchor="middle">In the non-overlapped loop, the shaded block sits between two forwards and the GPU waits.</text>
+  <defs>
+    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" class="dgm-fill-accent"/>
+    </marker>
+  </defs>
+</svg>
+<figcaption>Two decode steps of <code>event_loop_overlap</code>. Result processing for step
+N−1 happens while step N is still on the GPU, so the CPU work costs nothing in wall-clock
+time.</figcaption>
+</figure>
 
 The CPU work in the shaded middle — result processing, stop checking, KV freeing, output
 streaming — is entirely hidden behind GPU compute. In `event_loop_normal` all of it sits

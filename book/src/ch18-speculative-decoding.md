@@ -3,6 +3,27 @@
 > *Verifying k tokens costs nearly what generating one costs, so the only question is how
 > good a draft you can produce cheaply.*
 
+Return to the uncomfortable fact from Chapter 1: during decode, a GPU's arithmetic units are
+idle more than 99% of the time. All that silicon is sitting there while the memory bus does
+the actual work.
+
+Speculative decoding is the idea of spending it.
+
+The observation is simple once stated. Running the model on five tokens costs almost exactly
+what running it on one costs, because the weights get read once either way and the extra
+arithmetic lands on units that were idle. So if something cheap could *guess* the next five
+tokens, the real model could check all five in a single pass and keep however many were
+right.
+
+What makes this more than a heuristic is the acceptance rule. It is a rejection-sampling
+argument, and it guarantees the output distribution is identical to what the model would
+have produced alone. A wrong guess costs wasted compute — never a wrong token.
+
+The cost is paid elsewhere, and this chapter is largely about where. Speculation reaches
+into memory pools, scheduling budgets, forward modes, CUDA graphs, the radix cache, and
+grammar state. Almost nothing in the engine is untouched by it, which is why it comes this
+late in the book.
+
 ---
 
 ## The bandwidth argument
@@ -279,3 +300,6 @@ The parameters that matter are `--speculative-num-steps` (depth),
 `--speculative-eagle-topk` (width), and `--speculative-num-draft-tokens` (total verified) —
 and the number to watch is accepted length per step, because if it is not comfortably above
 1, speculation is costing you.
+
+Speculation changes *how many* tokens the engine produces per step. Chapter 19 changes
+*which* tokens it is allowed to produce at all.

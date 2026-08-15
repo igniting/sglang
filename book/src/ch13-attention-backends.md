@@ -3,21 +3,23 @@
 > *Attention is pluggable because hardware, sequence shape, and kernel maturity all vary
 > independently — and the plug is a two-phase metadata/kernel contract.*
 
----
+Chapter 12 ended with a single line in a model file: `self.attn = RadixAttention(...)`.
+Behind that line is the most heavily optimized operation in machine learning, and there is
+no single best implementation of it.
 
-## Why pluggable at all
-
-Chapter 12 ended with `RadixAttention` — one line in a model file. Behind that line is the
-most-optimized operation in the field, and there is no single best implementation of it.
-
-The variation is along four independent axes. **Hardware**: NVIDIA, AMD, Intel, Ascend,
-TPU, CPU. **Sequence shape**: a 100k-token prefill and a batch-256 single-token decode are
-different problems. **Attention variant**: MHA, GQA, MQA, MLA, sparse, sliding-window,
-linear. And **maturity**: a new kernel library ships a fast path for one case before it
-covers the rest.
+The variation runs along four independent axes. Hardware — NVIDIA, AMD, Intel, Ascend, TPU,
+CPU. Sequence shape — a 100,000-token prefill and a batch-256 single-token decode are
+different problems wearing the same name. Attention variant — standard, grouped-query,
+DeepSeek's compressed latent form, sparse, sliding-window, or not attention at all. And
+maturity, because a new kernel library ships a fast path for one case long before it covers
+the rest.
 
 The product of those axes is a matrix no single kernel fills. So SGLang defines a contract
-and lets implementations compete.
+and lets implementations compete for each cell.
+
+This is also where the book first goes below the PyTorch line. The Triton kernels are
+Python, and reading one is the clearest way to see what "paged attention" actually means:
+not a metaphor, but an address computation performed inside the inner loop.
 
 ---
 

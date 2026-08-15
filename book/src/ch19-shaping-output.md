@@ -3,24 +3,25 @@
 > *Constraining generation and parsing generation are the same problem seen from two sides,
 > and both are made hard by streaming.*
 
----
+An application calling a tool needs structured output: JSON matching a schema, a function
+name with typed arguments. There are two ways to get it, and they are usually treated as
+separate features.
 
-## Two halves of one problem
-
-An application that calls a tool needs structured output — JSON matching a schema, a
-function name with typed arguments. There are two ways to get it.
-
-**Constrain**: at each step, mask out every token that would violate the structure, so the
-model cannot produce invalid output. **Parse**: let the model generate freely and interpret
+**Constrain** the model: at each step, mask out every token that would break the structure,
+so invalid output is impossible. **Parse** the model: let it generate freely and interpret
 what comes out.
 
-They are usually treated as separate features. They are the same problem: both require a
-model of the valid output space, and both are hard for the same reason — **you must decide
-incrementally, before the output is complete.** A constrainer must mask token *n* without
-seeing token *n+1*; a streaming parser must decide whether text is a tool call before the
-call is finished.
+This chapter covers both, because they are the same problem seen from opposite sides. Both
+need a model of the valid output space, and both are hard for the same reason — **the
+decision must be made incrementally, before the output is complete.** A constrainer must
+mask token *n* without seeing token *n+1*. A streaming parser must decide whether text is a
+tool call before the call has finished arriving.
 
-This chapter covers both, and ends where they converge.
+They are also converging, and the chapter ends at the point where they meet.
+
+Along the way: why compiling a grammar is harder than it sounds (grammars are defined over
+characters, models emit tokens, and those do not line up), and the trick where the engine
+skips the forward pass entirely for tokens the grammar has already determined.
 
 ---
 
@@ -261,3 +262,6 @@ Against that, jump-forward decoding can *save* more than masking costs on schema
 output, since structural tokens are emitted without a forward pass. For JSON with short
 values, constrained generation can be net faster than unconstrained — the one place in this
 book where adding a correctness guarantee also makes things quicker.
+
+Chapter 20 takes the last of the assumptions this part exists to break — that every request
+in a batch wants the same weights, and the same kind of input.

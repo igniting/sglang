@@ -3,6 +3,30 @@
 > *Turning hidden states into user-visible text is three separate hard problems that happen
 > to sit next to each other.*
 
+The model has produced logits. That is not a token, and a token is not text, and text on a
+GPU is not text in front of a reader.
+
+This chapter closes the loop of Part II by covering the three stages that remain. They sit
+next to each other in the pipeline and are often described together, but they are genuinely
+separate problems, each hard in its own way.
+
+Turning hidden states into logits is a *cost* problem: running the vocabulary projection on
+every position of a 2,000-token prompt would cost more than several transformer layers, so
+the engine has to know which positions matter — and the answer changes depending on features
+introduced in later chapters.
+
+Sampling is a *batching* problem: every request in the batch asked for different
+temperature, different top-p, different penalties, and they all have to be applied in one
+pass.
+
+Detokenization is a *correctness* problem, and the least appreciated of the three. You
+cannot simply decode the newest token and append it, and the reasons why involve both how
+tokenizers work and how UTF-8 works.
+
+Along the way we take a detour into a question that surprises people: why the same prompt
+with temperature zero can produce different output on different runs, and what it costs to
+make that stop.
+
 ---
 
 Chapter 6 ended with `ModelRunnerOutput` carrying logits. Getting from there to a token

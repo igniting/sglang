@@ -3,6 +3,28 @@
 > *Quantization attacks bytes moved, CUDA graphs attack launch overhead, and compilation
 > attacks kernel count — three independent taxes on the same forward pass.*
 
+Three separate taxes are levied on every forward pass, and this chapter is about the three
+techniques that attack them.
+
+They are usually discussed together, which obscures the important fact that they are
+unrelated. **Quantization** attacks bytes moved from memory. **CUDA graphs** attack CPU time
+spent launching kernels. **Compilation** attacks the number of kernels there are to launch.
+Because they attack different things, they compose — and because they attack different
+things, once you have fixed the binding one, the others may buy you nothing.
+
+Chapter 1 established that decode is memory-bound: the GPU spends its time moving weights,
+not multiplying them. Quantization is the direct attack on that, and it applies independently
+to three targets — weights, activations, and the KV cache — with different costs and
+different failure modes for each.
+
+The second tax is less obvious and often larger than people expect. A 70B model runs roughly
+a thousand kernels per forward pass, and in decode each may execute for only twenty
+microseconds. At that granularity the *CPU* becomes the bottleneck, and the fix is to stop
+launching kernels one at a time.
+
+By the end you will know which tax you are paying, which is the question Chapter 21 turns
+into a procedure.
+
 ---
 
 Chapter 1 established that decode is memory-bound: the GPU spends its time moving weights,
@@ -280,3 +302,6 @@ compilation is slow and paying it on every server start is not viable.
 The gains are not additive, because they attack different bottlenecks: once graphs remove
 the launch gap, further launch reduction buys nothing. The right order is to find which tax
 you are actually paying — Chapter 21's profiling — before spending effort on the others.
+
+Part IV assumed throughout that the model fits on one GPU. Part V is what happens when it
+does not.

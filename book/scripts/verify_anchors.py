@@ -145,8 +145,9 @@ def main() -> int:
         text = doc.read_text()
         rel = doc.relative_to(repo_root)
         for path, line, symbol, offset in extract_anchors(text):
-            # The book's own files are not part of the pinned upstream tree.
-            if path.startswith("book/"):
+            # The book's own files are not part of the pinned upstream tree, and
+            # `path/to/file.py` is a documentation placeholder, not a reference.
+            if path.startswith("book/") or path.startswith("path/to/"):
                 continue
             checked += 1
             where = f"{rel}:{line_number_of(text, offset)}"
