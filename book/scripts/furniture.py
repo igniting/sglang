@@ -260,8 +260,11 @@ CHAPTERS: dict[str, dict] = {
             "Reference counting is the invariant that makes it safe: a node in use by a running request cannot be evicted.",
             "Eviction runs leaf-first, so the most-shared prefixes survive longest — which is LRU with the tree's structure as the tiebreak.",
         ],
-        numbers=[("Position of prefix caching among optimizations",
-                  "the only one that removes work rather than moving it")],
+        numbers=[
+            ("Shared prefix, Chapter 1's deployment", "1,800 of 2,550 tokens"),
+            ("Cache that duplicating it would cost", "105 GB of 150 GB"),
+            ("Concurrency once it is shared once", "192 → far more"),
+        ],
         lives_in=[
             ("The tree", "python/sglang/srt/mem_cache/radix_cache.py"),
             ("Where requests meet it", "python/sglang/srt/managers/schedule_batch.py"),
@@ -558,7 +561,10 @@ CHAPTERS: dict[str, dict] = {
             "So compare early rather than late, compare distributions rather than tokens, and trust accuracy evaluations over unit tests.",
             "A model that loads and produces fluent nonsense is almost always the weight mapping.",
         ],
-        numbers=[("Model files in the tree", "218")],
+        numbers=[
+            ("Model files in the tree", "218"),
+            ("The one test that catches a wrong model", "an accuracy eval, not a unit test"),
+        ],
         lives_in=[
             ("Attention registry", "python/sglang/srt/layers/attention/attention_registry.py"),
             ("Kernel registry", "python/sglang/kernels/registry.py"),
