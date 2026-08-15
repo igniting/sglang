@@ -652,47 +652,49 @@ itself — exactly the reverse of the order in which the nodes were created, and
 order that preserves the most reuse per byte freed.
 
 <figure>
-<svg viewBox="0 0 640 330" role="img" aria-label="A radix tree evolving across three requests">
-  <title>The tree after each of three requests</title>
-  <text class="dgm-small" x="90" y="16" text-anchor="middle" font-weight="600">after request A</text>
-  <circle class="dgm-box" cx="90" cy="40" r="9"/>
-  <text class="dgm-small" x="106" y="44">root</text>
-  <path class="dgm-line" d="M90 49 L90 74"/>
-  <rect class="dgm-box" x="20" y="76" width="140" height="26" rx="4"/>
-  <text class="dgm-small" x="90" y="93" text-anchor="middle">S + "what is 2+2"</text>
-  <text class="dgm-small" x="320" y="16" text-anchor="middle" font-weight="600">after request B — a split</text>
-  <circle class="dgm-box" cx="320" cy="40" r="9"/>
-  <path class="dgm-line" d="M320 49 L320 74"/>
-  <rect class="dgm-box-accent" x="256" y="76" width="128" height="26" rx="4"/>
-  <text class="dgm-small" x="320" y="93" text-anchor="middle">S + "what is "</text>
-  <path class="dgm-line" d="M300 102 L272 126"/>
-  <path class="dgm-line" d="M340 102 L368 126"/>
-  <rect class="dgm-box" x="224" y="128" width="76" height="24" rx="4"/>
-  <text class="dgm-small" x="262" y="144" text-anchor="middle">"2+2"</text>
-  <rect class="dgm-box" x="340" y="128" width="76" height="24" rx="4"/>
-  <text class="dgm-small" x="378" y="144" text-anchor="middle">"3+3"</text>
-  <text class="dgm-small" x="540" y="16" text-anchor="middle" font-weight="600">after request C</text>
-  <circle class="dgm-box" cx="540" cy="40" r="9"/>
-  <path class="dgm-line" d="M540 49 L540 68"/>
-  <rect class="dgm-box-accent" x="500" y="70" width="80" height="24" rx="4"/>
-  <text class="dgm-small" x="540" y="86" text-anchor="middle">S</text>
-  <path class="dgm-line" d="M540 94 L540 112"/>
-  <rect class="dgm-box" x="486" y="114" width="108" height="24" rx="4"/>
-  <text class="dgm-small" x="540" y="130" text-anchor="middle">"what is "</text>
-  <path class="dgm-line" d="M520 138 L496 160"/>
-  <path class="dgm-line" d="M560 138 L584 160"/>
-  <rect class="dgm-box" x="458" y="162" width="72" height="24" rx="4"/>
-  <text class="dgm-small" x="494" y="178" text-anchor="middle">"2+2"</text>
-  <rect class="dgm-box" x="552" y="162" width="72" height="24" rx="4"/>
-  <text class="dgm-small" x="588" y="178" text-anchor="middle">"3+3"</text>
-  <line class="dgm-dash" x1="30" y1="216" x2="610" y2="216"/>
-  <text class="dgm-small" x="320" y="242" text-anchor="middle">Nobody planned the node holding the system prompt S. The third request's shape carved it.</text>
-  <text class="dgm-small" x="320" y="262" text-anchor="middle">The tree converges on the branch points of the workload without being told what they are.</text>
-  <text class="dgm-small" x="320" y="292" text-anchor="middle">Eviction runs the other way: leaves first, so "2+2" and "3+3" go before "what is ",</text>
-  <text class="dgm-small" x="320" y="308" text-anchor="middle">and S — shared by everything — goes last.</text>
+<svg viewBox="0 0 700 364" role="img" aria-label="A radix tree evolving as three chat requests share a system prompt">
+<title>The radix tree after each of three requests</title>
+<rect class="dgm-box" x="28.0" y="92" width="180" height="28" rx="6"/>
+<text class="dgm-small" x="118.0" y="110.4" text-anchor="middle" style="font-size:11.0px">S + “what is 2+2”</text>
+<rect class="dgm-box-accent" x="274.0" y="92" width="152" height="28" rx="6"/>
+<text class="dgm-small" x="350.0" y="110.4" text-anchor="middle" style="font-size:11.0px">S + “what is ”</text>
+<rect class="dgm-box" x="252.0" y="148" width="76" height="28" rx="6"/>
+<text class="dgm-small" x="290.0" y="166.4" text-anchor="middle" style="font-size:11.0px">“2+2”</text>
+<rect class="dgm-box" x="346.0" y="148" width="76" height="28" rx="6"/>
+<text class="dgm-small" x="384.0" y="166.4" text-anchor="middle" style="font-size:11.0px">“3+3”</text>
+<rect class="dgm-box-accent" x="544.0" y="92" width="76" height="28" rx="6"/>
+<text class="dgm-small" x="582.0" y="110.4" text-anchor="middle" style="font-size:11.0px">S</text>
+<rect class="dgm-box-accent" x="521.0" y="148" width="122" height="28" rx="6"/>
+<text class="dgm-small" x="582.0" y="166.4" text-anchor="middle" style="font-size:11.0px">“what is ”</text>
+<rect class="dgm-box" x="500.0" y="204" width="76" height="28" rx="6"/>
+<text class="dgm-small" x="538.0" y="222.4" text-anchor="middle" style="font-size:11.0px">“2+2”</text>
+<rect class="dgm-box" x="594.0" y="204" width="76" height="28" rx="6"/>
+<text class="dgm-small" x="632.0" y="222.4" text-anchor="middle" style="font-size:11.0px">“3+3”</text>
+<text class="dgm-label" x="118" y="34" text-anchor="middle" font-weight="600" style="font-size:11.5px">after request A</text>
+<circle class="dgm-box" cx="118" cy="56" r="9"/>
+<text class="dgm-small" x="134" y="60" text-anchor="start" style="font-size:10.5px">root</text>
+<path class="dgm-line" d="M118 65 L118 92"/>
+<text class="dgm-label" x="350" y="34" text-anchor="middle" font-weight="600" style="font-size:11.5px">after request B — split</text>
+<circle class="dgm-box" cx="350" cy="56" r="9"/>
+<path class="dgm-line" d="M350 65 L350 92"/>
+<path class="dgm-line" d="M340 120 L290 148"/>
+<path class="dgm-line" d="M360 120 L384 148"/>
+<text class="dgm-label" x="582" y="34" text-anchor="middle" font-weight="600" style="font-size:11.5px">after request C</text>
+<circle class="dgm-box" cx="582" cy="56" r="9"/>
+<path class="dgm-line" d="M582 65 L582 92"/>
+<path class="dgm-line" d="M582 120 L582 148"/>
+<path class="dgm-line" d="M572 176 L538 204"/>
+<path class="dgm-line" d="M592 176 L632 204"/>
+<path class="dgm-dash" d="M234 20 L234 246"/>
+<path class="dgm-dash" d="M466 20 L466 246"/>
+<path class="dgm-dash" d="M20 264 L680 264"/>
+<text class="dgm-small" x="350.0" y="290" text-anchor="middle" style="font-size:11.5px">Nobody planned the node holding the system prompt S — the third request's shape carved it.</text>
+<text class="dgm-small" x="350.0" y="308" text-anchor="middle" style="font-size:11.5px">The tree finds the workload's branch points without being told what they are.</text>
+<text class="dgm-small" x="350.0" y="334" text-anchor="middle" style="font-size:11.5px">Eviction runs the other way, leaves first: the tails go before “what is ”, and S —</text>
+<text class="dgm-small" x="350.0" y="352" text-anchor="middle" style="font-size:11.5px">shared by everything — goes last.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
 </svg>
-<figcaption>Three chat requests sharing a system prompt. Splitting is not a failure mode; it
-is how the tree learns where the workload actually branches.</figcaption>
+<figcaption>Splitting is not a failure mode; it is how the tree learns where the workload actually branches.</figcaption>
 </figure>
 
 `pretty_print` (`:585`) will dump this structure from a live server, which is the fastest

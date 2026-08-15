@@ -42,12 +42,34 @@ Verify with a headless measurement, not by eye: body should compute to 19px, the
 
 ## Diagrams
 
-Inline SVG, hand-written, drawing with the page's colour tokens so one copy serves both
-themes. Five so far: process topology (Ch. 2), the overlap timeline (Ch. 4), address
-translation (Ch. 8), the radix tree evolving (Ch. 9), a disaggregated deployment (Ch. 17).
+Inline SVG, **generated** by `scripts/diagrams.py` — never hand-edited. Hand-placed
+coordinates produced overlapping boxes, text spilling past its container, and (in the first
+edition of the Ch. 2 figure) an arrow routed straight through another node. Figures are now
+declared as boxes plus connections, and the geometry is checked before anything is written:
+text fits its box, boxes do not overlap, everything is inside the viewBox.
+
+Seven figures: process topology (Ch. 2), the overlap timeline (Ch. 4), address translation
+(Ch. 8), the radix tree evolving (Ch. 9), what a paged attention kernel receives (Ch. 13),
+a disaggregated deployment (Ch. 17), the draft tree (Ch. 18). To add one, write a builder,
+register it in `FIGURES`, and drop `<!-- FIGURE -->` where it belongs in the chapter.
+
+Two conventions make the checks mean something:
+
+- **viewBox width is 700**, matching `--bk-measure`, so figures render 1:1 in the text
+  column and the declared font sizes are the rendered font sizes.
+- **font sizes are emitted inline**, so a stylesheet rule cannot silently contradict the
+  model the generator validated against.
+
+`scripts/check_diagrams.mjs` re-runs the same checks in headless Chromium against real
+`getBBox()` metrics, in both themes, and writes a screenshot of every figure:
+
+```sh
+CHROMIUM_PATH=/path/to/chromium node book/scripts/check_diagrams.mjs /tmp/figures
+```
 
 **Gotcha:** CommonMark terminates an HTML block at a blank line, so a `<figure>` block must
-contain none — otherwise everything after the first gap renders as escaped text.
+contain none — otherwise everything after the first gap renders as escaped text. `figure()`
+asserts this.
 
 ## Anchors
 
@@ -75,6 +97,5 @@ python3 book/scripts/verify_anchors.py
 
 ## Open threads
 
-- **More diagrams.** Chapters 13, 16, and 18 would each carry one (page tables, expert
-  dispatch, the draft tree).
+- **More diagrams.** Chapter 16 would carry one (expert dispatch across ranks).
 - **Re-pin cadence.** Fixed for this edition. Chapters 13, 14, and 18 age fastest.

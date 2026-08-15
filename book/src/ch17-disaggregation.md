@@ -231,41 +231,35 @@ has no reason to touch a GPU, so nothing pulls it toward the Python ecosystem.
 ## What a full deployment looks like
 
 <figure>
-<svg viewBox="0 0 640 340" role="img" aria-label="A disaggregated deployment with a cache-aware router in front">
-  <title>A disaggregated deployment</title>
-  <text class="dgm-label" x="320" y="20" text-anchor="middle">clients</text>
-  <path class="dgm-line" d="M320 28 L320 48" marker-end="url(#a4)"/>
-  <rect class="dgm-box-accent" x="170" y="52" width="300" height="62" rx="6"/>
-  <text class="dgm-label" x="320" y="76" text-anchor="middle" font-weight="600">sgl-model-gateway</text>
-  <text class="dgm-small" x="320" y="94" text-anchor="middle">Rust · cache-aware routing over an approximate radix tree</text>
-  <text class="dgm-small" x="320" y="108" text-anchor="middle">· service discovery</text>
-  <path class="dgm-line" d="M250 114 L160 156" marker-end="url(#a4)"/>
-  <path class="dgm-line" d="M390 114 L480 156" marker-end="url(#a4)"/>
-  <rect class="dgm-box" x="40" y="160" width="240" height="96" rx="6"/>
-  <text class="dgm-label" x="160" y="184" text-anchor="middle">Prefill pool</text>
-  <text class="dgm-small" x="160" y="206" text-anchor="middle">compute-bound</text>
-  <text class="dgm-small" x="160" y="222" text-anchor="middle">TP for arithmetic · large batches</text>
-  <text class="dgm-small" x="160" y="240" text-anchor="middle">never decodes</text>
-  <rect class="dgm-box" x="360" y="160" width="240" height="96" rx="6"/>
-  <text class="dgm-label" x="480" y="184" text-anchor="middle">Decode pool</text>
-  <text class="dgm-small" x="480" y="206" text-anchor="middle">bandwidth-bound</text>
-  <text class="dgm-small" x="480" y="222" text-anchor="middle">DP attention · huge KV pool</text>
-  <text class="dgm-small" x="480" y="240" text-anchor="middle">many concurrent sequences</text>
-  <path class="dgm-line-accent" d="M280 208 L356 208" marker-end="url(#a5)"/>
-  <text class="dgm-small" x="318" y="198" text-anchor="middle">KV</text>
-  <text class="dgm-small" x="320" y="288" text-anchor="middle">The cache transfer is RDMA — Mooncake, NIXL, or MoRI — and it is on the critical path:</text>
-  <text class="dgm-small" x="320" y="304" text-anchor="middle">a 4,000-token prefill produces over a gigabyte that must land before the first output token.</text>
-  <defs>
-    <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/>
-    </marker>
-    <marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" class="dgm-fill-accent"/>
-    </marker>
-  </defs>
+<svg viewBox="0 0 700 356" role="img" aria-label="A cache-aware router in front of separate prefill and decode pools">
+<title>A disaggregated deployment</title>
+<rect class="dgm-box-accent" x="160" y="52" width="380" height="68" rx="6"/>
+<text class="dgm-label" x="350.0" y="72.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">sgl-model-gateway</text>
+<text class="dgm-small" x="350.0" y="90.4" text-anchor="middle" style="font-size:11.5px">Rust · cache-aware routing over an approximate</text>
+<text class="dgm-small" x="350.0" y="108.4" text-anchor="middle" style="font-size:11.5px">radix tree · service discovery · PD-aware placement</text>
+<rect class="dgm-box" x="20" y="180" width="290" height="96" rx="6"/>
+<text class="dgm-label" x="165.0" y="205.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">Prefill pool</text>
+<text class="dgm-small" x="165.0" y="223.4" text-anchor="middle" style="font-size:11.5px">compute-bound · large batches</text>
+<text class="dgm-small" x="165.0" y="241.4" text-anchor="middle" style="font-size:11.5px">TP for arithmetic throughput</text>
+<text class="dgm-small" x="165.0" y="259.4" text-anchor="middle" style="font-size:11.5px">never runs a decode step</text>
+<rect class="dgm-box" x="390" y="180" width="290" height="96" rx="6"/>
+<text class="dgm-label" x="535.0" y="205.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">Decode pool</text>
+<text class="dgm-small" x="535.0" y="223.4" text-anchor="middle" style="font-size:11.5px">bandwidth-bound · many sequences</text>
+<text class="dgm-small" x="535.0" y="241.4" text-anchor="middle" style="font-size:11.5px">DP attention · large KV pool</text>
+<text class="dgm-small" x="535.0" y="259.4" text-anchor="middle" style="font-size:11.5px">receives cache, never prefills</text>
+<text class="dgm-label" x="350.0" y="30" text-anchor="middle" font-weight="600" style="font-size:13px">clients</text>
+<path class="dgm-line" d="M350.0 36 L350.0 46" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M260.0 120 L260.0 152 L165.0 152 L165.0 174" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M440.0 120 L440.0 152 L535.0 152 L535.0 174" marker-end="url(#arrow)"/>
+<path class="dgm-line-accent" d="M310 228.0 L384 228.0" marker-end="url(#arrow-accent)"/>
+<text class="dgm-small" x="350" y="216.0" text-anchor="middle" style="font-size:11.5px">KV cache</text>
+<text class="dgm-small" x="350" y="250.0" text-anchor="middle" style="font-size:11.5px">RDMA</text>
+<text class="dgm-small" x="350.0" y="306" text-anchor="middle" style="font-size:11.5px">The transfer sits on the critical path: a 4,000-token prefill produces over a gigabyte</text>
+<text class="dgm-small" x="350.0" y="324" text-anchor="middle" style="font-size:11.5px">of cache that must land before the decode pool can emit a first token.</text>
+<text class="dgm-small" x="350.0" y="348" text-anchor="middle" style="font-size:11.5px">Every box here is a chapter — pools (8), routing tree (9), parallelism (15, 16).</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
 </svg>
-<figcaption>Every box in this picture is a chapter: the pools are Chapter 8, the routing
-tree is Chapter 9, the parallelism choices are Chapters 15 and 16.</figcaption>
+<figcaption>Prefill and decode want opposite hardware and opposite parallelism. Disaggregation stops asking one machine to be good at both.</figcaption>
 </figure>
 
 Every box is a chapter. The pools are Chapter 8, the routing is Chapter 9, the parallelism

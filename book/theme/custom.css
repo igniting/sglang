@@ -402,13 +402,23 @@ body {
   fill: var(--dgm-ink);
 }
 
+/* Sizes are emitted inline by scripts/diagrams.py, which validates the layout
+   against them; these are only a fallback. */
 .content figure svg .dgm-label {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .content figure svg .dgm-small {
-  font-size: 10.5px;
+  font-size: 11.5px;
   fill: var(--dgm-muted);
+}
+
+/* An interval where nothing happens: outlined, never filled. */
+.content figure svg .dgm-idle {
+  fill: none;
+  stroke: var(--dgm-rule);
+  stroke-width: 1.1;
+  stroke-dasharray: 4 3;
 }
 
 .content figure svg .dgm-box {

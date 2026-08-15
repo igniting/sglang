@@ -263,39 +263,36 @@ some of that slack by returning unused capture memory after graphs are built.
 Putting both levels together, for token *t* of request *r*:
 
 <figure>
-<svg viewBox="0 0 640 300" role="img" aria-label="Two-level address translation from a request to KV storage">
-  <title>Address translation, request to KV storage</title>
-  <rect class="dgm-box-accent" x="20" y="40" width="130" height="46" rx="5"/>
-  <text class="dgm-label" x="85" y="60" text-anchor="middle">request r</text>
-  <text class="dgm-small" x="85" y="77" text-anchor="middle">req_pool_idx</text>
-  <path class="dgm-line" d="M150 63 L196 63" marker-end="url(#a3)"/>
-  <rect class="dgm-box" x="200" y="26" width="190" height="74" rx="5"/>
-  <text class="dgm-label" x="295" y="46" text-anchor="middle">ReqToTokenPool</text>
-  <text class="dgm-small" x="295" y="66" text-anchor="middle">req_to_token[idx, t]</text>
-  <text class="dgm-small" x="295" y="84" text-anchor="middle">→ kv_index</text>
-  <text class="dgm-small" x="295" y="14" text-anchor="middle">level 1 — where are my tokens?</text>
-  <path class="dgm-line" d="M390 63 L436 63" marker-end="url(#a3)"/>
-  <rect class="dgm-box" x="440" y="26" width="180" height="74" rx="5"/>
-  <text class="dgm-label" x="530" y="50" text-anchor="middle">allocator</text>
-  <text class="dgm-small" x="530" y="70" text-anchor="middle">kv_index ÷ page_size = page</text>
-  <text class="dgm-small" x="530" y="88" text-anchor="middle">kv_index mod page_size = offset</text>
-  <path class="dgm-line" d="M530 100 L530 138" marker-end="url(#a3)"/>
-  <rect class="dgm-box-accent" x="200" y="142" width="420" height="86" rx="5"/>
-  <text class="dgm-small" x="410" y="130" text-anchor="middle">level 2 — where does token index i live?</text>
-  <text class="dgm-label" x="410" y="166" text-anchor="middle">KVCache</text>
-  <text class="dgm-small" x="410" y="188" text-anchor="middle">k_buffer[layer][kv_index]   ·   v_buffer[layer][kv_index]</text>
-  <text class="dgm-small" x="410" y="210" text-anchor="middle">one contiguous tensor pair per layer, indexed by page</text>
-  <text class="dgm-small" x="320" y="262" text-anchor="middle">The indirection is what lets two requests hold the same kv_index at different positions —</text>
-  <text class="dgm-small" x="320" y="278" text-anchor="middle">which is the mechanical precondition for the prefix sharing in Chapter 9.</text>
-  <defs>
-    <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/>
-    </marker>
-  </defs>
+<svg viewBox="0 0 700 330" role="img" aria-label="Two levels of indirection from a request to physical KV storage">
+<title>Address translation, request to KV storage</title>
+<rect class="dgm-box-accent" x="20" y="56" width="140" height="62" rx="6"/>
+<text class="dgm-label" x="90.0" y="82.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">request r</text>
+<text class="dgm-small" x="90.0" y="100.4" text-anchor="middle" style="font-size:11.5px">req_pool_idx = 7</text>
+<rect class="dgm-box" x="196" y="40" width="228" height="94" rx="6"/>
+<text class="dgm-label" x="310.0" y="64.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">ReqToTokenPool</text>
+<text class="dgm-small" x="310.0" y="82.4" text-anchor="middle" style="font-size:11.5px">req_to_token[7, t] → kv_index</text>
+<text class="dgm-small" x="310.0" y="100.4" text-anchor="middle" style="font-size:11.5px">one dense int32 row per request</text>
+<text class="dgm-small" x="310.0" y="118.4" text-anchor="middle" style="font-size:11.5px">length = max_context_len</text>
+<rect class="dgm-box" x="460" y="40" width="220" height="94" rx="6"/>
+<text class="dgm-label" x="570.0" y="64.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">allocator</text>
+<text class="dgm-small" x="570.0" y="82.4" text-anchor="middle" style="font-size:11.5px">kv_index ÷ page_size → page</text>
+<text class="dgm-small" x="570.0" y="100.4" text-anchor="middle" style="font-size:11.5px">kv_index mod page_size → slot</text>
+<text class="dgm-small" x="570.0" y="118.4" text-anchor="middle" style="font-size:11.5px">pages need not be contiguous</text>
+<rect class="dgm-box-accent" x="196" y="200" width="484" height="74" rx="6"/>
+<text class="dgm-label" x="438.0" y="223.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">KVCache</text>
+<text class="dgm-small" x="438.0" y="241.4" text-anchor="middle" style="font-size:11.5px">k_buffer[layer][kv_index]   ·   v_buffer[layer][kv_index]</text>
+<text class="dgm-small" x="438.0" y="259.4" text-anchor="middle" style="font-size:11.5px">one tensor pair per layer, shared by every request</text>
+<text class="dgm-small" x="310.0" y="28" text-anchor="middle" style="font-size:11.5px">level 1 — where are my tokens?</text>
+<text class="dgm-small" x="570.0" y="28" text-anchor="middle" style="font-size:11.5px">index → address</text>
+<text class="dgm-small" x="438.0" y="188" text-anchor="middle" style="font-size:11.5px">level 2 — where does token index i actually live?</text>
+<path class="dgm-line" d="M160 87.0 L190 87.0" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M424 87.0 L454 87.0" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M570.0 134 L570.0 194" marker-end="url(#arrow)"/>
+<text class="dgm-small" x="350.0" y="300" text-anchor="middle" style="font-size:11.5px">Two requests can hold the same kv_index at different positions in their own rows.</text>
+<text class="dgm-small" x="350.0" y="318" text-anchor="middle" style="font-size:11.5px">That is the mechanical precondition for prefix sharing.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
 </svg>
-<figcaption>Two levels of indirection. Attention kernels do not walk this chain per token —
-they receive the <code>req_to_token</code> row as a page table and index it inside the
-kernel, which is what "paged attention" names.</figcaption>
+<figcaption>Attention kernels do not walk this chain token by token: they receive the <code>req_to_token</code> row as a page table and index it inside the kernel. That is what “paged attention” names.</figcaption>
 </figure>
 
 Two lookups per token per layer. The attention backends of Chapter 13 do not walk this

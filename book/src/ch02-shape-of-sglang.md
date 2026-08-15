@@ -79,50 +79,41 @@ waiting on string manipulation.
 So SGLang splits them across processes:
 
 <figure>
-<svg viewBox="0 0 640 420" role="img" aria-label="SGLang process topology: clients to tokenizer manager to schedulers to detokenizer and back">
-  <title>SGLang process topology</title>
-  <text class="dgm-label" x="320" y="20" text-anchor="middle">HTTP clients</text>
-  <path class="dgm-line" d="M320 28 L320 52" marker-end="url(#arrow)"/>
-  <rect class="dgm-box-accent" x="150" y="56" width="340" height="58" rx="6"/>
-  <text class="dgm-label" x="320" y="80" text-anchor="middle" font-weight="600">TokenizerManager</text>
-  <text class="dgm-small" x="320" y="98" text-anchor="middle">main process · asyncio · text to token ids · holds each request's future</text>
-  <path class="dgm-line" d="M320 114 L320 158" marker-end="url(#arrow)"/>
-  <text class="dgm-small" x="332" y="140">ZMQ · scheduler_input_ipc_name · rank 0 only</text>
-  <rect class="dgm-box-accent" x="60" y="162" width="180" height="72" rx="6"/>
-  <text class="dgm-label" x="150" y="186" text-anchor="middle" font-weight="600">Scheduler · tp 0</text>
-  <text class="dgm-small" x="150" y="204" text-anchor="middle">owns a GPU</text>
-  <text class="dgm-small" x="150" y="220" text-anchor="middle">receives + broadcasts</text>
-  <rect class="dgm-box" x="266" y="162" width="150" height="72" rx="6"/>
-  <text class="dgm-label" x="341" y="186" text-anchor="middle">Scheduler · tp 1</text>
-  <text class="dgm-small" x="341" y="204" text-anchor="middle">owns a GPU</text>
-  <rect class="dgm-box" x="442" y="162" width="138" height="72" rx="6"/>
-  <text class="dgm-label" x="511" y="186" text-anchor="middle">Scheduler · tp n</text>
-  <text class="dgm-small" x="511" y="204" text-anchor="middle">owns a GPU</text>
-  <path class="dgm-dash" d="M240 198 L266 198"/>
-  <path class="dgm-dash" d="M416 198 L442 198"/>
-  <text class="dgm-small" x="253" y="190" text-anchor="middle">·</text>
-  <path class="dgm-line" d="M150 234 L150 278" marker-end="url(#arrow)"/>
-  <text class="dgm-small" x="162" y="260">ZMQ · detokenizer_ipc_name</text>
-  <rect class="dgm-box" x="60" y="282" width="300" height="54" rx="6"/>
-  <text class="dgm-label" x="210" y="304" text-anchor="middle">DetokenizerManager</text>
-  <text class="dgm-small" x="210" y="322" text-anchor="middle">subprocess · token ids to text, incrementally</text>
-  <path class="dgm-line-accent" d="M360 309 L520 309 L520 145 L490 145" marker-end="url(#arrow-accent)"/>
-  <text class="dgm-small" x="532" y="240">ZMQ</text>
-  <text class="dgm-small" x="532" y="254">tokenizer_ipc_name</text>
-  <text class="dgm-small" x="320" y="372" text-anchor="middle">Output travels forward to the TokenizerManager, not back to the scheduler:</text>
-  <text class="dgm-small" x="320" y="388" text-anchor="middle">that is the process holding the client's awaiting coroutine.</text>
-  <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" class="dgm-fill-muted" style="opacity:1;fill:var(--dgm-rule)"/>
-    </marker>
-    <marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" class="dgm-fill-accent"/>
-    </marker>
-  </defs>
+<svg viewBox="0 0 700 462" role="img" aria-label="Four processes connected by ZeroMQ sockets: tokenizer manager, one scheduler per tensor-parallel rank, and a detokenizer">
+<title>SGLang process topology</title>
+<rect class="dgm-box-accent" x="140" y="44" width="420" height="64" rx="6"/>
+<text class="dgm-label" x="350.0" y="62.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">TokenizerManager</text>
+<text class="dgm-small" x="350.0" y="80.4" text-anchor="middle" style="font-size:11.5px">main process · asyncio event loop</text>
+<text class="dgm-small" x="350.0" y="98.4" text-anchor="middle" style="font-size:11.5px">text → token ids · holds each request's future</text>
+<rect class="dgm-box-accent" x="20" y="196" width="180" height="76" rx="6"/>
+<text class="dgm-label" x="110.0" y="220.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">Scheduler · tp 0</text>
+<text class="dgm-small" x="110.0" y="238.4" text-anchor="middle" style="font-size:11.5px">owns one GPU</text>
+<text class="dgm-small" x="110.0" y="256.4" text-anchor="middle" style="font-size:11.5px">receives, then broadcasts</text>
+<rect class="dgm-box" x="230" y="196" width="170" height="76" rx="6"/>
+<text class="dgm-label" x="315.0" y="229.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">Scheduler · tp 1</text>
+<text class="dgm-small" x="315.0" y="247.4" text-anchor="middle" style="font-size:11.5px">owns one GPU</text>
+<rect class="dgm-box" x="430" y="196" width="170" height="76" rx="6"/>
+<text class="dgm-label" x="515.0" y="229.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">Scheduler · tp n</text>
+<text class="dgm-small" x="515.0" y="247.4" text-anchor="middle" style="font-size:11.5px">owns one GPU</text>
+<rect class="dgm-box" x="20" y="330" width="320" height="58" rx="6"/>
+<text class="dgm-label" x="180.0" y="354.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">DetokenizerManager</text>
+<text class="dgm-small" x="180.0" y="372.4" text-anchor="middle" style="font-size:11.5px">subprocess · token ids → text, incrementally</text>
+<text class="dgm-label" x="350.0" y="26" text-anchor="middle" font-weight="600" style="font-size:13px">HTTP clients</text>
+<path class="dgm-line" d="M350.0 32 L350.0 38" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M350.0 108 L350.0 160 L110.0 160 L110.0 190" marker-end="url(#arrow)"/>
+<text class="dgm-small" x="362.0" y="152" text-anchor="start" style="font-size:11.5px">ZMQ · scheduler_input_ipc_name — rank 0 only</text>
+<path class="dgm-dash" d="M200 234.0 L224 234.0" marker-end="url(#arrow)"/>
+<path class="dgm-dash" d="M400 234.0 L424 234.0" marker-end="url(#arrow)"/>
+<text class="dgm-small" x="400" y="300" text-anchor="middle" style="font-size:11.5px">broadcast_pyobj — every rank runs an identical batch</text>
+<path class="dgm-line" d="M110.0 272 L110.0 324" marker-end="url(#arrow)"/>
+<text class="dgm-small" x="122.0" y="312" text-anchor="start" style="font-size:11.5px">ZMQ · detokenizer_ipc_name</text>
+<path class="dgm-line-accent" d="M340 359.0 L650 359.0 L650 76.0 L566 76.0" marker-end="url(#arrow-accent)"/>
+<text class="dgm-small" x="497" y="350.0" text-anchor="middle" style="font-size:11.5px">ZMQ · tokenizer_ipc_name</text>
+<text class="dgm-small" x="350.0" y="424" text-anchor="middle" style="font-size:11.5px">Output travels forward to the TokenizerManager, not back to the scheduler:</text>
+<text class="dgm-small" x="350.0" y="442" text-anchor="middle" style="font-size:11.5px">that is the process holding the client's awaiting coroutine.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
 </svg>
-<figcaption>The four processes and the sockets between them. Under tensor parallelism only
-rank 0 receives from the front end; it broadcasts to its peers so every rank sees an
-identical batch.</figcaption>
+<figcaption>The four processes and the sockets between them. Under tensor parallelism only rank&nbsp;0 receives from the front end; it broadcasts to its peers so every rank sees the same batch.</figcaption>
 </figure>
 
 Note the cycle: the detokenizer does not reply to the scheduler, it sends *forward* to the

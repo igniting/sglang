@@ -156,6 +156,38 @@ receives the pool plus a directory and does the indirection itself. **That is wh
 attention" means at the kernel level** — the address computation Chapter 8 described,
 performed per block inside the kernel.
 
+<figure>
+<svg viewBox="0 0 700 326" role="img" aria-label="Query rows, a page table, and the whole KV pool handed to the attention kernel">
+<title>What a paged attention kernel receives</title>
+<rect class="dgm-box" x="20" y="54" width="140" height="66" rx="6"/>
+<text class="dgm-label" x="90.0" y="73.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">Q</text>
+<text class="dgm-small" x="90.0" y="91.4" text-anchor="middle" style="font-size:11.5px">one row per</text>
+<text class="dgm-small" x="90.0" y="109.4" text-anchor="middle" style="font-size:11.5px">sequence in batch</text>
+<rect class="dgm-box-accent" x="196" y="44" width="232" height="86" rx="6"/>
+<text class="dgm-label" x="312.0" y="64.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">kv_indptr / kv_indices</text>
+<text class="dgm-small" x="312.0" y="82.4" text-anchor="middle" style="font-size:11.5px">indptr[i] → where sequence i's</text>
+<text class="dgm-small" x="312.0" y="100.4" text-anchor="middle" style="font-size:11.5px">page list begins</text>
+<text class="dgm-small" x="312.0" y="118.4" text-anchor="middle" style="font-size:11.5px">indices → the page numbers</text>
+<rect class="dgm-box" x="464" y="44" width="216" height="86" rx="6"/>
+<text class="dgm-label" x="572.0" y="64.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">K_Buffer / V_Buffer</text>
+<text class="dgm-small" x="572.0" y="82.4" text-anchor="middle" style="font-size:11.5px">the whole pool passed in</text>
+<text class="dgm-small" x="572.0" y="100.4" text-anchor="middle" style="font-size:11.5px">as one tensor — never a</text>
+<text class="dgm-small" x="572.0" y="118.4" text-anchor="middle" style="font-size:11.5px">per-sequence copy</text>
+<rect class="dgm-box-accent" x="196" y="196" width="484" height="66" rx="6"/>
+<text class="dgm-label" x="438.0" y="215.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">the kernel does the indirection itself</text>
+<text class="dgm-small" x="438.0" y="233.4" text-anchor="middle" style="font-size:11.5px">for each block of keys: look up the page, load it,</text>
+<text class="dgm-small" x="438.0" y="251.4" text-anchor="middle" style="font-size:11.5px">then accumulate a partial softmax</text>
+<path class="dgm-line" d="M160 87.0 L190 87.0" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M428 87.0 L458 87.0" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M312.0 130 L312.0 190" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M572.0 130 L572.0 190" marker-end="url(#arrow)"/>
+<text class="dgm-small" x="350.0" y="294" text-anchor="middle" style="font-size:11.5px">No [seq_len × seq_len] score matrix is ever materialised: each block emits a partial</text>
+<text class="dgm-small" x="350.0" y="312" text-anchor="middle" style="font-size:11.5px">softmax and a log-sum-exp, and a second stage combines them.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
+</svg>
+<figcaption>“Paged attention” is not a metaphor: the address arithmetic of Chapter&nbsp;8 happens inside the kernel's inner loop.</figcaption>
+</figure>
+
 `kv_group_num` is the GQA ratio from Chapter 12 — how many query heads share one KV head.
 `PAGE_SIZE` is a `tl.constexpr`, so Triton compiles a separate specialization per page size
 and, as the comment notes, deletes the page arithmetic entirely when it is 1.

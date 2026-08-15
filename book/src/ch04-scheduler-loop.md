@@ -319,48 +319,53 @@ work, not by answering a question.
 Two decode steps of the overlap loop, with time running down:
 
 <figure>
-<svg viewBox="0 0 640 340" role="img" aria-label="Timeline showing CPU scheduling work hidden behind GPU compute">
-  <title>One iteration of the overlap loop</title>
-  <text class="dgm-label" x="150" y="20" text-anchor="middle" font-weight="600">CPU (scheduler process)</text>
-  <text class="dgm-label" x="470" y="20" text-anchor="middle" font-weight="600">GPU</text>
-  <line class="dgm-dash" x1="320" y1="30" x2="320" y2="300"/>
-  <text class="dgm-small" x="18" y="52">t0</text>
-  <rect class="dgm-box" x="40" y="38" width="250" height="22" rx="3"/>
-  <text class="dgm-small" x="165" y="53" text-anchor="middle">recv + process_input_requests</text>
-  <rect class="dgm-box" x="40" y="66" width="250" height="22" rx="3"/>
-  <text class="dgm-small" x="165" y="81" text-anchor="middle">get_next_batch_to_run → batch N</text>
-  <rect class="dgm-box-accent" x="40" y="94" width="250" height="22" rx="3"/>
-  <text class="dgm-small" x="165" y="109" text-anchor="middle">run_batch(N) — launch</text>
-  <path class="dgm-line-accent" d="M290 105 L400 105" marker-end="url(#a2)"/>
-  <rect class="dgm-box-accent" x="404" y="94" width="180" height="130" rx="5"/>
-  <text class="dgm-label" x="494" y="122" text-anchor="middle">forward N</text>
-  <text class="dgm-small" x="494" y="142" text-anchor="middle">80 layers</text>
-  <text class="dgm-small" x="494" y="158" text-anchor="middle">attention + GEMMs</text>
-  <text class="dgm-small" x="494" y="182" text-anchor="middle">the CPU column at left</text>
-  <text class="dgm-small" x="494" y="196" text-anchor="middle">runs entirely inside</text>
-  <text class="dgm-small" x="494" y="210" text-anchor="middle">this box</text>
-  <rect class="dgm-box" x="40" y="126" width="250" height="86" rx="3" style="fill:var(--dgm-fill)"/>
-  <text class="dgm-small" x="52" y="144">pop_and_process(N−1):</text>
-  <text class="dgm-small" x="64" y="160">append sampled tokens</text>
-  <text class="dgm-small" x="64" y="176">check stop conditions</text>
-  <text class="dgm-small" x="64" y="192">free KV of finished requests</text>
-  <text class="dgm-small" x="64" y="208">stream output</text>
-  <rect class="dgm-box" x="40" y="218" width="250" height="22" rx="3"/>
-  <text class="dgm-small" x="165" y="233" text-anchor="middle">launch_batch_sample_if_needed(N)</text>
-  <text class="dgm-small" x="18" y="262">t1</text>
-  <line class="dgm-line" x1="40" y1="250" x2="584" y2="250"/>
-  <rect class="dgm-box" x="40" y="258" width="250" height="22" rx="3"/>
-  <text class="dgm-small" x="165" y="273" text-anchor="middle">… and again for batch N+1</text>
-  <text class="dgm-small" x="320" y="312" text-anchor="middle">In the non-overlapped loop, the shaded block sits between two forwards and the GPU waits.</text>
-  <defs>
-    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" class="dgm-fill-accent"/>
-    </marker>
-  </defs>
+<svg viewBox="0 0 700 406" role="img" aria-label="Two timelines comparing the overlapped scheduler loop against a serial one, showing the GPU idle gaps the overlap removes">
+<title>One iteration of the overlap loop</title>
+<rect class="dgm-box" x="64.0" y="44" width="140.0" height="40" rx="6"/>
+<text class="dgm-small" x="134.0" y="68.4" text-anchor="middle" style="font-size:10.5px">forward N−1</text>
+<rect class="dgm-box-accent" x="206.0" y="44" width="140.0" height="40" rx="6"/>
+<text class="dgm-small" x="276.0" y="68.4" text-anchor="middle" style="font-size:10.5px">forward N</text>
+<rect class="dgm-box" x="348.0" y="44" width="140.0" height="40" rx="6"/>
+<text class="dgm-small" x="418.0" y="68.4" text-anchor="middle" style="font-size:10.5px">forward N+1</text>
+<rect class="dgm-box-accent" x="206.0" y="100" width="140.0" height="40" rx="6"/>
+<text class="dgm-small" x="276.0" y="116.9" text-anchor="middle" style="font-size:10px">process N−1</text>
+<text class="dgm-small" x="276.0" y="131.9" text-anchor="middle" style="font-size:10px">plan N+1</text>
+<rect class="dgm-box" x="348.0" y="100" width="140.0" height="40" rx="6"/>
+<text class="dgm-small" x="418.0" y="116.9" text-anchor="middle" style="font-size:10px">process N</text>
+<text class="dgm-small" x="418.0" y="131.9" text-anchor="middle" style="font-size:10px">plan N+2</text>
+<rect class="dgm-box" x="64.0" y="224" width="140.0" height="40" rx="6"/>
+<text class="dgm-small" x="134.0" y="248.4" text-anchor="middle" style="font-size:10.5px">forward N−1</text>
+<rect class="dgm-idle" x="206.0" y="224" width="56.0" height="40" rx="6"/>
+<text class="dgm-small" x="234.0" y="248.4" text-anchor="middle" style="font-size:10px">idle</text>
+<rect class="dgm-box-accent" x="264.0" y="224" width="140.0" height="40" rx="6"/>
+<text class="dgm-small" x="334.0" y="248.4" text-anchor="middle" style="font-size:10.5px">forward N</text>
+<rect class="dgm-idle" x="406.0" y="224" width="56.0" height="40" rx="6"/>
+<text class="dgm-small" x="434.0" y="248.4" text-anchor="middle" style="font-size:10px">idle</text>
+<rect class="dgm-box" x="464.0" y="224" width="140.0" height="40" rx="6"/>
+<text class="dgm-small" x="534.0" y="248.4" text-anchor="middle" style="font-size:10.5px">forward N+1</text>
+<rect class="dgm-box" x="206.0" y="280" width="56.0" height="40" rx="6"/>
+<text class="dgm-small" x="234.0" y="304.4" text-anchor="middle" style="font-size:10px">sched</text>
+<rect class="dgm-box" x="406.0" y="280" width="56.0" height="40" rx="6"/>
+<text class="dgm-small" x="434.0" y="304.4" text-anchor="middle" style="font-size:10px">sched</text>
+<text class="dgm-label" x="350.0" y="26" text-anchor="middle" font-weight="600" style="font-size:12.5px">event_loop_overlap — the scheduler runs inside the forward</text>
+<text class="dgm-label" x="56" y="70" text-anchor="end" style="font-size:12px">GPU</text>
+<text class="dgm-label" x="56" y="126" text-anchor="end" style="font-size:12px">CPU</text>
+<text class="dgm-small" x="510.0" y="70" text-anchor="middle" style="font-size:14px">…</text>
+<path class="dgm-dash" d="M206.0 84 L206.0 146"/>
+<path class="dgm-dash" d="M346.0 84 L346.0 146"/>
+<text class="dgm-small" x="350.0" y="166" text-anchor="middle" style="font-size:11.5px">Each CPU bar fits inside the GPU bar above it: scheduling costs no wall-clock time.</text>
+<path class="dgm-dash" d="M20 190 L680 190"/>
+<text class="dgm-label" x="350.0" y="216" text-anchor="middle" font-weight="600" style="font-size:12.5px">the same three steps without overlap — the GPU waits</text>
+<text class="dgm-label" x="56" y="250" text-anchor="end" style="font-size:12px">GPU</text>
+<text class="dgm-label" x="56" y="306" text-anchor="end" style="font-size:12px">CPU</text>
+<path class="dgm-dash" d="M206.0 264 L206.0 326"/>
+<path class="dgm-dash" d="M462.0 264 L462.0 326"/>
+<path class="dgm-line-accent" d="M488.0 342 L488.0 348 L604.0 348 L604.0 342"/>
+<text class="dgm-small" x="546.0" y="364" text-anchor="middle" style="font-size:11.5px">stalled GPU — one gap per step, for every step of every request</text>
+<text class="dgm-small" x="350.0" y="392" text-anchor="middle" style="font-size:11.5px">Overlap does not make the forward faster. It makes everything else free.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
 </svg>
-<figcaption>Two decode steps of <code>event_loop_overlap</code>. Result processing for step
-N−1 happens while step N is still on the GPU, so the CPU work costs nothing in wall-clock
-time.</figcaption>
+<figcaption>The same three decode steps, scheduled two ways. In <code>event_loop_overlap</code> the results of step N−1 are processed while step N is still running.</figcaption>
 </figure>
 
 The CPU work in the shaded middle — result processing, stop checking, KV freeing, output

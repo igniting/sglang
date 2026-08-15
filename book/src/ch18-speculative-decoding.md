@@ -147,6 +147,44 @@ accepted only as far as the first mistake. A tree hedges — if the top choice a
 wrong, a sibling may be right — so the *expected* accepted length is higher for the same
 number of verified tokens.
 
+<figure>
+<svg viewBox="0 0 700 306" role="img" aria-label="A speculative draft tree verified in a single target forward pass">
+<title>Drafting and verifying a token tree</title>
+<rect class="dgm-box" x="120.0" y="46" width="100" height="28" rx="6"/>
+<text class="dgm-small" x="170.0" y="64.4" text-anchor="middle" style="font-size:11.0px">context</text>
+<rect class="dgm-box-accent" x="42.0" y="100" width="76" height="28" rx="6"/>
+<text class="dgm-small" x="80.0" y="118.4" text-anchor="middle" style="font-size:11.0px">“the”</text>
+<rect class="dgm-box" x="190.0" y="100" width="64" height="28" rx="6"/>
+<text class="dgm-small" x="222.0" y="118.4" text-anchor="middle" style="font-size:11.0px">“a”</text>
+<rect class="dgm-box-accent" x="16.0" y="154" width="72" height="28" rx="6"/>
+<text class="dgm-small" x="52.0" y="172.4" text-anchor="middle" style="font-size:11.0px">“cat”</text>
+<rect class="dgm-box" x="100.0" y="154" width="72" height="28" rx="6"/>
+<text class="dgm-small" x="136.0" y="172.4" text-anchor="middle" style="font-size:11.0px">“dog”</text>
+<rect class="dgm-box" x="196.0" y="154" width="72" height="28" rx="6"/>
+<text class="dgm-small" x="232.0" y="172.4" text-anchor="middle" style="font-size:11.0px">“big”</text>
+<rect class="dgm-box-accent" x="336" y="54" width="344" height="120" rx="6"/>
+<text class="dgm-label" x="508.0" y="73.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">one target forward pass</text>
+<text class="dgm-small" x="508.0" y="91.4" text-anchor="middle" style="font-size:11.5px">every node is verified at once, under a mask</text>
+<text class="dgm-small" x="508.0" y="109.4" text-anchor="middle" style="font-size:11.5px">where a candidate attends to its ancestors</text>
+<text class="dgm-small" x="508.0" y="127.4" text-anchor="middle" style="font-size:11.5px">only — never to a sibling branch</text>
+<text class="dgm-small" x="508.0" y="163.4" text-anchor="middle" style="font-size:11.5px">cost ≈ one ordinary decode step</text>
+<text class="dgm-label" x="170" y="30" text-anchor="middle" font-weight="600" style="font-size:11.5px">draft tree — depth 3, top-k 2</text>
+<path class="dgm-line" d="M160 74 L80 100"/>
+<path class="dgm-line" d="M186 74 L222 100"/>
+<path class="dgm-line" d="M70 128 L52 154"/>
+<path class="dgm-line" d="M92 128 L136 154"/>
+<path class="dgm-line" d="M224 128 L232 154"/>
+<path class="dgm-line-accent" d="M286 112 L330 114.0" marker-end="url(#arrow-accent)"/>
+<path class="dgm-dash" d="M20 200 L680 200"/>
+<text class="dgm-small" x="350.0" y="226" text-anchor="middle" style="font-size:11.5px">The accepted prefix is the longest run of a branch the target agrees with: here</text>
+<text class="dgm-small" x="350.0" y="244" text-anchor="middle" style="font-size:11.5px">“the → cat”, three tokens for the price of one forward pass.</text>
+<text class="dgm-small" x="350.0" y="270" text-anchor="middle" style="font-size:11.5px">Acceptance is rejection sampling, so the output distribution is identical to</text>
+<text class="dgm-small" x="350.0" y="288" text-anchor="middle" style="font-size:11.5px">ordinary decoding. A bad draft costs compute, never correctness.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
+</svg>
+<figcaption>A tree hedges where a chain cannot: if the top choice at depth two is wrong, a sibling may still be right.</figcaption>
+</figure>
+
 The `can_run_decode_cuda_graph` check threads Chapter 14 through here. The draft model gets
 its own captured graphs (`python/sglang/srt/speculative/eagle_draft_cuda_graph_runner.py`,
 `python/sglang/srt/speculative/eagle_draft_extend_cuda_graph_runner.py`,
