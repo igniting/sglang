@@ -86,7 +86,7 @@ for free. Three engine consequences follow. RoPE is applied to Q and K *after* p
 whatever position it was written at — which is what makes Chapter 9's prefix sharing sound.
 Context extension becomes a matter of rescaling *θ* rather than retraining, which is why
 `rope_scaling` is a config key that the loader has to handle several dialects of. And
-Chapter 12's MLA has to work around RoPE specifically, because a rotation cannot be commuted
+Chapter 13's MLA has to work around RoPE specifically, because a rotation cannot be commuted
 through a low-rank compression.
 
 **GQA instead of MHA.** Chapter 1 showed that KV cache size is the direct limiter on batch

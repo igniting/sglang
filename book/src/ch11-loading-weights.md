@@ -213,7 +213,7 @@ layout in memory, the file can be `mmap`ed and a tensor constructed as a *view* 
 mapped region — no parse, no host copy, no allocation. The bytes go from page cache to HBM
 in one DMA, and a tensor the rank does not need is never touched at all.
 
-That last property is what makes Chapter 11's central trick work. A tensor-parallel rank
+That last property is what makes this chapter's central trick work. A tensor-parallel rank
 loading only its own slice does not read the other ranks' slices from a mmapped file; the
 pages are simply never faulted in. With a format that requires deserialization, every rank
 would pay to decode the whole checkpoint and then throw most of it away.
@@ -300,8 +300,8 @@ crash. That is why this path is exposed as an explicit method with a handshake r
 an optimization the engine applies automatically.
 
 The distributed path is the one to use when the trainer is not co-resident, and it is worth
-noting what it is *not*: it is not a broadcast of the whole model to every rank. Chapter 11's
-sharding rule still applies, so each engine rank receives only the slice it owns, and the
+noting what it is *not*: it is not a broadcast of the whole model to every rank. The
+sharding rule above still applies, so each engine rank receives only the slice it owns, and the
 transfer is `total_bytes / tp_size` per rank rather than `total_bytes`. This is why
 `python/sglang/srt/weight_sync/tensor_bucket.py` exists — with sharding, a 70B model becomes
 thousands of small per-rank tensors, and thousands of small NCCL calls cost far more in

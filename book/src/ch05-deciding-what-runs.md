@@ -58,8 +58,9 @@ that batch, and a length directory for the part that does not.
 What Orca did not solve is the resource question. It scheduled per iteration but still
 reserved KV memory per request against the maximum length, which vLLM's PagedAttention
 (Chapter 8) later showed was wasting 60–80% of the cache. And it had no answer for a long
-prefill blocking a batch of decodes, which Sarathi-Serve (Chapter 5, below) addressed with
-chunking. The scheduler in this chapter is the composition of all three ideas: iteration
+prefill blocking a batch of decodes, which Sarathi-Serve addressed with chunking — the
+subject of this chapter's own section further down. The scheduler here is the composition of
+all three ideas: iteration
 granularity from Orca, paged accounting from vLLM, chunked admission from Sarathi — plus
 prefix-aware ordering, which is SGLang's own.
 

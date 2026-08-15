@@ -244,7 +244,7 @@ hard-won constraint:
 ```
 
 An MoE all-to-all kernel deadlocks if a rank contributes zero tokens, so the padding mode is
-forced. Chapter 16's communication requirements reaching back into Chapter 15's padding
+forced. Chapter 16's communication requirements reaching back into this chapter's padding
 decision, with the failure mode being a *hang* rather than an error.
 
 ---
