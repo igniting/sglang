@@ -167,18 +167,18 @@ The parameter names in an OpenAI-compatible request describe four different oper
 distribution, applied in a fixed order, and the order matters more than any single one of
 them.
 
-Start from the model's output: a vector of **logits** `z ∈ R^V`, one real number per
+Start from the model's output: a vector of **logits** *z* ∈ R^*V*, one real number per
 vocabulary entry, which softmax turns into probabilities:
 
 ```
 p_i = exp(z_i) / Σ_j exp(z_j)
 ```
 
-**Temperature** divides the logits before the softmax: `p_i ∝ exp(z_i / T)`. It is a
-sharpening control, and the limits are the useful way to hold it. As `T → 0` the largest
+**Temperature** divides the logits before the softmax: *p_i* ∝ exp(*z_i* / *T*). It is a
+sharpening control, and the limits are the useful way to hold it. As *T* → 0 the largest
 logit dominates completely and sampling degenerates to `argmax` — which is why temperature 0
-is implemented as greedy rather than as a division by zero. As `T → ∞` every exponent goes
-to zero and the distribution becomes uniform over the whole vocabulary. `T = 1` leaves the
+is implemented as greedy rather than as a division by zero. As *T* → ∞ every exponent goes
+to zero and the distribution becomes uniform over the whole vocabulary. *T* = 1 leaves the
 model's own distribution alone.
 
 **Top-k** keeps the *k* highest-probability tokens and zeros the rest, then renormalizes. It
@@ -200,7 +200,7 @@ pathology that greedy and beam search produce degenerate, repetitive text while 
 sampling produces incoherent text; truncating the unreliable tail was the middle path.
 
 **Min-p** is the newest and takes a third view: keep tokens whose probability is at least a
-fraction of the *top* token's, `p_i ≥ min_p × max_j p_j`. Where top-p thresholds on
+fraction of the *top* token's, *p_i* ≥ min_p × max_j *p_j*. Where top-p thresholds on
 cumulative mass, min-p thresholds relative to the peak, which behaves better at high
 temperature — the scaling that flattens the distribution also lowers the peak, so the
 threshold moves with it.

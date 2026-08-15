@@ -85,12 +85,12 @@ The column-then-row order is not a convention. It is the only arrangement that g
 transformer block down to one collective per sublayer, and Shoeybi et al. derived it in the
 Megatron-LM paper (2019) by asking where the nonlinearity forces a synchronization.
 
-Take the MLP, `Y = act(X A) B`, and consider splitting `A` the other way first — by rows,
-`A = [A₁; A₂]`, with `X` split by columns to match. Each rank computes a partial product,
-and the partials must be *summed before the activation*, because `act` is elementwise and
-`act(a + b) ≠ act(a) + act(b)`. That is an all-reduce in the middle of the block.
+Take the MLP, *Y* = act(*XA*)*B*, and consider splitting *A* the other way first — by rows,
+*A* = [*A*₁; *A*₂], with *X* split by columns to match. Each rank computes a partial product,
+and the partials must be *summed before the activation*, because act is elementwise and
+act(*a* + *b*) ≠ act(*a*) + act(*b*). That is an all-reduce in the middle of the block.
 
-Now split `A` by columns instead, `A = [A₁, A₂]`. Each rank holds whole columns, so each
+Now split *A* by columns instead, *A* = [*A*₁, *A*₂]. Each rank holds whole columns, so each
 computes a complete slice of the output:
 
 ```
@@ -101,7 +101,7 @@ The activation is elementwise and each rank owns entire elements, so it applies 
 communication.
 
 The second matrix then has to consume a column-sharded input, which means splitting it by
-rows, `B = [B₁; B₂]`. Each rank computes `Y_i B_i` — a partial sum over the full output
+rows, *B* = [*B*₁; *B*₂]. Each rank computes *Y_i B_i* — a partial sum over the full output
 shape — and one all-reduce finishes it:
 
 ```
@@ -120,7 +120,7 @@ Inference only ever runs the forward half, so a block costs **two all-reduces** 
 attention, one for the MLP. Eighty layers is 160 collectives per forward pass.
 
 That count is the thing to keep in mind, because it is what sets TP's scaling limit. Each
-all-reduce moves the full activation tensor — `batch × hidden` elements — and its latency has
+all-reduce moves the full activation tensor — batch × hidden elements — and its latency has
 a floor set by the interconnect that does not shrink as you add ranks. Inside a node, NVLink
 at hundreds of GB/s makes 160 collectives affordable. Across nodes, at a tenth the bandwidth
 and several times the latency, it does not. **This is the reason TP is a within-node axis and

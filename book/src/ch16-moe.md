@@ -260,8 +260,8 @@ rank contributes nothing hangs.
 ### The arithmetic that makes it hurt
 
 Put numbers on it. A rank holding *T* tokens, each routed to *k* experts, sends `T × k`
-hidden vectors of `H` elements out and receives roughly as many back — twice, since combine
-mirrors dispatch. For DeepSeek-V3's shape (`H` = 7168, `k` = 8, BF16) that is about 14 KB per
+hidden vectors of *H* elements out and receives roughly as many back — twice, since combine
+mirrors dispatch. For DeepSeek-V3's shape (*H* = 7168, *k* = 8, BF16) that is about 14 KB per
 token per direction, and around 115 KB per token dispatched.
 
 Against a *decode* batch that is a small number of tokens per rank, so the transfer is a few

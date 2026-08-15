@@ -82,7 +82,7 @@ performance ≤ min(π, I × β)
 ```
 
 Plotted against *I*, that is a rising line that flattens into a ceiling. The corner is the
-**ridge point**, `I* = π / β` — the intensity at which a kernel stops being starved by
+**ridge point**, *I*\* = π / β — the intensity at which a kernel stops being starved by
 memory and starts being limited by arithmetic. For an H100 SXM at BF16, π ≈ 990 TFLOP/s
 and β ≈ 3.35 TB/s, so
 
@@ -91,7 +91,7 @@ I* = 990e12 / 3.35e12 ≈ 296 FLOP per byte
 ```
 
 Now compute *I* for the thing decode actually does. One linear layer with weight matrix
-`W ∈ R^(K×N)`, applied to a batch of *B* token rows, costs `2BKN` FLOP and reads `KN × s`
+*W* ∈ R^(*K*×*N*), applied to a batch of *B* token rows, costs 2*BKN* FLOP and reads *KN*·*s*
 bytes of weights, where *s* is bytes per element. Ignoring activation traffic, which is
 small when *B* is small:
 
@@ -103,7 +103,7 @@ The weight dimensions cancel. Arithmetic intensity for a weight-bound GEMM depen
 **nothing but the batch size and the element width** — not on the model, not on the layer,
 not on how big the matrix is. That single fact explains most of what a serving engine does.
 
-Setting `I(B) = I*` and solving gives the **critical batch size**, the point at which the
+Setting *I*(*B*) = *I*\* and solving gives the **critical batch size**, the point at which the
 GPU stops idling:
 
 ```
@@ -113,7 +113,7 @@ B* = s × π / (2β) = 2 × 296 / 2 ≈ 296 rows at BF16
 Under 300 rows, adding work to a batch is nearly free: you are paying for bandwidth you have
 already spent. Past it, arithmetic starts to cost real time. The number moves with the dtype
 in the direction you would expect — an FP8 weight halves *s* but roughly doubles π on
-Hopper, so `B*` lands in the same neighbourhood — and it moves with the hardware, which is
+Hopper, so *B*\* lands in the same neighbourhood — and it moves with the hardware, which is
 why the engine measures rather than assumes.
 
 <figure>

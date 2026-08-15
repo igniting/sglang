@@ -73,18 +73,18 @@ reason `gate_up_proj` exists below.
 **RoPE instead of learned position embeddings.** Rather than adding a position vector to the
 input, rotary embeddings (Su et al., 2021) *rotate* each pair of dimensions in Q and K by an
 angle proportional to the token's position. For position *m* and dimension pair *i* with
-frequency `θ_i = base^(−2i/d)`:
+frequency *θ_i* = base^(−2*i*/*d*):
 
 ```
 q̃_m = R(mθ) q_m ,   k̃_n = R(nθ) k_n
 ```
 
-Because rotations compose, the inner product `q̃_m · k̃_n` depends on `m − n` and not on *m*
+Because rotations compose, the inner product *q̃_m* · *k̃_n* depends on *m* − *n* and not on *m*
 and *n* separately. Absolute positions go in; relative position comes out of the dot product
 for free. Three engine consequences follow. RoPE is applied to Q and K *after* projection and
 *before* the cache write, so cached keys are already rotated and a KV entry is valid at
 whatever position it was written at — which is what makes Chapter 9's prefix sharing sound.
-Context extension becomes a matter of rescaling `θ` rather than retraining, which is why
+Context extension becomes a matter of rescaling *θ* rather than retraining, which is why
 `rope_scaling` is a config key that the loader has to handle several dialects of. And
 Chapter 12's MLA has to work around RoPE specifically, because a rotation cannot be commuted
 through a low-rank compression.

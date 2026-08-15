@@ -58,21 +58,21 @@ The claim that speculation changes nothing about the output distribution is stro
 deserve its proof, and the proof is four lines. Leviathan et al. (2023) state it as modified
 rejection sampling.
 
-Let `p` be the target model's distribution over the next token and `q` the draft's. Draw a
-candidate `x ~ q`. Then:
+Let *p* be the target model's distribution over the next token and *q* the draft's. Draw a
+candidate *x* ~ *q*. Then:
 
 ```
 accept x  with probability  min(1, p(x) / q(x))
 otherwise  draw x  from  norm(max(0, p − q))
 ```
 
-The draft over-proposes some tokens and under-proposes others. Where `q(x) ≤ p(x)` the draft
-was not over-confident and the token is always accepted. Where `q(x) > p(x)` it was, and the
-token is accepted only `p(x)/q(x)` of the time — exactly enough to cancel the excess. The
-rejection branch then samples from the *residual*, the part of `p` the draft failed to cover,
+The draft over-proposes some tokens and under-proposes others. Where *q*(*x*) ≤ *p*(*x*) the draft
+was not over-confident and the token is always accepted. Where *q*(*x*) > *p*(*x*) it was, and the
+token is accepted only *p*(*x*)/*q*(*x*) of the time — exactly enough to cancel the excess. The
+rejection branch then samples from the *residual*, the part of *p* the draft failed to cover,
 renormalized.
 
-To see that the composite is `p`, sum the two paths for any token `x`:
+To see that the composite is *p*, sum the two paths for any token *x*:
 
 ```
 P(output x)  =  q(x) · min(1, p(x)/q(x))              accepted
@@ -81,19 +81,19 @@ P(output x)  =  q(x) · min(1, p(x)/q(x))              accepted
              =  p(x)
 ```
 
-The first term is `min(p, q)` because `q · min(1, p/q)` is `q` when `q ≤ p` and `p` when
-`q > p`. The second term is what is left over. They telescope. **The output distribution is
-`p` exactly**, for any draft `q` whatsoever — including a terrible one, including an
+The first term is min(*p*, *q*) because *q* · min(1, *p*/*q*) is *q* when *q* ≤ *p* and *p*
+when *q* > *p*. The second term is what is left over. They telescope. **The output distribution is
+*p* exactly**, for any draft *q* whatsoever — including a terrible one, including an
 adversarial one. A bad draft lowers the acceptance rate and therefore the speedup; it cannot
 change what the model says.
 
 Two engineering consequences follow directly, and both show up in the code below.
 
-The rule needs `q(x)`, the draft's probability of the token it proposed — not just the token.
+The rule needs *q*(*x*), the draft's probability of the token it proposed — not just the token.
 That is why `draft` returns `draft_probs` alongside `draft_tokens`, and why the draft's
 sampling path has to be instrumented rather than treated as a black box.
 
-At temperature 0 the rule degenerates into something much cheaper. `p` becomes a point mass
+At temperature 0 the rule degenerates into something much cheaper. *p* becomes a point mass
 on `argmax`, so the accept test reduces to "is the drafted token the target's argmax?" — an
 integer comparison. Greedy verification is a different, faster kernel than sampled
 verification, which is why the code below has two paths.
@@ -110,7 +110,7 @@ E[tokens per step] = (1 − α^(γ+1)) / (1 − α)
 ```
 
 Read the shape of it rather than the formula. At α = 0.8 and γ = 4 you get about 3.4 tokens
-per step; pushing γ to 8 raises that only to about 4.2, because `α^(γ+1)` has already
+per step; pushing γ to 8 raises that only to about 4.2, because α^(γ+1) has already
 collapsed. **Depth has sharply diminishing returns**, since acceptance decays geometrically —
 one mistake ends the chain regardless of how many tokens followed it.
 

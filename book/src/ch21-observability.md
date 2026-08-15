@@ -225,7 +225,7 @@ that is the question you actually have. Chapter 1's roofline answers it, applied
 
 For any kernel, count two quantities: the FLOPs it performs and the bytes it moves. Their
 ratio is its arithmetic intensity *I*. Compare achieved performance against the roofline
-ceiling `min(π, I × β)`:
+ceiling min(π, *I* × β):
 
 ```
 efficiency = achieved FLOP/s  /  min(π, I × β)
@@ -233,7 +233,7 @@ efficiency = achieved FLOP/s  /  min(π, I × β)
 
 The interesting number is not the efficiency but *which* term of the `min` was binding.
 
-**If `I × β` is the smaller term, the kernel is memory-bound.** Its ceiling is bandwidth, so
+**If *I* × β is the smaller term, the kernel is memory-bound.** Its ceiling is bandwidth, so
 making the arithmetic faster is worthless. What helps is moving fewer bytes — a smaller
 dtype (Chapter 14), fusing it with a neighbour so the intermediate never reaches HBM
 (Chapter 14 again), or restructuring the data so the reads coalesce. Most decode kernels are

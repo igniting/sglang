@@ -127,8 +127,8 @@ O = softmax(QKᵀ / √d) V
 
 and the naive implementation materializes `S = QKᵀ`, an `N × N` matrix, writes it to HBM,
 reads it back to softmax it, writes it again, reads it again to multiply by V. For
-`N = 8192` at FP16 that is 128 MB per head per layer, moved four times. The arithmetic is
-`O(N²d)` but the *memory traffic* is `Θ(N² + Nd)`, and Chapter 1 says memory traffic is what
+*N* = 8192 at FP16 that is 128 MB per head per layer, moved four times. The arithmetic is
+*O*(*N*²*d*) but the *memory traffic* is Θ(*N*² + *Nd*), and Chapter 1 says memory traffic is what
 costs.
 
 Dao et al. (2022) observed that the matrix never needs to exist. The obstacle is softmax:
@@ -154,8 +154,8 @@ output before adding the tile's contribution:
 O_i ← diag(ℓ_new)⁻¹ [ diag(ℓ_old) e^(m_old − m_new) O_i  +  e^(m̃ − m_new) P̃ V_j ]
 ```
 
-Tiles are sized to fit SRAM: with on-chip memory *M*, the paper takes `B_c = ⌈M/4d⌉`
-columns and `B_r = min(⌈M/4d⌉, d)` rows. The score tile is created in SRAM, consumed in
+Tiles are sized to fit SRAM: with on-chip memory *M*, the paper takes *B_c* = ⌈*M*/4*d*⌉
+columns and *B_r* = min(⌈*M*/4*d*⌉, *d*) rows. The score tile is created in SRAM, consumed in
 SRAM, and discarded. HBM never sees it.
 
 The result is Theorem 2 of the paper, and it is the reason this is not merely a constant-
@@ -163,10 +163,10 @@ factor optimization:
 
 | | HBM accesses |
 | --- | --- |
-| Standard attention | `Θ(Nd + N²)` |
-| FlashAttention | `Θ(N²d²M⁻¹)` |
+| Standard attention | Θ(*Nd* + *N*²) |
+| FlashAttention | Θ(*N*²*d*²*M*⁻¹) |
 
-With `d = 128` and `M ≈ 100 KB`, `d²/M` is around 0.16 — so FlashAttention moves several
+With *d* = 128 and *M* ≈ 100 KB, *d*²/*M* is around 0.16 — so FlashAttention moves several
 times less memory, and the advantage *grows* with SRAM. Proposition 3 adds that no exact
 attention algorithm can do asymptotically better across the range of SRAM sizes. This is an
 optimality result about memory traffic, which is why every serious attention kernel written
@@ -174,7 +174,7 @@ since has this shape.
 
 Two properties of the algorithm reappear throughout the rest of this chapter.
 
-**It stores `O(N)` extra state, not `O(N²)`** — just `m` and `ℓ` per row. Those are the
+**It stores *O*(*N*) extra state, not *O*(*N*²)** — just *m* and *ℓ* per row. Those are the
 `Att_Lse` outputs below: the log-sum-exp statistics that let partial results be combined.
 
 **It is associative across tiles.** Two partial outputs computed over disjoint key ranges
@@ -325,18 +325,18 @@ k_t  = W_UK  · c_t
 v_t  = W_UV  · c_t
 ```
 
-With `d_c = 4·d_h` against a full cache of `2·n_h·d_h`, DeepSeek-V2 reports a **93.3%**
+With *d_c* = 4·*d_h* against a full cache of 2·*n_h*·*d_h*, DeepSeek-V2 reports a **93.3%**
 reduction in KV bytes per token versus its own dense predecessor — roughly what GQA with
 2.25 groups would cost, at better quality than full multi-head attention.
 
 The part that makes it more than compression is that **the up-projections need never be
-computed at all**. Attention scores are `qᵀk = qᵀ(W_UK c)`, which is `(W_UKᵀ q)ᵀ c`: fold
-`W_UK` into the query projection and attend directly against the latent. Fold `W_UV` into the
+computed at all**. Attention scores are *q*ᵀ*k* = *q*ᵀ(*W_UK c*), which is (*W_UK*ᵀ*q*)ᵀ*c*: fold
+*W_UK* into the query projection and attend directly against the latent. Fold *W_UV* into the
 output projection and the values never materialize either. What is stored is what the kernel
 reads.
 
 Except that RoPE breaks it. A rotary embedding is a position-dependent rotation applied
-*after* projection, so the fold above would require `R(mθ) W_UK` — a different matrix at
+*after* projection, so the fold above would require *R*(*mθ*)*W_UK* — a different matrix at
 every position, which cannot be absorbed into a fixed weight. DeepSeek's answer is
 **decoupled RoPE**: carry a small extra set of dimensions that exist only to hold position
 information, apply RoPE to those, and leave the compressed path un-rotated. The cached vector

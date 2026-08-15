@@ -77,7 +77,7 @@ searches the two configurations independently and reports **7.4× the request ra
 tighter SLOs, at 90% attainment.
 
 The obvious objection is the transfer, and the paper's answer is arithmetic. The KV for a
-request is `bytes_per_token × prompt_length`, and it is transferred exactly once, against a
+request is bytes_per_token × prompt_length, and it is transferred exactly once, against a
 prefill that took tens of milliseconds of GPU time to produce. For OPT-175B they measure the
 transfer at **under 0.1%** of total request latency — provided it crosses a fast link. Which
 is the real constraint: the placement algorithm is bandwidth-aware precisely because the

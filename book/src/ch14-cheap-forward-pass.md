@@ -61,7 +61,7 @@ q = round(x / s) + z        encode
 x̂ = s · (q − z)             decode
 ```
 
-with *s* the **scale** and *z* the **zero point**. Symmetric schemes fix `z = 0` and lose the
+with *s* the **scale** and *z* the **zero point**. Symmetric schemes fix *z* = 0 and lose the
 ability to represent an asymmetric range in exchange for dropping a term from the inner loop.
 The scale is what carries the dynamic range: an INT8 value holds 256 levels, and *s* decides
 what interval those levels span.
