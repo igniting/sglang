@@ -21,6 +21,10 @@ awaitable function call.
 That trick — and the validation, batching, and zero-copy transport that surround it — is
 what this chapter is about.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 10 min</span></p><ul><li>Follow a request from an HTTP handler to a message on a ZeroMQ socket</li><li>Explain what a tokenizer does and which of its properties leak into the engine</li><li>Say why validation happens at the front and not at the scheduler</li><li>Trace an abort across process boundaries</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## The manager and its event loop
@@ -375,3 +379,9 @@ boundary, but a `msgspec.Struct` can.
 
 Chapter 5 picks the request up on the other side of the socket, where a synchronous loop is
 deciding what to do with it.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 4 in one page</p><ol class="bk-card-arg"><li>The front end is an async/sync boundary: an asyncio event loop on one side, a synchronous scheduler loop on the other.</li><li>Most of its complexity is making message passing look like `await` — a future per request, resolved when a message comes back.</li><li>Subword tokenization is greedy and not compositional, which is why detokenization cannot be done one token at a time.</li><li>Validation is a stability boundary: past it, a malformed request would crash a process holding the model.</li><li>Large tensors travel by shared memory, not through the socket.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Rough English tokens per character</th><td>~1 per 4</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Manager and event loop</th><td><code>python/sglang/srt/managers/tokenizer_manager.py</code></td></tr><tr><th scope='row'>Batched tokenization</th><td><code>python/sglang/srt/managers/async_dynamic_batch_tokenizer.py</code></td></tr><tr><th scope='row'>Wire types</th><td><code>python/sglang/srt/managers/io_struct.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

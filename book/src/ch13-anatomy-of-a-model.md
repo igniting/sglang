@@ -20,6 +20,10 @@ quantization, or graph capture, even though all four are happening. They live in
 the model is built from. That is what makes adding a model a bounded task rather than an
 expert one, and it is why Chapter 23's checklist is as short as it is.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 9 min</span></p><ul><li>Name the four components of a modern decoder block and what each replaced</li><li>Read llama.py end to end and say what each layer choice is for</li><li>Explain why models are rewritten rather than imported</li><li>Distinguish a model's total head count from this rank's</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## The contract
@@ -160,6 +164,11 @@ The branch is grouped-query attention meeting tensor parallelism. Llama-3-70B ha
 heads and 8 KV heads. On 8-way TP each rank gets 8 query heads and 1 KV head — clean. On
 16-way TP there are more ranks than KV heads, so KV heads must be **replicated**: two ranks
 hold the same KV head and therefore store the same KV cache entries twice. That is real
+> [!warning] Past the KV head count, tensor parallelism stops buying cache
+> When the parallel size exceeds the number of KV heads, the heads are replicated rather
+> than split, so two ranks store identical cache entries. Adding GPUs still adds compute
+> and weight capacity — it just stops adding the thing that was scarce.
+
 memory duplication, and it is why raising TP does not reduce KV memory per GPU beyond the
 KV head count. Chapter 16's data-parallel attention is one answer.
 
@@ -334,3 +343,9 @@ else — which is exactly why the abstraction is drawn where it is.
 
 One line of that file has been standing in for the hardest operation in the model. Chapter
 14 goes behind it.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 13 in one page</p><ol class="bk-card-arg"><li>RMSNorm, SwiGLU, RoPE, and GQA each replaced something simpler, and each replacement shows up as an engine constraint.</li><li>GQA exists because the KV cache is the scarce resource — it is Chapter 1's argument reaching back into the architecture.</li><li>A model file is a `forward` and a `load_weights` over a shared vocabulary of parallel, quantization-aware layers.</li><li>Fusions like `gate_up_proj` are SGLang's, not the checkpoint's, which is why loading has to split one tensor across two slices.</li><li>The model contains no cache logic at all; `RadixAttention` takes a layer id and the rest arrives through the forward batch.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Llama-3-70B query heads / KV heads</th><td>64 / 8</td></tr><tr><th scope='row'>KV cache saved by GQA at that ratio</th><td>8×</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>The template model</th><td><code>python/sglang/srt/models/llama.py</code></td></tr><tr><th scope='row'>Parallel layers</th><td><code>python/sglang/srt/layers/linear.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

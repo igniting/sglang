@@ -19,6 +19,10 @@ later in this book, the first useful question is almost always *which modes reac
 We will also meet `ModelRunner`, the object that owns the GPU, and read its initialization
 as what it actually is: a dependency chain that explains most of the ways startup can fail.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 8 min</span></p><ul><li>List the forward modes and say what each one changes downstream</li><li>Explain the ragged batch layout and which operators read its offsets</li><li>Describe the purity rule on `ForwardBatch.init_new` and why overlap requires it</li><li>Follow the handoff from scheduler objects to GPU tensors</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## Mode determines the world
@@ -368,3 +372,9 @@ bugs are.
 
 The batch has run. What comes back is logits — not tokens, and certainly not text. Chapter 8
 covers the last leg, and closes Part II.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 7 in one page</p><ol class="bk-card-arg"><li>The batch's mode determines the world: which kernel runs, which metadata is built, whether a graph can replay.</li><li>Batches are ragged, not rectangular — a flat token buffer plus offsets — because a well-packed batch is deliberately uneven.</li><li>Linear layers ignore the offsets; attention reads them. That is Orca's selective batching, inherited as a data layout.</li><li>`init_new` treats its input as read-only, because the overlap loop queues snapshots that must describe what the GPU actually ran.</li><li>The worker boundary is a substitution point — speculative decoding replaces it entirely.</li></ol><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Forward batch</th><td><code>python/sglang/srt/model_executor/forward_batch_info.py</code></td></tr><tr><th scope='row'>Worker</th><td><code>python/sglang/srt/managers/tp_worker.py</code></td></tr><tr><th scope='row'>Model runner</th><td><code>python/sglang/srt/model_executor/model_runner.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

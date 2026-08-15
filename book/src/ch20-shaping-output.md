@@ -23,9 +23,18 @@ Along the way: why compiling a grammar is harder than it sounds (grammars are de
 characters, models emit tokens, and those do not line up), and the trick where the engine
 skips the forward pass entirely for tokens the grammar has already determined.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 10 min</span></p><ul><li>Explain why a grammar over characters is hard to apply to tokens</li><li>Say why JSON needs a pushdown automaton rather than a finite one</li><li>Describe how XGrammar makes a per-step vocabulary mask affordable</li><li>Explain what jump-forward decoding skips and what it complicates</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## Guarantees by masking
+
+> [!definition] Constrained decoding
+> Enforcing a shape on the output by masking logits: every token that cannot legally come
+> next is set to −∞ before sampling. The guarantee is structural rather than statistical —
+> the model is not asked to comply, it is made unable to do otherwise.
 
 The mechanism is simple to state. At each decode step, before sampling, set the logits of
 every structurally-invalid token to −∞. The model cannot select them, so output conforms by
@@ -318,3 +327,9 @@ book where adding a correctness guarantee also makes things quicker.
 
 Chapter 21 takes the last of the assumptions this part exists to break — that every request
 in a batch wants the same weights, and the same kind of input.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 20 in one page</p><ol class="bk-card-arg"><li>A guarantee about output shape is enforced by masking logits, so an illegal token has probability zero rather than low probability.</li><li>The mismatch is that grammars are defined over characters and models emit tokens, which may span grammar boundaries.</li><li>JSON is not regular — matching brackets requires a stack — so the right machine is a byte-level pushdown automaton.</li><li>Most tokens' legality depends only on the current node, so their masks are precomputed and cached; under 1% need the full stack.</li><li>The mask is computed on the CPU while the GPU runs the forward, which is Chapter 5's argument reappearing.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>XGrammar mask cache, Llama-3.1 JSON</th><td>160 MB → 0.46 MB</td></tr><tr><th scope='row'>Context-dependent tokens</th><td><1%</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Default backend</th><td><code>python/sglang/srt/constrained/xgrammar_backend.py</code></td></tr><tr><th scope='row'>Jump forward</th><td><code>python/sglang/srt/constrained/outlines_jump_forward.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

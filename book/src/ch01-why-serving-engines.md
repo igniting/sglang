@@ -14,9 +14,11 @@ more than 99% of the time, and it is idle not because the work is easy but becau
 cannot reach the arithmetic units fast enough.
 
 Getting from there to a useful machine takes two steps, and the second creates the problem
-the rest of this book is about. By the end you will be able to compute, for a given model
-and GPU, roughly how many people it can serve at once — and see why that number, rather than
-any measure of speed, is the one everything else in the engine is organized around.
+the rest of this book is about — a problem of memory, not of speed.
+
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 16 min</span></p><ul><li>Compute, for a given model and GPU, how many users it can serve at once</li><li>Explain why decode is memory-bound and prefill is not</li><li>Derive the critical batch size, and say what it means for a scheduler</li><li>Name which of TTFT, ITL, throughput, and goodput a technique helps and which it charges</li></ul></div>
+<!-- objectives:end -->
 
 ---
 
@@ -36,6 +38,11 @@ the activation matrix has *one* row. Each weight is still loaded from memory onc
 used once.
 
 That difference is not a detail. It is the entire economics of LLM serving.
+
+> [!definition] Arithmetic intensity
+> Floating-point operations performed per byte moved from memory. It is a property of an
+> *algorithm on a shape*, not of hardware — and for a weight-bound GEMM it depends on the
+> batch size and the element width and nothing else.
 
 The relevant measure is **arithmetic intensity**: floating-point operations performed per
 byte moved from memory. An H100 delivers roughly 1,000 TFLOP/s of BF16 compute against
@@ -194,6 +201,12 @@ Naively, generating token *n* means re-running attention over all *n−1* previo
 which means recomputing their keys and values every step. Total work grows with the square
 of sequence length.
 
+> [!definition] KV cache
+> The stored keys and values for every token a sequence has already seen, kept so that
+> attention does not recompute them each step. It converts generation from quadratic to
+> linear in sequence length, and it is the resource everything else in this book competes
+> for.
+
 But those keys and values do not change. Token 5's key vector is the same at step 6 and at
 step 600. So they are computed once and kept: the **KV cache**. Generation becomes linear
 in sequence length, and decode becomes the memory-bound matrix-vector problem described
@@ -253,6 +266,37 @@ is the tension every remaining chapter is a response to:
 
 Once you see the KV cache as the scarce resource, the architecture of the engine stops
 looking like a collection of features and starts looking like a single sustained argument.
+
+### A deployment to keep in mind
+
+Abstractions about "a request" are hard to hold onto, so the rest of the book refers back to
+one concrete deployment. It is deliberately ordinary — a customer-support assistant, the most
+common shape of production LLM traffic:
+
+| | |
+| --- | --- |
+| Model | Llama-3-70B, BF16, on 4×H100 |
+| System prompt and tool schemas | 1,800 tokens, byte-identical on every request |
+| Conversation history | ~600 tokens, different every time |
+| Reply | ~150 tokens |
+| Traffic | a few requests per second, bursty on weekday mornings |
+
+Run the arithmetic above on it. A conversation holds 2,550 tokens of context, so its KV cache
+is **0.78 GB**, and the ~150 GB left after weights holds about **192 of them at once**.
+
+Now notice something about that number. Of the 2,550 tokens each conversation stores, 1,800
+are the *same* 1,800 tokens — the system prompt every request begins with. Stored per
+request, that shared prefix accounts for 0.55 GB each and **105 GB of the 150 GB cache**:
+seventy percent of the scarcest resource in the deployment, holding 192 identical copies of
+one document.
+
+Store it once and that 105 GB comes back, which nearly triples concurrency without touching a
+kernel, a flag, or a GPU. That is Chapter 10, and it is why prefix caching is the largest
+single win in this book rather than one optimization among many.
+
+We return to this deployment when the scheduler decides what to admit (Chapter 6), when the
+cache is built (Chapter 10), when a router picks a replica (Chapter 18), and when somebody
+has to decide how many replicas to pay for (Chapter 24).
 
 ### Little's Law closes the loop
 
@@ -416,3 +460,9 @@ feature for its own sake; each is a response to a specific line in the cost mode
 of the book is that table, expanded, with the code that implements each row.
 
 Chapter 3 gets us oriented in the repository before we start walking a request through it.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 1 in one page</p><ol class="bk-card-arg"><li>Decode reads every weight to produce one token per sequence, so it is bound by memory bandwidth, not arithmetic.</li><li>The fix is batching: one weight read serving many tokens. Arithmetic intensity for a weight-bound GEMM is 2B/s — batch size and dtype, nothing else.</li><li>Batch size is capped by KV cache memory, so memory capacity is the direct limiter on throughput.</li><li>Little's Law turns that capacity into a request rate, and the ceiling moves only by fitting more caches, finishing faster, or storing prefixes once.</li><li>Every later chapter is a response to one of those three.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>H100 ridge point</th><td>~296 FLOP/byte</td></tr><tr><th scope='row'>Critical batch size at BF16</th><td>~296 rows</td></tr><tr><th scope='row'>KV per token, Llama-3-70B</th><td>320 KB</td></tr><tr><th scope='row'>Concurrent 4k conversations on 4×H100</th><td>~120</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>The smallest thing that runs a real forward pass</th><td><code>python/sglang/benchmark/one_batch.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

@@ -27,6 +27,10 @@ Along the way we take a detour into a question that surprises people: why the sa
 with temperature zero can produce different output on different runs, and what it costs to
 make that stop.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 10 min</span></p><ul><li>Say what temperature, top-k, top-p, and min-p each do and why their order matters</li><li>Explain why the same prompt at temperature 0 can give different output</li><li>Describe why incremental detokenization cannot decode one token at a time</li><li>Follow a token from a logit to a streamed chunk of text</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 Chapter 7 ended with `ModelRunnerOutput` carrying logits. Getting from there to a token
@@ -412,3 +416,9 @@ is.
 
 Part II ends here. Part III goes underneath it, into the memory system every chapter so far
 has been spending.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 8 in one page</p><ol class="bk-card-arg"><li>Sampling is batched tensor work because every request in the batch asked for different parameters.</li><li>Truncation methods differ in what they threshold on: a fixed count, cumulative mass, or a fraction of the peak.</li><li>Order matters — temperature is applied before the truncations, so it changes which tokens survive them.</li><li>Nondeterminism at temperature 0 is not the sampler; it is batch-size-dependent reduction order in the kernels.</li><li>Detokenization is incremental and stateful because tokens are byte sequences that can split a character.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Batch-invariant kernels' cost</th><td>~1.6–2× slower</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Sampler</th><td><code>python/sglang/srt/layers/sampler.py</code></td></tr><tr><th scope='row'>Per-request parameters</th><td><code>python/sglang/srt/sampling/sampling_batch_info.py</code></td></tr><tr><th scope='row'>Detokenizer</th><td><code>python/sglang/srt/managers/detokenizer_manager.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

@@ -20,6 +20,10 @@ has already been bitten.
 This is the map you will navigate by for the rest of the book. It is worth the twenty
 minutes.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 12 min</span></p><ul><li>Name the four processes and the socket between each pair</li><li>Explain why the schedulers are replicated rather than driven by one controller</li><li>Choose between the HTTP server, the Engine class, and the DSL for a given job</li><li>Predict which process a given kind of bug lives in</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## Several projects in one tree
@@ -390,3 +394,9 @@ Read all five before your first patch. They will save you a review cycle each.
 ---
 
 Part II starts now: one request, from socket to streamed token, one chapter per stage.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 3 in one page</p><ol class="bk-card-arg"><li>Tokenization, GPU work, and detokenization are split across processes because in one process the GIL would make the GPU wait on string handling.</li><li>The schedulers are SPMD: every rank runs the same code over broadcast data and independently reaches the same conclusion.</li><li>That is chosen for per-step latency — a single controller would need a round trip per rank inside a ten-millisecond decode step.</li><li>The price is that ranks must stay deterministic in lockstep; disagreement deadlocks rather than crashes.</li><li>Output travels forward to the tokenizer manager, not back to the scheduler, because that is where the client's future lives.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Processes in the default topology</th><td>4</td></tr><tr><th scope='row'>Schedulers receiving from the front end</th><td>rank 0 only</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Topology construction</th><td><code>python/sglang/srt/entrypoints/engine.py</code></td></tr><tr><th scope='row'>Port and socket names</th><td><code>python/sglang/srt/server_args.py</code></td></tr><tr><th scope='row'>HTTP surface</th><td><code>python/sglang/srt/entrypoints/http_server.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

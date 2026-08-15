@@ -18,6 +18,10 @@ deliberate: it is about the machine, not the software. But it ends where the res
 book begins, with the handful of hardware facts SGLang actually reads at startup and the
 decisions it makes from them.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 11 min</span></p><ul><li>Read a GPU spec sheet and say which number binds your workload</li><li>Compute the ridge point for any accelerator, and explain why it barely moves across generations</li><li>Place a collective on the interconnect ladder and predict what it costs</li><li>Find the handful of hardware facts SGLang reads at startup</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## Inside one accelerator
@@ -325,3 +329,9 @@ determines which half of this book you should read closely.
 Chapter 1 said the machine is memory-bound; this chapter said which memory, how fast, and how
 far away. From here the book stops describing hardware and starts describing the software
 that responds to it — beginning, in Chapter 3, with the shape SGLang takes when you launch it.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 2 in one page</p><ol class="bk-card-arg"><li>An accelerator is three numbers: memory capacity, memory bandwidth, and tensor-core FLOPS. Each binds a different phase.</li><li>Their ratio is Chapter 1's ridge point, and it sits between roughly 150 and 600 FLOP/byte on every part in production — nobody is fixing the memory wall.</li><li>The interconnect ladder falls by an order of magnitude per step; NVLink to InfiniBand is the cliff that keeps tensor parallelism inside a node.</li><li>Spec sheets are chosen, not false: check dense vs sparse, precision, peak vs achieved, and SKU.</li><li>SGLang carries no table of GPUs — it asks the device a few questions and computes the rest.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>H100 SXM</th><td>80 GB · 3.35 TB/s · 990 TF BF16</td></tr><tr><th scope='row'>NVLink vs InfiniBand</th><td>~20× bandwidth gap</td></tr><tr><th scope='row'>HBM vs PCIe</th><td>~100× gap</td></tr><tr><th scope='row'>Realistic fraction of peak</th><td>60–80% bandwidth</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Platform abstraction</th><td><code>python/sglang/srt/platforms/interface.py</code></td></tr><tr><th scope='row'>Capability probes</th><td><code>python/sglang/srt/utils/common.py</code></td></tr><tr><th scope='row'>Memory fraction default</th><td><code>python/sglang/srt/server_args.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

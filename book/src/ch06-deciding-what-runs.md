@@ -5,6 +5,12 @@
 
 Chapter 5 left one call unopened: `get_next_batch_to_run`. This chapter opens it.
 
+> [!definition] Continuous batching
+> Returning control to the scheduler after every forward pass rather than every request,
+> so a finished request leaves the batch immediately and a newly arrived one joins on the
+> next iteration. Also called iteration-level scheduling, after the paper that introduced
+> it.
+
 "Continuous batching" is usually explained as requests joining and leaving the batch every
 step instead of waiting for the slowest one to finish. That is true, and it is not the hard
 part. The hard part is that admitting a request commits memory whose size nobody knows —
@@ -20,6 +26,10 @@ predicts demand that has not happened yet, what happens when the prediction is w
 the ordering policy that decides *which* requests get in. That last one turns out to depend
 on the cache we meet in Chapter 10, which is the first appearance of a loop between
 scheduling and memory that recurs throughout the book.
+
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 14 min</span></p><ul><li>Explain continuous batching as admission control under a memory budget</li><li>Compute the token budget and say what each of its three terms is for</li><li>Describe what retraction is and when it fires</li><li>Choose between LPM and DFS-weight ordering, and say why they agree on a static batch</li></ul></div>
+<!-- objectives:end -->
 
 ---
 
@@ -330,6 +340,11 @@ next improvement is.
 disabled or the queue is too long to bother matching — the sort itself has a cost, and at
 sufficient queue depth it stops paying for itself.
 
+For the support deployment of Chapter 1, this is what decides whether a burst is absorbed
+or queued. Every request in it shares the same 1,800-token prefix, so once one has run,
+the rest are cheap — and ordering by longest match means the scheduler admits them
+together rather than interleaving a cold request that would evict what they need.
+
 This closes the loop Chapter 10 opened. The cache determines what is cheap; the scheduler
 runs what is cheap; running it extends the cache along the same branch; the next similar
 request is cheaper still. Chapter 18 lifts the same loop one level up, into routing.
@@ -442,3 +457,9 @@ Each iteration:
 
 Every step is bounded by the same resource. Chapter 9 is where that resource is actually
 managed.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 6 in one page</p><ol class="bk-card-arg"><li>Admitting a request commits memory whose size nobody knows, because output length is unknown.</li><li>Orca made scheduling per-iteration; vLLM made the accounting paged; Sarathi made long prefills chunkable. This scheduler is all three plus prefix-aware ordering.</li><li>The budget is denominated in tokens, not requests, which is what the ragged batch layout buys.</li><li>When the estimate is wrong the scheduler retracts — destroying work to stay alive — so a nonzero retraction rate means admission is too optimistic.</li><li>Ordering by longest cached prefix is provably the optimal cache order on a static batch; on a stream it needs the tree's structure to hold groups together.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>SGLang's cache hit rate vs an oracle</th><td>~96%</td></tr><tr><th scope='row'>Sarathi's decode-time improvement</th><td>12.5 ms → 1.2 ms per token</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>The decision</th><td><code>python/sglang/srt/managers/scheduler.py</code></td></tr><tr><th scope='row'>Admission and policy</th><td><code>python/sglang/srt/managers/schedule_policy.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

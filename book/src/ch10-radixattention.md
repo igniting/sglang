@@ -23,6 +23,10 @@ design: attention that reads its cache out of a radix tree keyed by token sequen
 chapter builds that tree from the key up, then shows the invariant that keeps it safe while
 hundreds of requests read and write it concurrently.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 18 min</span></p><ul><li>Explain what a radix tree over token sequences buys, and why the key is token ids</li><li>Walk a match, a split, and an insert</li><li>Explain reference counting and why eviction goes leaf-first</li><li>Say what makes prefix sharing sound rather than merely fast</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## The key
@@ -309,6 +313,13 @@ The `.clone()` calls are equally deliberate. Slicing a tensor produces a view sh
 storage with the original; if the two halves shared storage, freeing one would corrupt the
 other. The clone costs a small copy of an index tensor — never of KV data — to buy
 independent lifetimes.
+
+Return to Chapter 1's deployment for a moment. Its 1,800-token system prompt is one node
+near the root, held by every active conversation, and its 192 conversations hang off that
+node as branches of a few hundred tokens each. The 105 GB of duplicated prefix that
+Chapter 1 counted is simply not allocated: it exists once, `lock_ref` is 192, and eviction
+cannot touch it while a single one of them is running. That is the entire mechanism behind
+the largest number in this book.
 
 Splitting is not a failure mode. It is how the tree learns where the branch points in the
 workload actually are. A system prompt followed by two different user messages starts as
@@ -732,3 +743,9 @@ The remaining variants specialize the same algorithm for a different unit of sto
 
 Chapter 11 takes the last variant, `HiRadixCache`, which keeps the algorithm and adds a
 memory tier beneath it.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 10 in one page</p><ol class="bk-card-arg"><li>Real workloads share long prefixes — system prompts, few-shot examples, conversation history — and recompute them per request.</li><li>A radix tree keyed on token ids stores each shared prefix once and finds the longest match in one walk.</li><li>Nobody declares the branch points; splitting discovers them from the workload's own shape.</li><li>Reference counting is the invariant that makes it safe: a node in use by a running request cannot be evicted.</li><li>Eviction runs leaf-first, so the most-shared prefixes survive longest — which is LRU with the tree's structure as the tiebreak.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Position of prefix caching among optimizations</th><td>the only one that removes work rather than moving it</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>The tree</th><td><code>python/sglang/srt/mem_cache/radix_cache.py</code></td></tr><tr><th scope='row'>Where requests meet it</th><td><code>python/sglang/srt/managers/schedule_batch.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

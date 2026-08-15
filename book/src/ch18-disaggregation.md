@@ -18,6 +18,10 @@ The chapter ends one level further out, with the router that decides which insta
 each request. That decision turns out to depend on Chapter 10, and the dependence is strong
 enough that routing policy can matter more than any kernel in this book.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 11 min</span></p><ul><li>State the interference argument and the goodput framing it needs</li><li>Explain what the prefill and decode sides each do at the handshake</li><li>Say when disaggregation beats chunked prefill and when it does not</li><li>Describe what a cache-aware router decides and on what evidence</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## Why colocation compromises both
@@ -221,6 +225,13 @@ request *B* shares a prefix with request *A*, sending it to the replica that alr
 *A* turns a full prefill into a cache hit. Sending it elsewhere throws that away. At an 80%
 prefix-sharing rate, routing policy is worth more than any kernel optimization in this book.
 
+Chapter 1's support deployment makes the stakes concrete. Every request shares the same
+1,800-token prefix, so on a replica that already holds it, prefill is 600 tokens; on any
+other replica it is 2,400. Round-robin across four replicas turns a 75% cache hit into a
+25% one and quadruples the prefill bill — and, worse, causes all four replicas to store
+their own copy of the prefix, spending four times the memory to get a quarter of the
+benefit. The router is where Chapter 10's win is either collected or thrown away.
+
 `sgl-model-gateway/src/policies/` holds the implementations:
 
 ```
@@ -312,3 +323,9 @@ anything else available.
 
 Part V ends here, and with it the story of making the engine bigger. Part VI is about making
 it do more.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 18 in one page</p><ol class="bk-card-arg"><li>Prefill and decode want opposite hardware, opposite parallelism, and are graded on different metrics.</li><li>Colocating them means one long prompt taxes every decoding user in the batch, and the damage is uneven.</li><li>Separating the pools lets each be configured for its own job — including different parallelism, which one machine cannot do.</li><li>The KV transfer is on the critical path, so the conclusion inverts on a slow interconnect.</li><li>This is the direct counter-argument to chunked prefill; both are right in different regimes, and SGLang implements both.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>DistServe request-rate gain</th><td>7.4×</td></tr><tr><th scope='row'>Transfer as a share of latency, fast link</th><td><0.1%</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Prefill and decode sides</th><td><code>python/sglang/srt/disaggregation/prefill.py</code></td></tr><tr><th scope='row'>Transfer</th><td><code>python/sglang/srt/disaggregation/nixl/conn.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

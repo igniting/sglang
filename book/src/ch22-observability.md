@@ -21,6 +21,10 @@ how the flags appear in `--help` but by which constraint each one relieves.
 That ordering is the chapter's main practical claim: most tuning effort is spent optimizing
 something that was not the bottleneck.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 11 min</span></p><ul><li>Name the five metrics that tell you what the engine is doing</li><li>Read a profile and decide whether a kernel is worth optimizing</li><li>Explain why latency has an asymptote rather than a slope</li><li>Tune in the order that relieves binding constraints</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## Reading the metrics as a map
@@ -51,6 +55,12 @@ collector serves Prometheus, logs, or a test double.
 ### The five numbers that matter
 
 Everything else is diagnostic. These five tell you what the engine is doing:
+
+For Chapter 1's support deployment these have expected values, and the gap between
+expected and observed is the whole diagnostic. Hit rate should sit near 70% — 1,800 of
+2,550 input tokens are the shared prefix — so a hit rate of 20% means requests are not
+reaching the replica that holds their prefix, which is a routing problem (Chapter 18) and
+not a cache problem.
 
 **Cache hit rate** (Chapter 10). The single highest-leverage number. If it is low on a
 workload with shared prefixes, something is wrong — the cache is too small, requests are
@@ -309,3 +319,9 @@ constraint that was not binding.
 
 One chapter left. Chapter 23 is about changing the engine rather than watching it — and it
 is the last check on whether everything before it landed.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 22 in one page</p><ol class="bk-card-arg"><li>Every metric exists because someone needed it to answer a question this book has already raised — the instrumentation is a map back to the design.</li><li>Cache hit rate, pool utilization, retraction count, queue depth, and spec acceptance are the five that carry information.</li><li>Waiting time goes as 1/(1−ρ), so the last few percent of utilization cost more latency than all the rest combined.</li><li>In a profile, gap time means a CPU problem and no kernel work will help.</li><li>Whether a kernel is worth optimizing depends on which side of the roofline it sits on — a memory-bound kernel near its bandwidth ceiling is finished.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Target utilization for headroom</th><td>70–80%</td></tr><tr><th scope='row'>Where p99 moves</th><td>after the queue has already grown</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Metrics</th><td><code>python/sglang/srt/metrics/collector.py</code></td></tr><tr><th scope='row'>Tracing</th><td><code>python/sglang/srt/observability/trace.py</code></td></tr><tr><th scope='row'>Profiler</th><td><code>python/sglang/profiler.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

@@ -96,6 +96,36 @@ mdbook build book        # static site into book/output/ (gitignored)
 python3 book/scripts/verify_anchors.py
 ```
 
+## Chapter furniture
+
+`scripts/furniture.py` generates two things into every chapter, from a declarative table:
+
+- **Objectives** — what the chapter leaves you able to do, stated before the body, with a
+  reading time computed from the real word count so it cannot drift.
+- **A summary card** — the argument in five lines, the numbers worth keeping, and the files
+  the chapter lives in. This is what makes the book returnable-to rather than read-once.
+
+Regenerating is idempotent and CI checks it (`--check`). If you edit a chapter's substance,
+edit its entry in `CHAPTERS` too — the card is a claim about the chapter, not decoration.
+
+## Callouts
+
+`scripts/callouts.py` is a preprocessor rendering four typed callouts from GitHub alert
+syntax: `definition`, `takeaway`, `warning`, `aside`. Use them sparingly — a definition on
+first use of a term of art, a warning at a trap that fails quietly, a takeaway where a
+section's conclusion would otherwise be buried mid-paragraph.
+
+**Gotcha:** the body must be separated from the opening `<div>` by a blank line or its
+markdown is not parsed and backticks render literally. `render()` handles this; don't
+hand-write the HTML.
+
+## The running example
+
+Chapter 1 sets up one concrete deployment — Llama-3-70B on 4×H100, an 1,800-token shared
+system prompt, 192 concurrent conversations, 105 GB of duplicated prefix — and Chapters 6,
+10, 18, and 22 return to it. Keep the numbers consistent across all five; they are computed,
+not illustrative.
+
 ## Calculators
 
 `theme/calculators.js`, wired in through `additional-js`. The book derives `B* = sπ/2β` and

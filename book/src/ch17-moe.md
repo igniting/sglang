@@ -24,6 +24,10 @@ deciding which expert lives where, and in hiding the communication behind other 
 This chapter is also where the in-repo CUDA is densest, and where one trick that has already
 appeared twice in this book appears again in its clearest form.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 12 min</span></p><ul><li>Explain how MoE changes the cost structure without changing FLOPs per token</li><li>Trace the lineage from GShard's auxiliary loss to bias-based balancing</li><li>Say why the all-to-all cost is latency rather than bandwidth</li><li>Describe what EPLB measures and what it does about it</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## A different cost structure
@@ -362,3 +366,9 @@ configuration; the blog posts linked from `README.md` cover the results.
 
 Chapters 16 and 17 split the model. Chapter 18 splits the *work* — and stops asking one
 machine to be good at two opposite things.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 17 in one page</p><ol class="bk-card-arg"><li>Parameter count grows; active parameters per token do not. So MoE needs more GPUs to hold weights without needing more compute.</li><li>Tokens in a batch go to different experts, so every MoE layer ships tokens across the network twice.</li><li>That cost is dominated by the count of synchronizations, not the bytes — which is why the kernels are hand-written and why routing is constrained.</li><li>Routing is learned and therefore unbalanced; the slowest rank sets the step time.</li><li>The answers are rebalancing, redundant experts, and overlapping the transfer with compute.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>DeepSeek-V3</th><td>256 experts, 8 active, 671B total / 37B active</td></tr><tr><th scope='row'>Collectives per forward, 60 MoE layers</th><td>120</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Router</th><td><code>python/sglang/srt/layers/moe/topk.py</code></td></tr><tr><th scope='row'>Dispatch</th><td><code>python/sglang/srt/layers/moe/token_dispatcher/deepep.py</code></td></tr><tr><th scope='row'>Balancing</th><td><code>python/sglang/srt/eplb/eplb_manager.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

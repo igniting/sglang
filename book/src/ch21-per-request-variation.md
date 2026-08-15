@@ -24,6 +24,10 @@ move as the page table in Chapter 9, the sorted expert order in Chapter 17, and 
 directory passed to the attention kernel in Chapter 14. This chapter is where the pattern
 becomes impossible to miss.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 10 min</span></p><ul><li>Explain why multi-adapter serving cannot use LoRA's merged-weight trick</li><li>Describe the segmented gather that replaces it</li><li>Say what an image costs once it becomes tokens</li><li>Explain why position arithmetic for multimodal input moved into the scheduler</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## Batching across adapters
@@ -325,3 +329,9 @@ expert-major sort — probably the single most repeated idea in this codebase.
 
 Part VI ends here. You now have the whole engine. Part VII is about living with it: seeing
 what it is doing, and changing what it does.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 21 in one page</p><ol class="bk-card-arg"><li>Both features break the assumption that a batch is homogeneous, and both are solved by extending the batch rather than splitting it.</li><li>A LoRA update is low-rank, so the base GEMM runs once and only a thin correction is per-request.</li><li>That correction is ragged — different rows want different factors — so it becomes an index tensor, not control flow.</li><li>A vision encoder's output is spliced into the token stream, so an image is tokens and carries every cost a token carries.</li><li>This is the same move as the page table and the sorted expert order: irregularity expressed as data.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>A 336×336 image at patch size 14</th><td>576 tokens</td></tr><tr><th scope='row'>LoRA trainable-parameter reduction, GPT-3</th><td>10,000×</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Adapters</th><td><code>python/sglang/srt/lora/lora_manager.py</code></td></tr><tr><th scope='row'>Multimodal</th><td><code>python/sglang/srt/managers/mm_utils.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

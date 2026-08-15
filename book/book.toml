@@ -13,6 +13,10 @@ create-missing = false
 [preprocessor.linkify]
 command = "python3 book/scripts/linkify_anchors.py"
 
+# Renders `> [!definition]` / `[!takeaway]` / `[!warning]` / `[!aside]` blocks.
+[preprocessor.callouts]
+command = "python3 book/scripts/callouts.py"
+
 [output.html]
 default-theme = "light"
 preferred-dark-theme = "navy"

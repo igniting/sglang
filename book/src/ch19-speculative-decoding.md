@@ -24,6 +24,10 @@ into memory pools, scheduling budgets, forward modes, CUDA graphs, the radix cac
 grammar state. Almost nothing in the engine is untouched by it, which is why it comes this
 late in the book.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 13 min</span></p><ul><li>Prove that speculation leaves the output distribution unchanged</li><li>Predict the speedup from an acceptance rate and a draft depth</li><li>Explain why a tree beats a chain</li><li>Name the subsystems speculation reaches into and why</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## The bandwidth argument
@@ -441,3 +445,9 @@ and the number to watch is accepted length per step, because if it is not comfor
 
 Speculation changes *how many* tokens the engine produces per step. Chapter 20 changes
 *which* tokens it is allowed to produce at all.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 19 in one page</p><ol class="bk-card-arg"><li>Running the model on five tokens costs nearly what running it on one costs, because the weights are read once either way.</li><li>The acceptance rule is modified rejection sampling, and it yields the target distribution exactly — for any draft, including a bad one.</li><li>Tokens per step is a capped geometric, so depth has sharply diminishing returns and width does not.</li><li>EAGLE drafts at the feature level from the target's own hidden states, which is why its acceptance rate is high and its head is tiny.</li><li>The cost is coupling: memory pools, scheduling budgets, forward modes, CUDA graphs, the radix cache, and grammar state all learn about it.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>EAGLE accepted length</th><td>3.6–3.9 tokens/pass</td></tr><tr><th scope='row'>EAGLE speedup on a 70B target</th><td>2.7–3.5×</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Capabilities</th><td><code>python/sglang/srt/speculative/spec_info.py</code></td></tr><tr><th scope='row'>EAGLE worker</th><td><code>python/sglang/srt/speculative/eagle_worker_v2.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

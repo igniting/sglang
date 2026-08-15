@@ -23,6 +23,10 @@ Then there is a fourth axis, which SGLang added because DeepSeek's compressed ca
 the assumptions the classical answers were built on. That story — a memory optimization from
 Chapter 9 forcing a new form of parallelism — is the most interesting thing here.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 10 min</span></p><ul><li>Derive Megatron's column-then-row split and count the collectives it costs</li><li>Choose a parallelism axis for a given interconnect</li><li>Explain why MLA breaks tensor parallelism's assumptions</li><li>Say what data-parallel attention buys and what it demands in return</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## Groups and collectives
@@ -315,3 +319,9 @@ which, as the padding comment above shows, is the characteristic failure of this
 This chapter split a dense model. Chapter 17 turns to models that are sparse by
 construction, where the arithmetic barely moves but the communication bill changes shape
 entirely.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 16 in one page</p><ol class="bk-card-arg"><li>The three classical axes differ in what they split and therefore in which interconnect they stress.</li><li>Column-parallel then row-parallel is forced, not conventional: it is the only order that keeps the nonlinearity local and needs one all-reduce.</li><li>Two all-reduces per block times eighty layers is 160 collectives per forward — which is why TP stays inside a node.</li><li>MLA has effectively one KV head, so TP replicates the cache instead of splitting it, spending the compression immediately.</li><li>Data-parallel attention splits attention by sequence and the MLP by hidden dimension, paying a gather between them.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>All-reduces per forward, 80 layers</th><td>160</td></tr><tr><th scope='row'>NVLink vs InfiniBand</th><td>~20×</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Groups</th><td><code>python/sglang/srt/distributed/parallel_state.py</code></td></tr><tr><th scope='row'>DP attention</th><td><code>python/sglang/srt/layers/dp_attention.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

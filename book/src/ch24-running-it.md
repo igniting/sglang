@@ -19,6 +19,10 @@ Chapter 22's metrics is the right autoscaling signal and why the obvious one is 
 the health endpoint actually proves, and how the engine reports that it is stuck. Everything
 that is genuinely about Kubernetes is left to books about Kubernetes.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 11 min</span></p><ul><li>Account for every second of a cold start and name the flag that governs it</li><li>Choose an autoscaling signal, and say why GPU utilization is not one</li><li>Explain what the health endpoint proves that a liveness probe does not</li><li>Decide between replacing a replica and replacing its weights</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## Where a cold start goes
@@ -132,6 +136,11 @@ per-code-path, not per-process.
 
 ## The autoscaling signal
 
+> [!warning] GPU utilization is not a capacity signal
+> `nvidia-smi` reports near 100% for a replica serving one user and for the same replica
+> serving two hundred, because a decode-bound engine saturates the memory bus either way.
+> Autoscaling on it will scale at the wrong time in both directions.
+
 The instinct is to scale on GPU utilization. It is the wrong signal, and Chapter 1 explains
 why in one line: a decode-bound engine is *always* busy from the GPU's point of view, because
 the memory bus is saturated even while the arithmetic units idle. `nvidia-smi` reports near
@@ -187,6 +196,12 @@ The limits are exactly the things the fast path is reusing. A change to parallel
 memory fraction, or graph configuration invalidates the pool or the graphs, so it needs a
 restart. The distinction to hold onto is that the weights are the *only* part of a running
 engine that is cheap to replace, and Chapter 12 is the reason why.
+
+> [!warning] A hot swap under a populated cache serves the old model's KV
+> The radix tree is keyed on token ids, so cached entries survive a weight update while no
+> longer corresponding to the weights that produced them. The update paths quiesce
+> generation and drop the cache for this reason; a hand-rolled swap that skips either step
+> produces plausible, wrong output.
 
 One caveat worth stating plainly: Chapter 10's prefix cache is keyed on token ids, not on
 weights. Swapping weights under a populated radix tree leaves cached KV that was computed by
@@ -273,3 +288,9 @@ fact that all of it has to start up, scale, and fail somewhere.
 None of it is arbitrary, and none of it is finished. The appendices that follow are reference
 material; the code is still moving; and the argument, once you can see it, is the part that
 will still be true when the implementations have changed.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 24 in one page</p><ol class="bk-card-arg"><li>Every chapter until now described a steady state; production is mostly the other states.</li><li>Cold start is dominated by weight load, which is bandwidth-bound, and graph capture, which is compute and tunable.</li><li>A decode-bound engine always looks busy, so utilization carries no information — queue depth and pool utilization do.</li><li>The health check runs a real generation because the failure modes that matter leave the front end responsive.</li><li>Weights are the only part of a running engine that is cheap to replace; anything touching pools or graphs needs a restart.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Graph capture</th><td>10–120 s</td></tr><tr><th scope='row'>Status during startup</th><td>503, not 200</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Health and warmup</th><td><code>python/sglang/srt/entrypoints/http_server.py</code></td></tr><tr><th scope='row'>Watchdog</th><td><code>python/sglang/srt/managers/scheduler_components/invariant_checker.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

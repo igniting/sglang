@@ -21,6 +21,10 @@ Reinforcement learning needs an inference engine whose weights can be replaced e
 minutes, without restarting, while sharing a GPU with a trainer. That requirement is why
 SGLang is described as a rollout backend and not only a server.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 11 min</span></p><ul><li>Explain how a rank loads only its own shard without materializing the whole model</li><li>Say why safetensors' layout is what makes that free</li><li>Read the two generations of the weight-loading protocol against each other</li><li>Choose a weight-update path for a reinforcement-learning loop</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## From a path to a class
@@ -364,3 +368,9 @@ described as a rollout backend and not only a server.
 
 The weights are on the GPU. Chapter 13 opens one of the files that describes what to do with
 them.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 12 in one page</p><ol class="bk-card-arg"><li>Weight loading looks like file I/O and is really distributed sharding: no rank ever holds a complete matrix.</li><li>Each parameter carries its own loader, so the checkpoint is iterated once and each parameter takes the slice it wants.</li><li>Safetensors is memory-mappable, so a rank never faults in the pages it does not need — which is what makes per-rank slicing free.</li><li>The legacy path spells the fusion mapping out per model; the v2 path factors it into a registry, because 218 models cannot each re-implement it.</li><li>The same machinery serves reinforcement learning, where weights are replaced every few minutes without a restart.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Llama-3-70B in BF16</th><td>130 GB</td></tr><tr><th scope='row'>Copies of the weights: disk path vs IPC path</th><td>3 vs 0</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Loaders</th><td><code>python/sglang/srt/model_loader/loader.py</code></td></tr><tr><th scope='row'>A model's own loader</th><td><code>python/sglang/srt/models/llama.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

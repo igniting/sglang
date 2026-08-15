@@ -22,8 +22,11 @@ a thousand kernels per forward pass, and in decode each may execute for only twe
 microseconds. At that granularity the *CPU* becomes the bottleneck, and the fix is to stop
 launching kernels one at a time.
 
-By the end you will know which tax you are paying, which is the question Chapter 22 turns
-into a procedure.
+Which of the three you are paying is a question Chapter 22 turns into a procedure.
+
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 12 min</span></p><ul><li>Say which of three taxes a given workload is paying</li><li>Explain what quantization is, and the difference between weight-only and weight-and-activation</li><li>Say what a CUDA graph removes and what it freezes</li><li>Predict which models cannot be fully captured, and what happens then</li></ul></div>
+<!-- objectives:end -->
 
 ---
 
@@ -386,3 +389,9 @@ you are actually paying — Chapter 22's profiling — before spending effort on
 
 Part IV assumed throughout that the model fits on one GPU. Part V is what happens when it
 does not.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 15 in one page</p><ol class="bk-card-arg"><li>Quantization attacks bytes moved, CUDA graphs attack launch overhead, and compilation attacks kernel count. They compose because they attack different things.</li><li>Quantization is not a transformation applied to a model — it is a different implementation of every layer, chosen at construction.</li><li>Scale granularity is the central axis: per-tensor, per-channel, or per-block, trading accuracy against where the scale can be applied.</li><li>Weight-only quantization wins on decode, weight-and-activation also wins on prefill — different halves of the roofline.</li><li>A graph records pointers and grid dimensions, so everything that follows — static buffers, bucketing, the ban on `.item()` — is a consequence of that.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Typical gain per precision step</th><td>30–50%</td></tr><tr><th scope='row'>Kernel time in decode</th><td>~20 µs, against 5–10 µs to launch</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Quantization base</th><td><code>python/sglang/srt/layers/quantization/base_config.py</code></td></tr><tr><th scope='row'>FP8 end to end</th><td><code>python/sglang/srt/layers/quantization/fp8.py</code></td></tr><tr><th scope='row'>Graph runner</th><td><code>python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

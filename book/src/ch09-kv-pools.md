@@ -20,6 +20,10 @@ SGLang's answer is two levels of indirection, and that structure is what makes t
 Part III possible. It is also where `--mem-fraction-static` — the flag people tune first and
 understand last — stops being a percentage and becomes a concrete number of tokens.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 11 min</span></p><ul><li>Follow the two-level indirection from a request to a KV tensor</li><li>Explain what paging borrows from operating systems and which wastes it removes</li><li>Say what page size trades off, and why SGLang's default is 1</li><li>Compute how much memory the pool actually gets</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## Two levels, not one
@@ -195,6 +199,11 @@ pages, allocator bookkeeping in Python would show up in profiles — a recurring
 this part of the codebase.
 
 `merge_and_sort_free` is deferred defragmentation: coalescing runs only when an allocation
+> [!takeaway] Exhaustion is a condition, not an error
+> The allocator returns `None` when it cannot satisfy a request, because running out of KV
+> memory is the expected steady state of a well-tuned server. Chapter 6 handles it by
+> retracting a request; an exception would make the normal case look like a fault.
+
 is about to fail. Returning `None` rather than raising is deliberate too — running out of
 KV memory is an *expected* condition that Chapter 6 handles by retracting, not an error.
 
@@ -363,3 +372,9 @@ budgets it, Chapter 10 shares it, Chapter 11 tiers it, Chapter 15 shrinks it, Ch
 avoids replicating it, and Chapter 18 moves it between machines.
 
 This chapter built a memory system with no memory of its own. Chapter 10 gives it one.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 9 in one page</p><ol class="bk-card-arg"><li>Level one maps a request and a position to a KV index; level two maps that index to storage. Neither is contiguous per request.</li><li>Contiguous per-request allocation left 60–80% of KV memory unused, in three distinct ways.</li><li>Paging removes all three: uniform pages cannot fragment externally, on-demand allocation cannot reserve, and internal waste is bounded to one page.</li><li>The price is indirection, which every attention kernel must then perform itself — that is what 'paged attention' names.</li><li>Running out of KV memory is an expected condition, so the allocator returns `None` rather than raising.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>KV memory actually used, pre-paging</th><td>20–38%</td></tr><tr><th scope='row'>SGLang default page size</th><td>1 token</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Pools</th><td><code>python/sglang/srt/mem_cache/memory_pool.py</code></td></tr><tr><th scope='row'>Paged allocator</th><td><code>python/sglang/srt/mem_cache/allocator/paged.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

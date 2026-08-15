@@ -22,6 +22,10 @@ A model with a subtly wrong rotary embedding still produces fluent, plausible te
 project does about that says more about engineering an inference engine than any amount of
 architecture description.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 10 min</span></p><ul><li>Add a model, a kernel, or an attention backend, and know what will bite</li><li>Recognize the registry-plus-capability pattern the codebase uses everywhere</li><li>Explain why an inference engine's test pyramid is upside down</li><li>Localize a wrong-output bug to a layer</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## Adding a model
@@ -303,3 +307,9 @@ before your first patch; each one will otherwise cost you a review cycle.
 That is how you change the engine. Chapter 24 is about the part nobody can change: it has to
 start, scale, and fail somewhere, and the last chapter is about where the internals you now
 know decide an operational outcome.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 23 in one page</p><ol class="bk-card-arg"><li>Every extension point is the same construction: an abstract contract, a registry, a selector, and capability predicates at the call sites.</li><li>Predicates rather than identity checks are what make a new implementation addable without editing existing code.</li><li>Correctness here has no exact oracle — a correct reimplementation differs in the last bits, and those bits amplify through depth and through argmax.</li><li>So compare early rather than late, compare distributions rather than tokens, and trust accuracy evaluations over unit tests.</li><li>A model that loads and produces fluent nonsense is almost always the weight mapping.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Model files in the tree</th><td>218</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Attention registry</th><td><code>python/sglang/srt/layers/attention/attention_registry.py</code></td></tr><tr><th scope='row'>Kernel registry</th><td><code>python/sglang/kernels/registry.py</code></td></tr><tr><th scope='row'>Divergence tool</th><td><code>python/sglang/srt/debug_utils/comparator/</code></td></tr></tbody></table></div>
+<!-- summary:end -->

@@ -52,6 +52,11 @@ jobs:
             exit 1
           }
 
+      # Objectives and summary cards are generated, including the reading time,
+      # so an edited chapter must not leave them describing the old one.
+      - name: Verify chapter furniture
+        run: python3 book/scripts/furniture.py --check
+
       - name: Install mdBook
         run: |
           mkdir -p "$HOME/.local/bin"

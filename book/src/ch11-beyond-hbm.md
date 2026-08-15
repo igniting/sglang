@@ -22,6 +22,10 @@ one rule about which nodes may be backed up — that makes the whole thing coher
 covers the third tier, where SGLang stops implementing and starts integrating with shared
 KV stores that let a whole cluster behave like one cache.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 10 min</span></p><ul><li>Decide whether fetching a cached prefix beats recomputing it</li><li>Explain how the radix tree gains tiers without changing its shape</li><li>Say what the write-back invariant is and why it exists</li><li>Name what a remote KV store buys and what it costs</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## The arbitrage
@@ -325,3 +329,9 @@ guidance.
 ---
 
 Part III ends here. Part IV goes into what actually consumes this memory: the model.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 11 in one page</p><ol class="bk-card-arg"><li>GPU memory holds a small cache; host DRAM and NVMe hold far more at far less bandwidth.</li><li>Whether to fetch or recompute is arithmetic: the tier's bandwidth against the model's prefill throughput in KV bytes per second.</li><li>Fixed costs dominate for short prefixes, so every tier carries a minimum size.</li><li>The win is real only when the transfer overlaps compute — a synchronous fetch pays its full latency.</li><li>The same idea as Chapter 14's SRAM-versus-HBM tiling, one level of the hierarchy down.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Host DRAM over PCIe 5</th><td>~50 GB/s</td></tr><tr><th scope='row'>NVMe</th><td>2–14 GB/s</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Tiered tree</th><td><code>python/sglang/srt/mem_cache/hiradix_cache.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

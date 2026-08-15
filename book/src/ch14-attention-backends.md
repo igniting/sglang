@@ -21,6 +21,10 @@ This is also where the book first goes below the PyTorch line. The Triton kernel
 Python, and reading one is the clearest way to see what "paged attention" actually means:
 not a metaphor, but an address computation performed inside the inner loop.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 12 min</span></p><ul><li>State the two-phase metadata/kernel contract and why it exists</li><li>Derive FlashAttention's tiling and online-softmax rescaling</li><li>Read a paged attention kernel signature and name what each argument is</li><li>Explain what MLA changes about attention's memory layout</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## The contract
@@ -430,3 +434,9 @@ There is no universal answer, but the shape of the decision is stable:
 recommendations, which move faster than a book can.
 
 Chapter 15 covers what constrains all of them equally: making the forward pass cheap.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 14 in one page</p><ol class="bk-card-arg"><li>Hardware, sequence shape, attention variant, and kernel maturity vary independently, so no single kernel fills the matrix.</li><li>Metadata is prepared once per forward and kernels run once per layer; nearly every backend bug violates that split.</li><li>FlashAttention never materializes the score matrix: online softmax lets a tiled pass produce the exact same answer.</li><li>Its `Θ(N²d²M⁻¹)` HBM bound is an optimality result about memory traffic, which is why every serious kernel has this shape.</li><li>MLA compresses KV to a latent and folds the up-projections into neighbouring matrices — except for RoPE, which needs a decoupled path.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>FlashAttention HBM accesses</th><td>Θ(N²d²M⁻¹) vs Θ(N² + Nd)</td></tr><tr><th scope='row'>MLA KV reduction, DeepSeek-V2</th><td>93.3%</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>The contract</th><td><code>python/sglang/srt/layers/attention/base_attn_backend.py</code></td></tr><tr><th scope='row'>Readable reference</th><td><code>python/sglang/srt/layers/attention/triton_backend.py</code></td></tr><tr><th scope='row'>The kernel</th><td><code>python/sglang/kernels/ops/attention/decode_attention.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->

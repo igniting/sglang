@@ -23,6 +23,10 @@ several style rules elsewhere in the codebase exist.
 One decision inside that loop is large enough to need its own chapter, so we will name it
 here and open it in Chapter 6.
 
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 13 min</span></p><ul><li>Read `event_loop_normal` and say what each of its four steps does</li><li>Explain what the overlap loop reorders, and the hazard that reordering creates</li><li>Say why the CPU may run ahead of the GPU, and what breaks it</li><li>Explain how a batch can be built from tokens that do not exist yet</li></ul></div>
+<!-- objectives:end -->
+
 ---
 
 ## A request is a state machine with a lot of state
@@ -275,6 +279,12 @@ What breaks this is any operation that forces the host to wait for the device:
 | Printing a tensor, or asserting on one | Reads its contents |
 
 Each one drains the launch queue and re-exposes every microsecond of Python. This is why
+> [!warning] A single host read undoes the whole loop
+> One `.item()`, one `.cpu()`, one `print` of a tensor anywhere in the scheduling path
+> drains the launch queue and re-exposes every microsecond of Python the overlap was
+> hiding. It does not fail; it just gets slower, which is why it needs a rule rather than
+> a test.
+
 "don't call `.item()` in the hot path" appears as a rule in this codebase rather than as
 advice, why Chapter 14's backends carry a lint contract about it in a docstring, and why
 `FutureMap` exists at all.
@@ -456,3 +466,9 @@ deferred sample.
 
 Chapter 6 opens up the one call this chapter skipped — `get_next_batch_to_run`, where the
 actual scheduling decision is made.
+
+---
+
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 5 in one page</p><ol class="bk-card-arg"><li>One synchronous loop owns the GPU and answers one question per iteration: what runs next.</li><li>Kernel launches are asynchronous, so the CPU can describe step N+1 while the GPU executes step N — unless something forces a host sync.</li><li>The overlap loop launches batch N, then processes the results of N−1 while N is still running.</li><li>That requires referring to tokens before they exist, which `FutureMap` does by passing pool indices and letting the GPU dereference them.</li><li>Anything that reads a device value on the host — `.item()`, `.cpu()` — drains the launch queue and gives back everything overlap bought.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Kernel launches per forward, 70B</th><td>~1,000</td></tr><tr><th scope='row'>CPU cost per launch</th><td>5–10 µs</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>The loop</th><td><code>python/sglang/srt/managers/scheduler.py</code></td></tr><tr><th scope='row'>Future tokens</th><td><code>python/sglang/srt/managers/overlap_utils.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
