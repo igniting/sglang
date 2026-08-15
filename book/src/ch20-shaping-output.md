@@ -1,4 +1,4 @@
-# 19. Shaping and Reading the Output
+# 20. Shaping and Reading the Output
 
 > *Constraining generation and parsing generation are the same problem seen from two sides,
 > and both are made hard by streaming.*
@@ -63,9 +63,9 @@ class BaseGrammarObject:
 Four methods, and two of them are more interesting than they look.
 
 `accept_token` advances the state machine — this is why grammar is *stateful per request*
-and must be tracked in Chapter 4's `Req`.
+and must be tracked in Chapter 5's `Req`.
 
-`rollback(k)` undoes *k* tokens. This exists for Chapter 18: speculative decoding drafts
+`rollback(k)` undoes *k* tokens. This exists for Chapter 19: speculative decoding drafts
 tokens that may be rejected, and the grammar must be wound back when they are. Without
 rollback, speculation and constrained decoding would be mutually exclusive.
 
@@ -86,7 +86,7 @@ entry, for a 128k-token vocabulary, per request, per step. `:83`
 "Leaving unlisted rows untouched" is the batching accommodation: not every request in a
 batch is constrained, so the mask buffer is shared and only constrained rows are written.
 The buffers are registered at `:262` `register_vocab_mask_buffer` and retrieved at `:294`
-`get_vocab_mask_buffer`, then applied in Chapter 7's
+`get_vocab_mask_buffer`, then applied in Chapter 8's
 `python/sglang/srt/layers/sampler.py:97` `forward`.
 
 `python/sglang/srt/constrained/base_grammar_backend.py:167` `BaseGrammarBackend` compiles specifications
@@ -153,16 +153,16 @@ balanced — which for Llama-3.1 with a JSON grammar takes the mask cache from 1
 
 Two more structural tricks make the runtime side cheap. The **persistent execution stack**
 stores all live parse stacks as one tree, so branching a state is a pointer rather than a
-copy and rolling back is `O(1)` — which matters because Chapter 18's speculation and this
+copy and rolling back is `O(1)` — which matters because Chapter 19's speculation and this
 chapter's jump-forward both need to advance a grammar and then undo it. And the vocabulary is
 sorted lexicographically so that checking tokens in order reuses the previous token's prefix
 work.
 
-The last piece is scheduling, and it is Chapter 4's argument reappearing. Mask computation is
+The last piece is scheduling, and it is Chapter 5's argument reappearing. Mask computation is
 CPU work over automaton state; the forward pass is GPU work. Neither depends on the other's
 result within a step — the mask for step *t* depends only on tokens through *t−1*. So the
 mask is computed on the CPU *while the GPU runs the forward*, and the two meet just before
-sampling. Done that way, the mask is free in the same sense Chapter 4's scheduling is free.
+sampling. Done that way, the mask is free in the same sense Chapter 5's scheduling is free.
 The reported end result is up to 100× faster per-token mask generation than prior
 implementations, and up to 80× higher output token rate end to end.
 
@@ -189,7 +189,7 @@ those tokens become free.
 
 The complication is that jumping forward changes the token sequence in ways the KV cache
 must follow. Tokens emitted without a forward pass still need KV entries, so a subsequent
-extend has to fill them in — which is why this interacts with Chapters 8 and 9 rather than
+extend has to fill them in — which is why this interacts with Chapters 9 and 10 rather than
 being a pure output-side trick.
 
 ---
@@ -200,7 +200,7 @@ being a pure output-side trick.
 `python/sglang/srt/managers/scheduler.py:1962` `init_grammar_manager`.
 
 The interesting method is `python/sglang/srt/managers/scheduler.py:1861`
-`_advance_pending_grammar`, called from Chapter 4's loop. Grammar compilation is slow enough
+`_advance_pending_grammar`, called from Chapter 5's loop. Grammar compilation is slow enough
 that it must not block the scheduler, so it happens asynchronously and the loop advances
 pending grammars each iteration. A request whose grammar is still compiling is not yet
 schedulable.
@@ -208,11 +208,11 @@ schedulable.
 `python/sglang/srt/managers/tokenizer_manager.py:2847` `_request_has_grammar` is the
 front-end check.
 
-The collision with Chapter 18 is the sharpest constraint here. Speculative decoding drafts
+The collision with Chapter 19 is the sharpest constraint here. Speculative decoding drafts
 several tokens ahead; each must be checked against the grammar; accepted tokens advance the
 state and rejected ones must be rolled back. That is why
 `python/sglang/srt/speculative/spec_info.py:144` `supports_grammar_overlap` is a capability
-predicate — not every algorithm can do it — and why Chapter 18's `verify` takes a
+predicate — not every algorithm can do it — and why Chapter 19's `verify` takes a
 `grammar_barrier`.
 
 `python/sglang/srt/constrained/reasoner_grammar_backend.py` handles the other interaction:
@@ -316,5 +316,5 @@ output, since structural tokens are emitted without a forward pass. For JSON wit
 values, constrained generation can be net faster than unconstrained — the one place in this
 book where adding a correctness guarantee also makes things quicker.
 
-Chapter 20 takes the last of the assumptions this part exists to break — that every request
+Chapter 21 takes the last of the assumptions this part exists to break — that every request
 in a batch wants the same weights, and the same kind of input.

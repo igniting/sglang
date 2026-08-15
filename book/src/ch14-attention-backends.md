@@ -1,9 +1,9 @@
-# 13. Attention Backends
+# 14. Attention Backends
 
 > *Attention is pluggable because hardware, sequence shape, and kernel maturity all vary
 > independently — and the plug is a two-phase metadata/kernel contract.*
 
-Chapter 12 ended with a single line in a model file: `self.attn = RadixAttention(...)`.
+Chapter 13 ended with a single line in a model file: `self.attn = RadixAttention(...)`.
 Behind that line is the most heavily optimized operation in machine learning, and there is
 no single best implementation of it.
 
@@ -54,7 +54,7 @@ so computing them 80 times would be pure waste. `:62` `init_forward_metadata` pr
 violation of that split — metadata rebuilt per layer (slow) or metadata stale across layers
 (wrong).
 
-The three-way split of metadata prep is Chapter 14 intruding. CUDA graph capture records
+The three-way split of metadata prep is Chapter 15 intruding. CUDA graph capture records
 GPU operations for replay, but only *some* work can be recorded:
 
 ```python
@@ -96,7 +96,7 @@ right buffers.
 
 Three responsibilities dominate:
 
-**Page tables.** Chapter 8's `req_to_token` rows must become the `kv_indptr` / `kv_indices`
+**Page tables.** Chapter 9's `req_to_token` rows must become the `kv_indptr` / `kv_indices`
 format FlashInfer expects — a CSR-like structure where `indptr[i]` marks where sequence
 *i*'s page list begins. Building this per forward, on the GPU, without host
 synchronization, is the bulk of the metadata code.
@@ -180,8 +180,8 @@ Two properties of the algorithm reappear throughout the rest of this chapter.
 **It is associative across tiles.** Two partial outputs computed over disjoint key ranges
 can be merged, given their log-sum-exps, by the same rescaling formula. That is what permits
 splitting one sequence's keys across many thread blocks — the `num_kv_splits` parameter — and
-combining them in a second pass. It is also what makes Chapter 15's ring and context
-parallelism possible at all, and what Chapter 21's determinism work has to constrain: the
+combining them in a second pass. It is also what makes Chapter 16's ring and context
+parallelism possible at all, and what Chapter 22's determinism work has to constrain: the
 merge is associative in exact arithmetic, not in floating point, so *how many* splits there
 are changes the last bits of the answer.
 
@@ -224,10 +224,10 @@ def _fwd_kernel_stage1(
     PAGE_SIZE: tl.constexpr,
 ```
 
-`K_Buffer` and `V_Buffer` are Chapter 8's pools, passed whole. `kv_indptr` and `kv_indices`
+`K_Buffer` and `V_Buffer` are Chapter 9's pools, passed whole. `kv_indptr` and `kv_indices`
 are the page table: the kernel does not receive a contiguous per-sequence tensor, it
 receives the pool plus a directory and does the indirection itself. **That is what "paged
-attention" means at the kernel level** — the address computation Chapter 8 described,
+attention" means at the kernel level** — the address computation Chapter 9 described,
 performed per block inside the kernel.
 
 <figure>
@@ -262,7 +262,7 @@ performed per block inside the kernel.
 <figcaption>“Paged attention” is not a metaphor: the address arithmetic of Chapter&nbsp;8 happens inside the kernel's inner loop.</figcaption>
 </figure>
 
-`kv_group_num` is the GQA ratio from Chapter 12 — how many query heads share one KV head.
+`kv_group_num` is the GQA ratio from Chapter 13 — how many query heads share one KV head.
 `PAGE_SIZE` is a `tl.constexpr`, so Triton compiles a separate specialization per page size
 and, as the comment notes, deletes the page arithmetic entirely when it is 1.
 
@@ -305,7 +305,7 @@ more).
 `python/sglang/srt/model_executor/model_runner.py:927` `init_attention_backends` resolves
 `--attention-backend` — or separate `--prefill-attention-backend` and
 `--decode-attention-backend`, since the best choice differs by phase. `:266`
-`resolve_draft_attention_backend` picks one for the draft model in Chapter 18, which may
+`resolve_draft_attention_backend` picks one for the draft model in Chapter 19, which may
 differ again.
 
 ---
@@ -343,7 +343,7 @@ information, apply RoPE to those, and leave the compressed path un-rotated. The 
 is the concatenation of a rotation-free latent and a shared rotary key. It is a workaround
 that looks arbitrary until you know what it is protecting.
 
-The engine-level consequence is the one this chapter cares about. Chapter 8 showed the pool
+The engine-level consequence is the one this chapter cares about. Chapter 9 showed the pool
 (`python/sglang/srt/mem_cache/memory_pool.py:3932` `MLATokenToKVPool`); what follows from it
 is that the *stored* form is not the form ordinary attention consumes, and the head dimension
 the kernel sees is not the head dimension the model declares. Whether decompression happens
@@ -396,8 +396,8 @@ at all.
 `python/sglang/srt/layers/attention/linear/short_conv_backend.py` cover the linear-attention family.
 
 They live under `layers/attention/` because they occupy the same slot in the model and
-implement the same backend interface — but almost nothing else transfers. Chapter 8's
-`MambaPool` exists for them, and Chapter 5's separate `rem_mamba_slots` budget gate exists
+implement the same backend interface — but almost nothing else transfers. Chapter 9's
+`MambaPool` exists for them, and Chapter 6's separate `rem_mamba_slots` budget gate exists
 because a fixed-size state cannot be carved out of evictable token cache.
 
 Most current models are **hybrids**: some layers attention, some linear.
@@ -429,4 +429,4 @@ There is no universal answer, but the shape of the decision is stable:
 `docs/docs/advanced_features/attention_backend.mdx` carries the project's current
 recommendations, which move faster than a book can.
 
-Chapter 14 covers what constrains all of them equally: making the forward pass cheap.
+Chapter 15 covers what constrains all of them equally: making the forward pass cheap.

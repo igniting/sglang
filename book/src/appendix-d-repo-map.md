@@ -9,22 +9,22 @@ Every top-level directory, and where the book explains it.
 **`python/`** — the Python package. Nearly everything this book covers.
 
 **`sgl-model-gateway/`** — the Rust router: cache-aware load balancing, service discovery,
-multi-model serving, and PD-aware routing. *Ch. 17*
+multi-model serving, and PD-aware routing. *Ch. 18*
 
 **`rust/`** — additional Rust components (`sglang-server`, `sglang-grpc`, `sglang-mm`).
 
 **`test/`** — the test suites, run_suite.py, CI registration, and `lm_eval_configs/` for
-accuracy evaluations. *Ch. 22*
+accuracy evaluations. *Ch. 23*
 
 **`docs/`** — the Mintlify documentation site, including the cookbook.
 
 **`benchmark/`** — model- and feature-specific benchmark scripts, distinct from the
 harnesses in `python/sglang/benchmark/`.
 
-**`docker/`, `scripts/`, `.github/`** — packaging, tooling, and CI. *Ch. 22*
+**`docker/`, `scripts/`, `.github/`** — packaging, tooling, and CI. *Ch. 23*
 
 **`.claude/`** — `rules/` (enforced conventions) and `skills/` (maintainer playbooks). The
-most concentrated design documentation in the repository. *Ch. 2*
+most concentrated design documentation in the repository. *Ch. 3*
 
 **`examples/`, `proto/`, `3rdparty/`, `experimental/`** — usage examples, gRPC definitions,
 vendored dependencies, and staging for unstable work.
@@ -36,22 +36,22 @@ vendored dependencies, and staging for unstable work.
 **`srt/`** — the SGLang RunTime. Detailed below.
 
 **`lang/`** — the frontend DSL: api.py (primitives), ir.py (program IR),
-interpreter.py (execution), tracer.py (compilation), `backend/`. *Ch. 2*
+interpreter.py (execution), tracer.py (compilation), `backend/`. *Ch. 3*
 
 **`kernels/`** — the kernel layer. `ops/` holds Triton kernels by category, `jit/` the
 just-in-time C++/CUDA path, `aot/` the ahead-of-time path (formerly the top-level
-`sgl-kernel`), and registry.py / selector.py / spec.py the dispatch. *Ch. 13, 14, 16,
+`sgl-kernel`), and registry.py / selector.py / spec.py the dispatch. *Ch. 14, 14, 16,
 22*
 
 **`benchmark/`** — serving.py, offline_throughput.py, one_batch.py,
 one_batch_server.py. *Ch. 1, 21*
 
-**`test/`** — the test harness: `CustomTestCase`, server fixtures, `kits/`. *Ch. 22*
+**`test/`** — the test harness: `CustomTestCase`, server fixtures, `kits/`. *Ch. 23*
 
 **`multimodal_gen/`** — the diffusion stack. Out of scope for this book.
 
 **launch_server.py, profiler.py, check_env.py, global_config.py** — entry points and
-utilities. *Ch. 2, 21*
+utilities. *Ch. 3, 21*
 
 ---
 
@@ -60,79 +60,79 @@ utilities. *Ch. 2, 21*
 Ordered roughly by the path a request takes.
 
 **`entrypoints/`** — HTTP server, embeddable `Engine`, gRPC, and the OpenAI / Anthropic /
-Ollama compatibility layers under `openai/`, `anthropic/`, `ollama/`. *Ch. 2, 3*
+Ollama compatibility layers under `openai/`, `anthropic/`, `ollama/`. *Ch. 3, 3*
 
 **`managers/`** — the coordination layer, and the densest part of the runtime.
 tokenizer_manager.py (front end), scheduler.py (the loop), schedule_batch.py
 (`Req`, `ScheduleBatch`), schedule_policy.py (admission), detokenizer_manager.py,
 io_struct.py (the wire protocol), tp_worker.py, `scheduler_components/` (extracted
 collaborators), data_parallel_controller.py, cache_controller.py,
-multimodal_processor.py. *Ch. 3–7, 20*
+multimodal_processor.py. *Ch. 4–7, 20*
 
 **`model_executor/`** — model_runner.py (owns the GPU), forward_batch_info.py
 (`ForwardMode`, `ForwardBatch`), forward_context.py, `runner/` and `runner_backend/`
-(CUDA graph runners), `model_runner_components/`. *Ch. 6, 14*
+(CUDA graph runners), `model_runner_components/`. *Ch. 7, 14*
 
 **`mem_cache/`** — memory_pool.py (the KV pools), `allocator/`, radix_cache.py,
 hiradix_cache.py, chunk_cache.py, the SWA and Mamba variants, `storage/` (HiCache
-backends), `unified_cache/`, `cpp_radix_tree/`. *Ch. 8–10*
+backends), `unified_cache/`, `cpp_radix_tree/`. *Ch. 9–10*
 
-**`models/`** — 218 model definitions. llama.py is the template. *Ch. 12*
+**`models/`** — 218 model definitions. llama.py is the template. *Ch. 13*
 
-**`configs/`** — 63 per-model config classes plus model_config.py. *Ch. 11*
+**`configs/`** — 63 per-model config classes plus model_config.py. *Ch. 12*
 
-**`model_loader/`** — loader.py, auto_loader.py, weight_utils.py. *Ch. 11*
+**`model_loader/`** — loader.py, auto_loader.py, weight_utils.py. *Ch. 12*
 
 **`layers/`** — the building blocks. linear.py (parallel linears),
 vocab_parallel_embedding.py, radix_attention.py, logits_processor.py, sampler.py,
 layernorm.py, activation.py, `rotary_embedding/`, parameter.py, dp_attention.py,
 communicator.py, plus the subsystems `attention/`, `moe/`, and `quantization/`.
-*Ch. 7, 12–16*
+*Ch. 8, 12–16*
 
 **`distributed/`** — parallel_state.py (process groups), `device_communicators/`,
-communication_op.py. *Ch. 15*
+communication_op.py. *Ch. 16*
 
 **`speculative/`** — EAGLE, MTP, n-gram, DFlash, DSpark workers and their metadata.
-*Ch. 18*
+*Ch. 19*
 
 **`disaggregation/`** — prefill and decode mixins, the transfer backends (`mooncake/`,
-`nixl/`, `mori/`, `ascend/`, `fake/`), and the encode servers. *Ch. 17*
+`nixl/`, `mori/`, `ascend/`, `fake/`), and the encode servers. *Ch. 18*
 
-**`eplb/`** — expert distribution measurement, placement, and rebalancing. *Ch. 16*
+**`eplb/`** — expert distribution measurement, placement, and rebalancing. *Ch. 17*
 
-**`batch_overlap/`** — two-batch and single-batch overlap. *Ch. 16*
+**`batch_overlap/`** — two-batch and single-batch overlap. *Ch. 17*
 
-**`lora/`** — adapter manager, memory pool, kernels, and layer wrappers. *Ch. 20*
+**`lora/`** — adapter manager, memory pool, kernels, and layer wrappers. *Ch. 21*
 
-**`multimodal/`** — 53 input processors over a shared base. *Ch. 20*
+**`multimodal/`** — 53 input processors over a shared base. *Ch. 21*
 
 **`constrained/`** — grammar backends (XGrammar, Outlines, LLGuidance), jump-forward
-decoding, the grammar manager. *Ch. 19*
+decoding, the grammar manager. *Ch. 20*
 
-**`function_call/`** — 39 tool-call format detectors and the dispatching parser. *Ch. 19*
+**`function_call/`** — 39 tool-call format detectors and the dispatching parser. *Ch. 20*
 
-**`parser/`** — reasoning and Harmony parsers. *Ch. 19*
+**`parser/`** — reasoning and Harmony parsers. *Ch. 20*
 
 **`sampling/`** — sampling parameters, batch info, penalties, custom logit processors.
-*Ch. 7*
+*Ch. 8*
 
 **`observability/`** — metrics collectors, tracing, startup timing, profiling support.
-*Ch. 21*
+*Ch. 22*
 
-**`compilation/`** — the torch.compile integration and custom Inductor passes. *Ch. 14*
+**`compilation/`** — the torch.compile integration and custom Inductor passes. *Ch. 15*
 
 **`checkpoint_engine/`, `weight_sync/`, `connector/`** — weight updates and remote weight
-sources. *Ch. 11*
+sources. *Ch. 12*
 
 **`platforms/`, `hardware_backend/`, `plugins/`** — the hardware abstraction and
-out-of-tree extension mechanism. *Ch. 22*
+out-of-tree extension mechanism. *Ch. 23*
 
 **`debug_utils/`** — the layer-by-layer comparator used to localize wrong-output bugs.
-*Ch. 22*
+*Ch. 23*
 
 **server_args.py, environ.py, runtime_context.py** — configuration. *Appendix A, B*
 
-**`batch_invariant_ops/`** — deterministic operator implementations. *Ch. 7*
+**`batch_invariant_ops/`** — deterministic operator implementations. *Ch. 8*
 
 **`session/`, `multiplex/`, `elastic_ep/`, `ray/`, `grpc/`, `dllm/`, `kv_canary/`,
 `state_capturer/`, `weight_cache/`, `tokenizer/`, `arg_groups/`** — smaller subsystems this

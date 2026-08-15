@@ -8,7 +8,7 @@ The naive expectation is that generating text is expensive because the models ar
 matrix multiplication is costly. That is true of *training*. It is almost entirely wrong
 about *inference*, and believing it will lead you to optimize the wrong thing.
 
-The two chapters here set up the argument the whole book rests on.
+The three chapters here set up the argument the whole book rests on.
 
 **Chapter 1** works out the actual cost of generating a token. It turns out that a graphics
 card producing one token for one user is idle more than 99% of the time — not because the
@@ -18,11 +18,17 @@ runs out long before compute does. By the end of the chapter you will be able to
 for a given model and GPU, roughly how many people it can serve — and see why that number
 is the one that matters.
 
-**Chapter 2** turns to the machine itself. SGLang is not one program but four cooperating
+**Chapter 2** looks at the machine those numbers describe. Chapter 1's conclusions are
+parameterized by two figures from a spec sheet, and a reader who does not know where they
+come from cannot apply the argument to their own hardware. This chapter is about
+accelerators, the interconnects between them, how to read a vendor's slide without being
+misled, and the short list of questions SGLang asks the device at startup.
+
+**Chapter 3** turns to the software. SGLang is not one program but four cooperating
 processes, and knowing which process does what explains a surprising amount: why requests
 are validated where they are, why one rank of a multi-GPU setup is special, and why a
 health check runs a real generation instead of returning 200. This chapter is the map you
 will navigate by for the rest of the book.
 
-Together they answer the question in the title of this part. Read them in order; the second
-assumes the first.
+Together they answer the question in the title of this part. Read them in order; each
+assumes the one before it.

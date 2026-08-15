@@ -1,9 +1,9 @@
-# 10. Caching Beyond HBM
+# 11. Caching Beyond HBM
 
 > *Extending the cache hierarchy to host memory and disk is a bandwidth arbitrage, and it
 > only pays above a computable prefix length.*
 
-Chapter 9's tree lives entirely in GPU memory, which means it competes for the same scarce
+Chapter 10's tree lives entirely in GPU memory, which means it competes for the same scarce
 resource as everything else. A server with 50 GB of KV pool holds perhaps 150,000 cached
 tokens; a busy deployment with long system prompts exhausts that in minutes, and after that
 every eviction is future work being destroyed.
@@ -56,7 +56,7 @@ Approximate figures for a current server node:
 Each step down is roughly an order of magnitude more capacity and an order of magnitude less
 bandwidth. That is precisely the shape that makes a cache hierarchy worth building — and it
 is the same shape that made FlashAttention worth writing, one level up, between SRAM and
-HBM. Chapter 13 is this chapter's argument applied to the top two rows.
+HBM. Chapter 14 is this chapter's argument applied to the top two rows.
 
 Write the crossover down properly. Let *n* be the prefix length, *b* the bytes of KV per
 token, *B* the tier's bandwidth, and `P(n)` the time to prefill *n* tokens. Fetching is
@@ -83,13 +83,13 @@ itself, which is why every tier in this chapter carries a minimum-size threshold
 fetching whatever it finds.
 
 **Bandwidth is shared, and the thing it is shared with is the model.** PCIe is also carrying
-weight updates, multimodal inputs, and logits; on a disaggregated deployment (Chapter 17) it
+weight updates, multimodal inputs, and logits; on a disaggregated deployment (Chapter 18) it
 is carrying whole KV caches between machines. A fetch that is free in isolation may not be
 free at load.
 
 The mitigation for both is the same and it is the reason this chapter's write-back is
 asynchronous: if the transfer overlaps with compute the engine would be doing anyway, its
-cost is hidden exactly as Chapter 4's scheduling overhead is hidden. A prefetch issued when a
+cost is hidden exactly as Chapter 5's scheduling overhead is hidden. A prefetch issued when a
 request is admitted, landing before its prefill is scheduled, costs nothing at all. A fetch
 issued synchronously at the moment of need costs its full latency. Most of the engineering
 in `HiRadixCache` is about staying in the first case.
@@ -128,21 +128,21 @@ class HiRadixCache(RadixCache):
 
 Subclassing rather than wrapping is the key decision. The tree algorithm — match, split,
 insert, reference-count, evict — is unchanged; what changes is that a node's data may live
-in one of two places. Everything Chapter 9 established still holds.
+in one of two places. Everything Chapter 10 established still holds.
 
 The host pool is chosen by device pool type, and the `raise ValueError` is honest about the
-limit: pool layouts differ enough (Chapter 8) that each needs its own host counterpart.
+limit: pool layouts differ enough (Chapter 9) that each needs its own host counterpart.
 Note the MLA branch reads `attn_dcp_size` / `attn_dcp_rank` — with decode context
 parallelism the cache is already split across ranks, and the host pool must mirror that
 split.
 
 `hicache_ratio` and `hicache_size` size the host pool; `hicache_mem_layout` picks the layout
-Chapter 8 introduced, and page-major matters more here than on the device because a
+Chapter 9 introduced, and page-major matters more here than on the device because a
 contiguous page is a single DMA rather than a scatter.
 
 ### The tier state on a node
 
-Chapter 9 flagged four `TreeNode` fields as belonging here:
+Chapter 10 flagged four `TreeNode` fields as belonging here:
 
 - `python/sglang/srt/mem_cache/radix_cache.py:268` `evicted` — `value is None`. The node
   exists, its device data does not.
@@ -155,7 +155,7 @@ The two flags are independent, and their four combinations are the tier states:
 
 | `evicted` | `backuped` | Meaning |
 | --- | --- | --- |
-| no | no | device only — a plain Chapter 9 node |
+| no | no | device only — a plain Chapter 10 node |
 | no | yes | on device *and* backed up — free to evict from device at no loss |
 | yes | yes | host only — must be loaded before use |
 | yes | no | nothing left; the node is structure only |
@@ -211,7 +211,7 @@ assemble a complete prefix through it. So the write is simply skipped.
 
 The retry structure is a standard allocate-or-evict, and the `inc_lock_ref` at the end is
 subtle: while a write-through is in flight, the *device* node must not be evicted, because
-the DMA is reading from it. Chapter 9's device-side lock is reused for a transfer that has
+the DMA is reading from it. Chapter 10's device-side lock is reused for a transfer that has
 nothing to do with a request.
 
 `write_back=True` is the opposite direction — a device eviction pushing data down rather
@@ -223,14 +223,14 @@ the node is already on its way out.
 Transfers are asynchronous, so the tree must track outstanding writes and only mark a node
 `backuped` once the data has actually landed. `python/sglang/srt/mem_cache/hiradix_cache.py:876`
 `_replace_pending_write_through_node` covers the case where the tree changes shape — a
-split (Chapter 9) — while a write against the old node is still in flight.
+split (Chapter 10) — while a write against the old node is still in flight.
 
 ---
 
 ## Moving the bytes
 
 `python/sglang/srt/mem_cache/memory_pool_host.py` holds the host-side pools, mirroring the
-device pools of Chapter 8 with pinned memory so DMA can proceed without staging.
+device pools of Chapter 9 with pinned memory so DMA can proceed without staging.
 
 `python/sglang/srt/managers/cache_controller.py` is the transfer engine — queues,
 worker threads, and the overlap with compute that makes the arbitrage viable. A transfer
@@ -242,7 +242,7 @@ rank holds a shard of the same logical cache. `python/sglang/srt/mem_cache/hirad
 `python/sglang/srt/mem_cache/hiradix_cache.py:226` `_barrier_attn_groups`,
 `python/sglang/srt/mem_cache/hiradix_cache.py:247` `_all_reduce`, and `python/sglang/srt/mem_cache/hiradix_cache.py:260` `_pp_sync` exist so that ranks
 agree on which nodes are backed up. If rank 0 believed a prefix was on the host and rank 1
-did not, the two would take different paths through the scheduler — Chapter 3's
+did not, the two would take different paths through the scheduler — Chapter 4's
 divergence hazard, one layer down.
 
 ---
@@ -260,7 +260,7 @@ implementations under `python/sglang/srt/mem_cache/storage/` span local options 
 
 The distributed backends change what caching *means*. A shared KV store makes a prefix
 computed on node A available to node B — so a system prompt is prefilled once per cluster
-rather than once per replica. Combined with Chapter 17's cache-aware routing, the cluster
+rather than once per replica. Combined with Chapter 18's cache-aware routing, the cluster
 starts behaving like one large cache rather than *n* independent ones.
 
 Attachment is a runtime operation, not a startup flag:
@@ -292,7 +292,7 @@ actions (`python/sglang/srt/mem_cache/unified_cache/cache_action.py`).
 
 The motivation is visible in this chapter. `HiRadixCache` hardcodes two tiers with a third
 bolted on, and the pool-type dispatch in `__init__` grows a branch per pool variant. The
-unified core makes tiers and pool types compositional instead. Chapter 9's variants —
+unified core makes tiers and pool types compositional instead. Chapter 10's variants —
 `python/sglang/srt/mem_cache/swa_radix_cache.py` and
 `python/sglang/srt/mem_cache/mamba_radix_cache.py` — are the same pressure
 from the other direction.
@@ -307,9 +307,9 @@ read the code.
 Honest accounting, since HiCache is not free:
 
 - **Host memory** — `hicache_ratio` is a real reservation, pinned so it cannot be paged.
-- **PCIe bandwidth** — shared with weight loading, multimodal inputs, and Chapter 17's KV
+- **PCIe bandwidth** — shared with weight loading, multimodal inputs, and Chapter 18's KV
   transfers.
-- **Complexity** — every invariant in Chapter 9 now has a tier dimension, and every
+- **Complexity** — every invariant in Chapter 10 now has a tier dimension, and every
   transfer is asynchronous.
 - **Cross-rank synchronization** — the barriers above are on the critical path.
 

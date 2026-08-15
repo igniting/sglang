@@ -255,7 +255,7 @@ def validate(boxes: list[Box], h: float, name: str) -> list[str]:
 
 
 # ===========================================================================
-# Chapter 2 — process topology
+# Chapter 3 — process topology
 # ===========================================================================
 
 
@@ -296,7 +296,7 @@ def fig_topology():
         label(W / 2, 442, "that is the process holding the client's awaiting "
                           "coroutine."),
     ]
-    errs = validate(boxes, H, "ch02 topology")
+    errs = validate(boxes, H, "ch03 topology")
     return figure(
         H, "SGLang process topology",
         "Four processes connected by ZeroMQ sockets: tokenizer manager, one "
@@ -377,7 +377,7 @@ def fig_roofline():
 
 
 # ===========================================================================
-# Chapter 4 — the overlap timeline
+# Chapter 5 — the overlap timeline
 # ===========================================================================
 
 
@@ -443,7 +443,7 @@ def fig_overlap():
               "Overlap does not make the forward faster. It makes everything "
               "else free."),
     ]
-    errs = validate(boxes, H, "ch04 overlap")
+    errs = validate(boxes, H, "ch05 overlap")
     return figure(
         H, "One iteration of the overlap loop",
         "Two timelines comparing the overlapped scheduler loop against a serial "
@@ -456,7 +456,7 @@ def fig_overlap():
 
 
 # ===========================================================================
-# Chapter 8 — address translation
+# Chapter 9 — address translation
 # ===========================================================================
 
 
@@ -490,7 +490,7 @@ def fig_address():
         label(W / 2, 318,
               "That is the mechanical precondition for prefix sharing."),
     ]
-    errs = validate(boxes, H, "ch08 address")
+    errs = validate(boxes, H, "ch09 address")
     return figure(
         H, "Address translation, request to KV storage",
         "Two levels of indirection from a request to physical KV storage",
@@ -502,7 +502,7 @@ def fig_address():
 
 
 # ===========================================================================
-# Chapter 9 — the radix tree across three requests
+# Chapter 10 — the radix tree across three requests
 # ===========================================================================
 
 
@@ -562,7 +562,7 @@ def fig_tree():
               "“what is ”, and S —"),
         label(W / 2, 352, "shared by everything — goes last."),
     ]
-    errs = validate(boxes, H, "ch09 tree")
+    errs = validate(boxes, H, "ch10 tree")
     return figure(
         H, "The radix tree after each of three requests",
         "A radix tree evolving as three chat requests share a system prompt",
@@ -573,7 +573,7 @@ def fig_tree():
 
 
 # ===========================================================================
-# Chapter 13 — what a paged attention kernel receives
+# Chapter 14 — what a paged attention kernel receives
 # ===========================================================================
 
 
@@ -605,7 +605,7 @@ def fig_pagetable():
         label(W / 2, 312,
               "softmax and a log-sum-exp, and a second stage combines them."),
     ]
-    errs = validate(boxes, H, "ch13 pagetable")
+    errs = validate(boxes, H, "ch14 pagetable")
     return figure(
         H, "What a paged attention kernel receives",
         "Query rows, a page table, and the whole KV pool handed to the "
@@ -617,7 +617,7 @@ def fig_pagetable():
 
 
 # ===========================================================================
-# Chapter 16 — one MoE layer across four ranks
+# Chapter 17 — one MoE layer across four ranks
 # ===========================================================================
 
 
@@ -660,7 +660,7 @@ def fig_dispatch():
         label(W / 2, 372,
               "expert everyone's problem, and why EPLB moves or replicates it."),
     ]
-    errs = validate(boxes, H, "ch16 dispatch")
+    errs = validate(boxes, H, "ch17 dispatch")
     return figure(H, "One MoE layer across four ranks",
                   "Tokens dispatched to expert-holding ranks and combined back, "
                   "with one rank carrying a hot expert",
@@ -670,7 +670,7 @@ def fig_dispatch():
 
 
 # ===========================================================================
-# Chapter 17 — a disaggregated deployment
+# Chapter 18 — a disaggregated deployment
 # ===========================================================================
 
 
@@ -710,7 +710,7 @@ def fig_deploy():
               "Every box here is a chapter — pools (8), routing tree (9), "
               "parallelism (15, 16)."),
     ]
-    errs = validate(boxes, H, "ch17 deploy")
+    errs = validate(boxes, H, "ch18 deploy")
     return figure(
         H, "A disaggregated deployment",
         "A cache-aware router in front of separate prefill and decode pools",
@@ -721,7 +721,7 @@ def fig_deploy():
 
 
 # ===========================================================================
-# Chapter 18 — drafting and verifying a token tree
+# Chapter 19 — drafting and verifying a token tree
 # ===========================================================================
 
 
@@ -774,7 +774,7 @@ def fig_spec():
         label(W / 2, 288,
               "ordinary decoding. A bad draft costs compute, never correctness."),
     ]
-    errs = validate(boxes, H, "ch18 spec")
+    errs = validate(boxes, H, "ch19 spec")
     return figure(
         H, "Drafting and verifying a token tree",
         "A speculative draft tree verified in a single target forward pass",
@@ -788,14 +788,14 @@ def fig_spec():
 
 FIGURES = {
     "ch01-why-serving-engines": fig_roofline,
-    "ch02-shape-of-sglang": fig_topology,
-    "ch04-scheduler-loop": fig_overlap,
-    "ch08-kv-pools": fig_address,
-    "ch09-radixattention": fig_tree,
-    "ch13-attention-backends": fig_pagetable,
-    "ch16-moe": fig_dispatch,
-    "ch17-disaggregation": fig_deploy,
-    "ch18-speculative-decoding": fig_spec,
+    "ch03-shape-of-sglang": fig_topology,
+    "ch05-scheduler-loop": fig_overlap,
+    "ch09-kv-pools": fig_address,
+    "ch10-radixattention": fig_tree,
+    "ch14-attention-backends": fig_pagetable,
+    "ch17-moe": fig_dispatch,
+    "ch18-disaggregation": fig_deploy,
+    "ch19-speculative-decoding": fig_spec,
 }
 
 MARKER = "<!-- FIGURE -->"

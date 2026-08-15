@@ -116,6 +116,11 @@ in the direction you would expect — an FP8 weight halves *s* but roughly doubl
 Hopper, so *B*\* lands in the same neighbourhood — and it moves with the hardware, which is
 why the engine measures rather than assumes.
 
+Which is a reason to run it for your own hardware rather than take the H100 figure on
+faith. Chapter 2 has a table of accelerators to draw the inputs from:
+
+<div class="bk-calc" data-calc="roofline"></div>
+
 <figure>
 <svg viewBox="0 0 700 348" role="img" aria-label="A log-log roofline plot showing decode far to the left of the ridge point and prefill at the compute ceiling">
 <title>The roofline, and where decode sits on it</title>
@@ -152,8 +157,8 @@ why the engine measures rather than assumes.
 
 So "batch more" has a target: **a few hundred token rows per forward pass**. Below it the
 GPU is a very expensive memory controller. That target is the reason chunked prefill
-(Chapter 5) mixes prefill chunks with decode rows rather than running them separately, the
-reason speculative decoding (Chapter 18) is profitable at all, and the reason the scheduler
+(Chapter 6) mixes prefill chunks with decode rows rather than running them separately, the
+reason speculative decoding (Chapter 19) is profitable at all, and the reason the scheduler
 would rather wait a few milliseconds than launch a batch of four.
 
 ### Where the roofline stops applying
@@ -171,11 +176,11 @@ Attention is therefore memory-bound *no matter how large the batch gets*. Batchi
 GEMMs and leaves attention exactly where it was. That is why:
 
 - attention gets its own pluggable backend layer and its own hand-written kernels
-  (Chapter 13) while the linear layers are ordinary PyTorch;
+  (Chapter 14) while the linear layers are ordinary PyTorch;
 - shrinking the KV cache per token is an architectural priority worth redesigning attention
-  around — GQA, and then MLA (Chapter 12);
+  around — GQA, and then MLA (Chapter 13);
 - *sharing* KV across requests, so one read serves many, is the single highest-leverage
-  optimization in the system (Chapter 9).
+  optimization in the system (Chapter 10).
 
 Two regimes, then, inside one forward pass: weight traffic that batching amortizes, and KV
 traffic that it does not. Almost every design decision in SGLang is aimed at one or the
@@ -207,10 +212,30 @@ The leading 2 is for K and V. Work it through for Llama-3-70B — 80 layers, 8 K
 2 × 80 × 8 × 128 × 2 = 327,680 bytes ≈ 320 KB per token
 ```
 
-A 4,000-token conversation therefore holds **1.25 GB** of KV cache. On an 80 GB H100 with
-140 GB of weights already spread across two GPUs, perhaps 50 GB per GPU remains. That is
-about 40 concurrent 4,000-token conversations — and that number, not FLOPs, is what
-determines how many users a GPU serves.
+A 4,000-token conversation therefore holds **1.25 GB** of KV cache.
+
+Now put that against a real deployment. The weights are 130 GB, so the model does not fit on
+one 80 GB H100 at all, and on two it fits with about 10 GB left over — room for eight
+conversations, which is not a service. On four H100s there is roughly 150 GB left after
+weights and overheads, and that is about **120 concurrent 4,000-token conversations**.
+
+Notice what just happened. The reason to reach for a second and third GPU was that the
+weights did not fit; the reason to reach for a fourth is that the *cache* did not. Past the
+point where the model fits, additional accelerators are bought almost entirely for KV
+capacity — and that number, not FLOPs, is what determines how many users you serve.
+
+This is the most useful arithmetic in the book, so it is worth having for your own model and
+hardware rather than for Llama-3-70B on an H100. Every input below is a line from a config
+file or a spec sheet:
+
+<div class="bk-calc" data-calc="capacity"></div>
+
+Two behaviours in there are worth provoking deliberately, because both become chapters
+later. Raise the parallel size past the KV head count and watch the per-token figure stop
+falling — that is the replication Chapter 16 introduces data-parallel attention to escape.
+And raise the context length: concurrency falls linearly, which is why long-context serving
+is a memory problem rather than a compute one, and why Chapters 10 and 11 are about not
+storing the same tokens twice.
 
 Now recall the previous section: throughput demands large batches, and batch size is
 capped by KV cache memory. **Memory capacity is the direct limiter on throughput.** This
@@ -249,15 +274,15 @@ above by how many KV caches fit in memory. Rearranged,
 λ_max = L_max / W
 ```
 
-Take the Llama-3-70B numbers above — about 40 concurrent 4,000-token conversations — and
-suppose an average request takes 20 seconds end to end. Then the ceiling is 2 requests per
-second, and no amount of kernel tuning moves it. Only three things do: fit more caches into
-memory (raise `L_max`), finish requests faster (lower *W*), or stop storing the same prefix
-forty times (raise `L_max` again, and by the largest factor available).
+Take the Llama-3-70B numbers above — about 120 concurrent 4,000-token conversations on four
+H100s — and suppose an average request takes 20 seconds end to end. Then the ceiling is six
+requests per second, and no amount of kernel tuning moves it. Only three things do: fit more
+caches into memory (raise `L_max`), finish requests faster (lower *W*), or stop storing the
+same prefix a hundred times over (raise `L_max` again, and by the largest factor available).
 
 This is also why an overloaded engine degrades so sharply rather than gracefully. Push λ
 above λ_max and *W* does not rise a little — queueing delay grows without bound until
-something sheds load. Chapter 5's admission control is that something, and Chapter 5's
+something sheds load. Chapter 6's admission control is that something, and Chapter 6's
 retraction machinery is what happens when the estimate that admitted a request turns out to
 have been optimistic.
 
@@ -296,13 +321,13 @@ And `python/sglang/benchmark/one_batch.py:526` `decode`:
 
 The bodies are nearly identical. The difference is one method call —
 `prepare_for_extend` versus `prepare_for_decode` — and everything downstream branches on
-what that produces. Chapter 6 shows exactly how far that branch propagates.
+what that produces. Chapter 7 shows exactly how far that branch propagates.
 
 Two things in `extend` are worth noticing now. The `dummy_tree_cache` built at `:488` is a
 `TreeCacheNamespace` (`:469`) that carries only a page size, a device, and an allocator:
 the benchmark deliberately runs *without* prefix caching, so its numbers reflect raw
 forward-pass cost rather than cache hits. And both functions call `model_runner.forward`
-followed by `model_runner.sample` — the same two-step contract Chapter 7 examines.
+followed by `model_runner.sample` — the same two-step contract Chapter 8 examines.
 
 The measurement code (`python/sglang/benchmark/one_batch.py:734` `latency_test_run_once`) reports the
 two phases in different units, which is itself the lesson:
@@ -349,12 +374,12 @@ They conflict in specific, structural ways:
 
 - **Batch size** raises throughput and raises ITL. Every sequence in a batch waits for the
   slowest operation in that step.
-- **Chunked prefill** (Chapter 5) lowers ITL for requests already decoding, and raises TTFT
+- **Chunked prefill** (Chapter 6) lowers ITL for requests already decoding, and raises TTFT
   for the request being chunked. It moves latency between customers rather than removing
   it.
-- **Prefix caching** (Chapter 9) is the rare case that improves everything at once — it
+- **Prefix caching** (Chapter 10) is the rare case that improves everything at once — it
   removes work rather than relocating it. This is why it gets a chapter of its own.
-- **Speculative decoding** (Chapter 18) lowers ITL while *raising* total compute. It spends
+- **Speculative decoding** (Chapter 19) lowers ITL while *raising* total compute. It spends
   the idle arithmetic units that the first section identified.
 
 Whenever a later chapter says a technique "helps," the question to ask is which of these
@@ -375,20 +400,19 @@ Unpacked, with the problem each one solves and where this book covers it:
 
 | Feature | The problem it attacks | Chapter |
 | --- | --- | --- |
-| RadixAttention | Shared prompt prefixes recomputed per request | 9 |
-| Zero-overhead scheduler | CPU scheduling stalling the GPU between steps | 4 |
-| PD disaggregation | Prefill and decode contending on one machine | 17 |
-| Speculative decoding | Decode's idle arithmetic units | 18 |
-| Continuous batching | Requests waiting for a batch to drain | 5 |
-| Paged attention | Memory reserved for growth that never happens | 8 |
-| TP / PP / EP / DP | A model too large, or a cache too replicated, for one GPU | 15, 16 |
-| Structured outputs | Generation that must satisfy a schema | 19 |
-| Chunked prefill | One long prompt stalling every active decode | 5 |
-| Quantization | Too many bytes per weight and per cache entry | 14 |
-| Multi-LoRA batching | Requests in one batch needing different weights | 20 |
-
+| RadixAttention | Shared prompt prefixes recomputed per request | 10 |
+| Zero-overhead scheduler | CPU scheduling stalling the GPU between steps | 5 |
+| PD disaggregation | Prefill and decode contending on one machine | 18 |
+| Speculative decoding | Decode's idle arithmetic units | 19 |
+| Continuous batching | Requests waiting for a batch to drain | 6 |
+| Paged attention | Memory reserved for growth that never happens | 9 |
+| TP / PP / EP / DP | A model too large, or a cache too replicated, for one GPU | 16, 17 |
+| Structured outputs | Generation that must satisfy a schema | 20 |
+| Chunked prefill | One long prompt stalling every active decode | 6 |
+| Quantization | Too many bytes per weight and per cache entry | 15 |
+| Multi-LoRA batching | Requests in one batch needing different weights | 21 |
 Read that table as a map of the memory-and-latency argument above. Nothing in it is a
 feature for its own sake; each is a response to a specific line in the cost model. The rest
 of the book is that table, expanded, with the code that implements each row.
 
-Chapter 2 gets us oriented in the repository before we start walking a request through it.
+Chapter 3 gets us oriented in the repository before we start walking a request through it.

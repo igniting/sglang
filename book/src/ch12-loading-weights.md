@@ -1,13 +1,13 @@
-# 11. Loading and Updating Weights
+# 12. Loading and Updating Weights
 
 > *Weight loading is a distributed sharding problem disguised as file I/O, and the same
 > machinery serves both startup and reinforcement learning.*
 
-Part IV opens the box that Chapter 6 handed a batch to.
+Part IV opens the box that Chapter 7 handed a batch to.
 
 Before a model can run, a few hundred gigabytes of numbers have to get from files on disk
 into the right memory on the right GPUs. That sounds like file I/O and a progress bar. It is
-really a distributed sharding problem, because under the tensor parallelism of Chapter 15 no
+really a distributed sharding problem, because under the tensor parallelism of Chapter 16 no
 single rank ever holds a complete weight matrix — each holds a slice, and has to know which
 slice is its own without ever materializing the whole thing.
 
@@ -31,13 +31,13 @@ happen along the way.
 
 **Architecture to class.** A Hugging Face config file names an architecture —
 `LlamaForCausalLM` — and the registry maps that string to one of the 218 classes in
-`python/sglang/srt/models/`. Adding a model (Chapter 22) is mostly adding an entry here.
+`python/sglang/srt/models/`. Adding a model (Chapter 23) is mostly adding an entry here.
 
 **Config to config.** `python/sglang/srt/configs/` holds SGLang's own config classes, 63 of
 them, because HF configs are written for the reference implementation and SGLang needs
 things they do not always state: which layers are MoE, what the KV layout should be, where
 sliding-window boundaries fall. `python/sglang/srt/configs/model_config.py` is the common wrapper, and it is what
-Chapter 8's pool sizing reads.
+Chapter 9's pool sizing reads.
 
 **Checkpoint to sharded parameters.** The rest of this chapter.
 
@@ -45,7 +45,7 @@ Chapter 8's pool sizing reads.
 
 ## Each rank loads only its slice
 
-Under tensor parallelism (Chapter 15) a rank holds a *fraction* of every weight matrix. It
+Under tensor parallelism (Chapter 16) a rank holds a *fraction* of every weight matrix. It
 would be wasteful to load the whole checkpoint on each rank and then slice — the peak
 memory would be the full model on every GPU, which for a 70B model on 8 ranks is exactly
 what you cannot afford.
@@ -80,7 +80,7 @@ threads contend rather than help. Restricting each process to one thread makes t
 faster even though it makes each process nominally slower.
 
 The memory logging bracketing this function is what produces the startup lines operators
-read to see how much room the KV pool will get (Chapter 8).
+read to see how much room the KV pool will get (Chapter 9).
 
 ---
 
@@ -115,7 +115,7 @@ migration caught mid-flight, and reading both is more instructive than reading e
 
 That table is the checkpoint-to-runtime structural difference in five lines. The checkpoint
 stores `q_proj`, `k_proj`, `v_proj` as three matrices because that is how the reference
-implementation defines them. SGLang fuses them into one `qkv_proj` (Chapter 12 explains
+implementation defines them. SGLang fuses them into one `qkv_proj` (Chapter 13 explains
 why: one GEMM instead of three). So loading must route three checkpoint tensors into three
 slices of one parameter, and `shard_id` says which slice.
 
@@ -141,7 +141,7 @@ The same function also handles renames, pipeline filtering, and skips:
                 continue
 ```
 
-The scale renames are quantization-format drift (Chapter 14) — different exporters use
+The scale renames are quantization-format drift (Chapter 15) — different exporters use
 different names for the same tensor. The `start_layer` / `end_layer` filter is pipeline
 parallelism: a rank holding layers 20–39 skips everything else, which is what keeps PP
 memory proportional. And `rotary_emb.inv_freq` is skipped because SGLang computes rotary
@@ -239,7 +239,7 @@ copy and matters when you are scaling a deployment up under load.
 
 `load_format` is the tuning knob, and `dummy` deserves a mention: it fills weights with
 random values, skipping I/O entirely. Useless for output, ideal for benchmarking shapes and
-memory — Chapter 21's harnesses use it constantly.
+memory — Chapter 22's harnesses use it constantly.
 
 `python/sglang/srt/model_executor/model_runner_components/startup_weight_load.py` and
 `python/sglang/srt/model_executor/model_runner.py:1203` `start_startup_weight_load` /
@@ -289,7 +289,7 @@ spending a meaningful fraction of the run on weight movement and spending essent
 The IPC path works because of a CUDA facility with no CPU analogue: `cudaIpcGetMemHandle`
 returns an opaque handle to a device allocation that a *different process on the same node*
 can open with `cudaIpcOpenMemHandle`, receiving a pointer into the same physical memory. No
-bytes move. It is `mmap` for GPU memory, and it is the same mechanism Chapter 3 uses to keep
+bytes move. It is `mmap` for GPU memory, and it is the same mechanism Chapter 4 uses to keep
 image tensors out of the ZeroMQ socket.
 
 Its limits are exactly the limits of shared memory. Same node only — a handle is meaningless
@@ -306,7 +306,7 @@ transfer is `total_bytes / tp_size` per rank rather than `total_bytes`. This is 
 `python/sglang/srt/weight_sync/tensor_bucket.py` exists — with sharding, a 70B model becomes
 thousands of small per-rank tensors, and thousands of small NCCL calls cost far more in
 latency than the bytes cost in bandwidth. Bucketing them into a few large transfers is the
-same small-message problem Chapter 16 hits with all-to-all, solved the same way.
+same small-message problem Chapter 17 hits with all-to-all, solved the same way.
 
 `:1365` `init_weights_update_group` and `:1387` `destroy_weights_update_group` manage the
 process group for the distributed path.
@@ -318,8 +318,8 @@ flow.
 ### Sharing a GPU with the trainer
 
 The harder problem is memory. During a training step, the inference engine is idle but
-still holding weights, a KV pool sized to fill the GPU (Chapter 8), and CUDA graph buffers
-(Chapter 14). The trainer needs that memory for optimizer state and activations.
+still holding weights, a KV pool sized to fill the GPU (Chapter 9), and CUDA graph buffers
+(Chapter 15). The trainer needs that memory for optimizer state and activations.
 
 ```
 :1573  release_memory_occupation(tags)    give the memory back
@@ -328,7 +328,7 @@ still holding weights, a KV pool sized to fill the GPU (Chapter 8), and CUDA gra
 
 Tags allow partial release — weights but not the KV pool, or the reverse — because what the
 trainer needs varies. Under the hood this is the memory-saver adapter visible throughout
-Chapter 8's pools (`GPU_MEMORY_TYPE_KV_CACHE` regions), which is why those `with
+Chapter 9's pools (`GPU_MEMORY_TYPE_KV_CACHE` regions), which is why those `with
 memory_saver_adapter.region(...)` blocks exist at all.
 
 Generation must be quiesced first, and that is a scheduler operation:
@@ -352,7 +352,7 @@ A full RL step therefore looks like:
 
 Two more pieces complete the picture. `python/sglang/srt/managers/scheduler.py:4246`
 `flush_cache` clears the radix tree — **mandatory** after a weight update, because Chapter
-9's cache holds KV computed by the *old* weights, and serving it against new weights would
+10's cache holds KV computed by the *old* weights, and serving it against new weights would
 silently mix two policies. And `python/sglang/srt/models/llama.py:854` `get_embed_and_head`
 / `:857` `set_embed_and_head` expose embeddings and the LM head directly, for frameworks
 that update only those.
@@ -362,5 +362,5 @@ that update only those.
 AReaL, Miles, Tunix — that this API exists to serve. It is the reason SGLang is
 described as a rollout backend and not only a server.
 
-The weights are on the GPU. Chapter 12 opens one of the files that describes what to do with
+The weights are on the GPU. Chapter 13 opens one of the files that describes what to do with
 them.

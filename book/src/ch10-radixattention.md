@@ -1,9 +1,9 @@
-# 9. RadixAttention
+# 10. RadixAttention
 
 > *Real workloads share long prefixes, and a radix tree over token sequences turns that
 > redundancy into the engine's largest single win. This is SGLang's signature idea.*
 
-Chapter 8 built a memory system that can hand out KV cache a page at a time and take it
+Chapter 9 built a memory system that can hand out KV cache a page at a time and take it
 back. It has no memory of its own: two identical prompts arriving a second apart are
 computed twice, stored twice, and freed twice.
 
@@ -66,7 +66,7 @@ if their `extra_key` differs. The docstring on `match_prefix`
 This is a correctness boundary, not a tuning knob. Two requests using different LoRA
 adapters produce genuinely different KV entries for the same tokens, because the adapter
 changes the projections that produce K and V. Sharing them would silently return another
-adapter's activations. Chapter 20 returns to this from the LoRA side.
+adapter's activations. Chapter 21 returns to this from the LoRA side.
 
 **`cache_salt`** is deliberately a separate field rather than a convention on `extra_key`,
 so that a caller-supplied salt cannot collide with an internally-assigned namespace. The
@@ -139,7 +139,7 @@ not by returning zero — a mismatched comparison is a programming error, not a 
 
 ### Page alignment
 
-Chapter 8 established that KV memory is allocated in pages. The tree inherits that
+Chapter 9 established that KV memory is allocated in pages. The tree inherits that
 constraint, and `page_aligned` (`:150`) is where it enters:
 
 ```python
@@ -192,15 +192,15 @@ not 4,000 nodes.
 
 **Payload** — `value` is a tensor of KV cache indices, one per logical unit of `key`. This
 is the entire content of the cache: the tree does not store keys and values, it stores
-*where in the Chapter 8 pool* they live. `evicted` (`:268`) is defined as `value is None`,
+*where in the Chapter 9 pool* they live. `evicted` (`:268`) is defined as `value is None`,
 which makes "this node's data is gone but its structure remains" a representable state —
-the state HiCache needs in Chapter 10.
+the state HiCache needs in Chapter 11.
 
 **Lifetime** — `lock_ref` is the reference count that keeps a node alive while a request
 is using it. `last_access_time` feeds eviction.
 
 **Tiering** — `host_value`, `host_ref_counter`, `protect_host` / `release_host` (`:272`–
-`:285`) belong to Chapter 10. They are declared here because `HiRadixCache` subclasses
+`:285`) belong to Chapter 11. They are declared here because `HiRadixCache` subclasses
 this node rather than wrapping it.
 
 The final method is the one that makes eviction possible:
@@ -369,7 +369,7 @@ tests against it.
             return
 ```
 
-A chunked prefill (Chapter 5) inserts its own prefix repeatedly as each chunk lands.
+A chunked prefill (Chapter 6) inserts its own prefix repeatedly as each chunk lands.
 Counting those as hits would make a single long request look like a stream of cache-
 friendly ones and distort every metric built on hit count.
 
@@ -403,7 +403,7 @@ The walk is to the *root*, not just the node, because holding a prefix means hol
 ancestor that composes it. The accounting moves tokens between two counters —
 `evictable_size_` and `protected_size_` — and only on the 0→1 transition, so a node held
 by three requests is counted once. Those two numbers are what the scheduler reads in
-Chapter 5 when it asks how much memory it can actually reclaim; `delta` is returned so the
+Chapter 6 when it asks how much memory it can actually reclaim; `delta` is returned so the
 caller can update its own budget without recomputing.
 
 `dec_lock_ref` (`:637`) is the mirror, with a guard worth quoting:
@@ -520,7 +520,7 @@ Insert, free the duplicate range the insert revealed, then **match again**. The 
 not redundant: if another request inserted an overlapping prefix concurrently, this
 request's tokens may now live at *different* pool indices than the ones it just computed
 into. The request adopts the tree's indices, writes them back into its `req_to_token` row
-(the Chapter 8 first-level mapping), and only then swaps its lock from the old node to the
+(the Chapter 9 first-level mapping), and only then swaps its lock from the old node to the
 new one — increment before decrement in effect, so the prefix is never momentarily
 unprotected.
 
@@ -560,12 +560,12 @@ contributed, now owned by the tree and protected by the `lock_ref` it took durin
 
 Nothing in this chapter has been visible to model code, and that is the point.
 `python/sglang/srt/layers/radix_attention.py:91` `RadixAttention` is the layer a model
-instantiates in place of a plain attention module. Chapter 12 shows `LlamaAttention`
-constructing one and Chapter 13 covers the backends it dispatches to; here it is enough to
+instantiates in place of a plain attention module. Chapter 13 shows `LlamaAttention`
+constructing one and Chapter 14 covers the backends it dispatches to; here it is enough to
 note the division of labor. The model declares *that* it attends. The tree decides *what
-is already computed*, the Chapter 8 allocator decides *where new entries go*, and the
+is already computed*, the Chapter 9 allocator decides *where new entries go*, and the
 attention backend reads whatever page table it is handed. A model file contains no cache
-logic at all, which is why adding a model (Chapter 22) does not require understanding this
+logic at all, which is why adding a model (Chapter 23) does not require understanding this
 chapter.
 
 ---
@@ -576,7 +576,7 @@ The tree's most consequential consumer is not the model — it is the scheduler.
 
 `python/sglang/srt/managers/schedule_policy.py:314` `_compute_prefix_matches` runs
 `match_prefix` for queued requests, and `:374` `_sort_by_longest_prefix` orders the queue
-by how much each one would hit. Chapter 5 covers the policy in full; what matters here is
+by how much each one would hit. Chapter 6 covers the policy in full; what matters here is
 the shape of the loop:
 
 1. The cache determines which request is cheapest to run.
@@ -586,7 +586,7 @@ the shape of the loop:
 
 Cache-aware scheduling and prefix caching are not two features that happen to compose;
 each makes the other worth more. The same loop, one level up, is what makes cache-aware
-*routing* work in Chapter 17 — the gateway keeps its own approximate copy of this tree so
+*routing* work in Chapter 18 — the gateway keeps its own approximate copy of this tree so
 it can send a request to the replica most likely to hold its prefix.
 
 ---
@@ -722,7 +722,7 @@ The remaining variants specialize the same algorithm for a different unit of sto
 - `python/sglang/srt/mem_cache/swa_radix_cache.py` — sliding-window attention, where only a
   suffix of the KV is retained, so an ancestor's data may be gone while the node remains.
 - `python/sglang/srt/mem_cache/mamba_radix_cache.py` — state-space models, where the cached
-  object is a fixed-size recurrent state rather than a growing KV run. Chapter 8's
+  object is a fixed-size recurrent state rather than a growing KV run. Chapter 9's
   `MambaPool` is its backing store.
 - `python/sglang/srt/mem_cache/radix_cache_cpp.py` with
   `python/sglang/srt/mem_cache/cpp_radix_tree/` — the same algorithm in C++. Its existence
@@ -730,5 +730,5 @@ The remaining variants specialize the same algorithm for a different unit of sto
   request rates with long prefixes, tree maintenance became measurable against the Python
   interpreter itself.
 
-Chapter 10 takes the last variant, `HiRadixCache`, which keeps the algorithm and adds a
+Chapter 11 takes the last variant, `HiRadixCache`, which keeps the algorithm and adds a
 memory tier beneath it.

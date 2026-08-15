@@ -91,7 +91,7 @@ legacy `SGL_*` prefix was migrated to `SGLANG_*` without breaking deployments.
 - **Access through `envs.NAME.get()`**, not by string.
 - **Deprecate with an alias class**, never by deleting.
 
-Chapter 11 showed a use in context:
+Chapter 12 showed a use in context:
 
 ```python
         if envs.SGLANG_ENABLE_WEIGHT_LOADER_V2.get():
@@ -104,9 +104,9 @@ implementation during a migration.
 
 ## Where they appear in this book
 
-- `SGLANG_ENABLE_WEIGHT_LOADER_V2` — Chapter 11, the loader migration.
-- `SGLANG_ENABLE_STRICT_MEM_CHECK_DURING_BUSY` — Chapter 4, per-iteration invariant checks.
-- `SGLANG_DEBUG_MEMORY_POOL` — Chapter 8, allocator assertions.
+- `SGLANG_ENABLE_WEIGHT_LOADER_V2` — Chapter 12, the loader migration.
+- `SGLANG_ENABLE_STRICT_MEM_CHECK_DURING_BUSY` — Chapter 5, per-iteration invariant checks.
+- `SGLANG_DEBUG_MEMORY_POOL` — Chapter 9, allocator assertions.
 
 The general shape: environment variables are for things an *operator* should not normally
 touch — debug modes, migration gates, platform workarounds. Anything a user should tune is a

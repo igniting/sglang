@@ -1,4 +1,4 @@
-# 22. Extending SGLang
+# 23. Extending SGLang
 
 > *The extension points are the architecture's seams, and walking them is the final check
 > that the reader has understood where the boundaries are.*
@@ -8,9 +8,9 @@ collects them.
 
 That is the last useful test of whether the preceding chapters landed. The extension points
 are the architecture's seams, and a seam only makes sense once you know what is on both
-sides of it. Adding an attention backend is a short checklist — but only because Chapter 13
+sides of it. Adding an attention backend is a short checklist — but only because Chapter 14
 explained what the two-phase contract is protecting. Adding a model is bounded work — but
-only because Chapter 12 showed how little of the work is actually in the model file.
+only because Chapter 13 showed how little of the work is actually in the model file.
 
 The chapter is ordered by how often people need each one: adding a model, adding a kernel,
 adding an attention backend, porting to new hardware. Each gets the checklist and, more
@@ -26,13 +26,13 @@ architecture description.
 
 ## Adding a model
 
-The most common contribution, and the shortest checklist — because Chapter 12 established
+The most common contribution, and the shortest checklist — because Chapter 13 established
 that a model is a `forward` and a `load_weights` over a shared layer vocabulary.
 
 **1. Config.** A class in `python/sglang/srt/configs/` if the HF config needs translation,
 consumed by `python/sglang/srt/configs/model_config.py`.
 
-**2. Model.** A file in `python/sglang/srt/models/`, built from Chapter 12's layers.
+**2. Model.** A file in `python/sglang/srt/models/`, built from Chapter 13's layers.
 `python/sglang/srt/models/llama.py` is the template. Copy the closest existing architecture
 rather than starting from HF code — the parallel layers, `RadixAttention` wiring, and
 `quant_config` threading are the parts that must be right, and they are identical across
@@ -51,7 +51,7 @@ guide.
 
 A model that loads and produces fluent nonsense is the characteristic failure, and it is
 almost always the weight mapping — a transposed matrix, a QKV fusion split the wrong way, a
-sharded parameter sliced along the wrong axis. Chapter 11's `stacked_params_mapping` is the
+sharded parameter sliced along the wrong axis. Chapter 12's `stacked_params_mapping` is the
 usual suspect.
 
 `python/sglang/srt/debug_utils/comparator/` is the tool: run the HF reference and the SGLang
@@ -60,12 +60,12 @@ that diverges. The first divergence localizes the bug; everything after it is do
 noise.
 
 Order of suspicion, from experience: weight mapping, then rotary embedding configuration
-(Chapter 12 showed how many config keys govern it), then normalization placement, then
+(Chapter 13 showed how many config keys govern it), then normalization placement, then
 attention mask.
 
 `python/sglang/srt/model_loader/ci_weight_validation.py` catches a class of these in CI, and
 `.claude/skills/kl-consistency-test/SKILL.md` is the systematic version — the prefill/decode
-logprob test that Chapter 7 described.
+logprob test that Chapter 8 described.
 
 ---
 
@@ -95,7 +95,7 @@ python/sglang/kernels/fused_op.py   fused operation base
 
 `python/sglang/kernels/selector.py:34` `_platform` is where hardware detection happens, so
 one operation can have several implementations and the right one is chosen at runtime —
-Chapter 13's backend registry, generalized to every operation.
+Chapter 14's backend registry, generalized to every operation.
 
 **Tests and benchmarks are part of the contribution, not follow-up.** A kernel without a
 correctness test against a reference implementation cannot be safely modified by anyone
@@ -106,7 +106,7 @@ it.
 
 ## Adding an attention backend
 
-Chapter 13's contract, restated as a checklist:
+Chapter 14's contract, restated as a checklist:
 
 1. Subclass `python/sglang/srt/layers/attention/base_attn_backend.py:33` `AttentionBackend`.
 2. Implement `:62` `init_forward_metadata` — or, for graph support, the out-of-graph and
@@ -121,9 +121,9 @@ Step 4 is what catches every first attempt. The lint contract in
 `torch.empty()` — is not advisory. Violating it produces a graph that captures successfully
 and then replays stale values, which is a wrong answer rather than an error.
 
-Test across every forward mode Chapter 6 lists that your backend claims to support.
+Test across every forward mode Chapter 7 lists that your backend claims to support.
 `ForwardMode` combinations are where backends break: a backend correct for `DECODE` and
-`EXTEND` may be wrong for `MIXED`, and `TARGET_VERIFY` (Chapter 18) has its own mask
+`EXTEND` may be wrong for `MIXED`, and `TARGET_VERIFY` (Chapter 19) has its own mask
 requirements.
 
 `python/sglang/srt/layers/attention/triton_backend.py` is the reference to read first.
@@ -142,22 +142,22 @@ else runs).
 
 What a new accelerator actually needs:
 
-**Device communicators** (Chapter 15) — `python/sglang/srt/distributed/device_communicators/`.
+**Device communicators** (Chapter 16) — `python/sglang/srt/distributed/device_communicators/`.
 Without working collectives nothing beyond one device runs.
 
-**An attention backend** (Chapter 13) — the largest piece.
+**An attention backend** (Chapter 14) — the largest piece.
 
-**Memory pool support** (Chapter 8) — usually the least work, since the pools are mostly
+**Memory pool support** (Chapter 9) — usually the least work, since the pools are mostly
 device-agnostic tensor allocation.
 
-**Graph capture** (Chapter 14) — or an honest admission that it is unsupported, which costs
+**Graph capture** (Chapter 15) — or an honest admission that it is unsupported, which costs
 decode performance but does not block correctness.
 
 **Kernels** for quantization, MoE, and sampling, or fallbacks to portable implementations.
 
 The case studies show how far the abstraction stretches. **ROCm/AITER** is closest to
 NVIDIA and reuses most of the stack. **Ascend NPU** has its own everything — note the
-sampler backend registration Chapter 7 mentioned (`_forward_ascend_backend`), which exists
+sampler backend registration Chapter 8 mentioned (`_forward_ascend_backend`), which exists
 because even sampling needed a vendor path. **Intel XPU and AMX** target CPUs and a
 different accelerator model. **TPU** went a different route entirely, as a separate
 `sglang-jax` project — evidence that the abstraction has limits.
@@ -181,16 +181,16 @@ Every one of them is the same construction:
    `python/sglang/kernels/registry.py`, the model registry, the platform registry.
 3. **A selector that picks one at construction time**, from configuration plus a hardware
    probe — `select_kernel`, `_platform`, `--attention-backend`.
-4. **Capability predicates rather than identity checks** at every call site — Chapter 18's
-   `has_draft_kv` and `supports_ragged_verify` are the clearest case, but Chapter 13's
-   `init_forward_metadata_in_graph` default-no-op and Chapter 8's pool interface do the same
+4. **Capability predicates rather than identity checks** at every call site — Chapter 19's
+   `has_draft_kv` and `supports_ragged_verify` are the clearest case, but Chapter 14's
+   `init_forward_metadata_in_graph` default-no-op and Chapter 9's pool interface do the same
    job.
 
 The fourth point is the one that carries the weight, and it is the difference between a
 codebase with plugins and a codebase that is *actually* extensible. If a call site asks
 "is this the FlashInfer backend?" then adding a backend means finding and editing every such
 site. If it asks "does this backend support graph capture?" then a new backend answers the
-question for itself and no existing code changes. Chapter 18's `SpeculativeAlgorithm` is the
+question for itself and no existing code changes. Chapter 19's `SpeculativeAlgorithm` is the
 purest specimen — an enum whose members are almost never compared against, wrapped in a dozen
 predicates that are.
 
@@ -246,7 +246,7 @@ output tells you that something is wrong; comparing layer 4 tells you what.
 **Compare distributions, not tokens.** KL divergence between the reference distribution and
 the implementation's is continuous where argmax is not — it degrades smoothly with numerical
 error instead of flipping. That is what `.claude/skills/kl-consistency-test/SKILL.md`
-measures, and its real contribution is separating the two independent conditions Chapter 7
+measures, and its real contribution is separating the two independent conditions Chapter 8
 described: whether the operators are batch-invariant, and whether the two paths compute the
 same function at all. A non-zero KL can be either, and a test that cannot distinguish them is
 a threshold somebody tunes until it passes.
@@ -291,11 +291,11 @@ If you are looking for a first contribution, in increasing order of scope:
 3. **A kernel** for an operation with a slow fallback. Self-contained, with a clear
    correctness oracle.
 4. **A quantization scheme** or **attention backend**. Larger, but the interfaces are
-   well-defined and Chapters 13 and 14 mapped them.
+   well-defined and Chapters 14 and 15 mapped them.
 5. **A hardware backend.** Months of work, and a real contribution.
 
 `docs/docs/developer_guide/contribution_guide.mdx` covers process, and
-`.claude/rules/` covers the conventions Chapter 2 introduced. Read those five rule files
+`.claude/rules/` covers the conventions Chapter 3 introduced. Read those five rule files
 before your first patch; each one will otherwise cost you a review cycle.
 
 ---

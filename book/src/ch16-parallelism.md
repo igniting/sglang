@@ -1,4 +1,4 @@
-# 15. Tensor, Pipeline, and Data Parallelism
+# 16. Tensor, Pipeline, and Data Parallelism
 
 > *The three classical parallelism axes differ in what they split and therefore in which
 > interconnect they stress; SGLang adds a fourth because MLA broke the assumptions.*
@@ -21,7 +21,7 @@ inside a machine is roughly an order of magnitude faster than the network betwee
 
 Then there is a fourth axis, which SGLang added because DeepSeek's compressed cache broke
 the assumptions the classical answers were built on. That story — a memory optimization from
-Chapter 8 forcing a new form of parallelism — is the most interesting thing here.
+Chapter 9 forcing a new form of parallelism — is the most interesting thing here.
 
 ---
 
@@ -34,7 +34,7 @@ and EP group, each with different membership.
 
 `:2193` `init_distributed_environment` establishes the world; `initialize_model_parallel`
 carves the sub-groups. `python/sglang/srt/model_executor/model_runner.py:1037`
-`init_torch_distributed` is the caller, and it runs first in Chapter 6's initialization
+`init_torch_distributed` is the caller, and it runs first in Chapter 7's initialization
 chain because everything after it may need a collective.
 
 The collectives and their costs:
@@ -44,7 +44,7 @@ The collectives and their costs:
 | all-reduce | sum across ranks, all receive | 2×(N−1)/N × data |
 | all-gather | concatenate across ranks | (N−1)/N × data |
 | reduce-scatter | sum, each rank keeps a slice | (N−1)/N × data |
-| all-to-all | every rank sends a slice to every other | the MoE bill (Chapter 16) |
+| all-to-all | every rank sends a slice to every other | the MoE bill (Chapter 17) |
 
 The numbers matter against the link. NVLink between GPUs in a node runs at hundreds of
 GB/s; InfiniBand between nodes at tens. **That gap is why TP does not cross node boundaries
@@ -60,7 +60,7 @@ latency, not bandwidth, is what decode is sensitive to.
 
 ## TP is already written
 
-Here is the pleasant surprise: after Chapter 12, there is almost nothing left to explain
+Here is the pleasant surprise: after Chapter 13, there is almost nothing left to explain
 about tensor parallelism.
 
 The collectives live *inside* the layers. `ColumnParallelLinear` splits its output
@@ -74,7 +74,7 @@ Chain them — column then row — and the intermediate stays sharded:
   x ──► ColumnParallelLinear ──► [sharded activation] ──► RowParallelLinear ──► all-reduce ──► y
 ```
 
-**One all-reduce per pair.** That is why Chapter 12's `LlamaMLP` uses
+**One all-reduce per pair.** That is why Chapter 13's `LlamaMLP` uses
 `MergedColumnParallelLinear` for gate/up and `RowParallelLinear` for down, and why
 `LlamaAttention` uses `QKVParallelLinear` then `RowParallelLinear`. Two collectives per
 transformer block, and a model author gets them right by picking the correct layer type.
@@ -131,7 +131,7 @@ boundary, a handful of transfers rather than 160.
 where the default pattern is not what you want — sequence-parallel norms, or fusing the
 all-reduce into an adjacent operation.
 
-The head-count constraints from Chapter 12 are the practical limit: TP size must divide the
+The head-count constraints from Chapter 13 are the practical limit: TP size must divide the
 head count, and when TP exceeds the KV head count, KV heads are replicated and cache memory
 stops shrinking.
 
@@ -141,7 +141,7 @@ stops shrinking.
 
 Pipeline parallelism gives each rank a contiguous range of layers.
 `python/sglang/srt/models/llama.py:640` `start_layer` and `:644` `end_layer` are the bounds,
-and Chapter 11's weight filter uses them so a rank loads only its own layers.
+and Chapter 12's weight filter uses them so a rank loads only its own layers.
 
 Communication is a single activation tensor per boundary — cheap enough for
 inter-node links, which makes PP the axis you extend across nodes when TP has filled one.
@@ -152,7 +152,7 @@ but never closes it, and in decode — where each step is short — the fill and
 larger fraction than in training.
 
 `python/sglang/srt/managers/scheduler_pp_mixin.py` implements microbatch scheduling in
-Chapter 4's loop, and `python/sglang/srt/managers/scheduler.py:4136`
+Chapter 5's loop, and `python/sglang/srt/managers/scheduler.py:4136`
 `_pp_microbatches_drained` is what "idle" has to mean when microbatches may still be in
 flight.
 
@@ -162,8 +162,8 @@ flight.
 
 Now the interesting part.
 
-Chapter 8 introduced `MLATokenToKVPool`: DeepSeek's compressed KV cache, an order of
-magnitude smaller per token than standard MHA. Chapter 12 explained that when TP exceeds
+Chapter 9 introduced `MLATokenToKVPool`: DeepSeek's compressed KV cache, an order of
+magnitude smaller per token than standard MHA. Chapter 13 explained that when TP exceeds
 the KV head count, KV heads get replicated.
 
 MLA has effectively **one** KV head. So under 8-way TP, all eight ranks store *the same* KV
@@ -202,7 +202,7 @@ MHA or GQA that cost is tolerable, because splitting attention by head also spli
 cache. Under MLA there are no heads to split, so TP replicates the cache in full and the cost
 becomes the dominant one.
 
-Data-parallel attention refuses the compromise the same way Chapter 17 does at the
+Data-parallel attention refuses the compromise the same way Chapter 18 does at the
 deployment level: **split each half along its own best axis, and pay a transition between
 them.** Each layer therefore does:
 
@@ -244,7 +244,7 @@ hard-won constraint:
 ```
 
 An MoE all-to-all kernel deadlocks if a rank contributes zero tokens, so the padding mode is
-forced. Chapter 16's communication requirements reaching back into this chapter's padding
+forced. Chapter 17's communication requirements reaching back into this chapter's padding
 decision, with the failure mode being a *hang* rather than an error.
 
 ---
@@ -258,10 +258,10 @@ pass, since it depends on what every rank received.
 `python/sglang/srt/model_executor/forward_batch_info.py:1305` `prepare_mlp_sync_batch` is
 that agreement, and `:1620` `post_forward_mlp_sync_batch` undoes the padding afterward.
 `python/sglang/srt/model_executor/model_runner.py:1416` `_prepare_eager_forward_batch` is
-where it is invoked, with the comment Chapter 6 quoted about why the decode CUDA graph path
+where it is invoked, with the comment Chapter 7 quoted about why the decode CUDA graph path
 can skip it.
 
-Now Chapter 6's `IDLE` mode makes sense:
+Now Chapter 7's `IDLE` mode makes sense:
 
 > No sequence to forward. For data parallel attention, some workers will be IDLE if no
 > sequence are allocated.
@@ -271,9 +271,9 @@ in their collectives. It contributes nothing and consumes a full step of GPU tim
 `python/sglang/srt/layers/dp_attention.py:302` `set_is_extend_in_batch` and `:317`
 `is_dp_max_padding` propagate the shape decisions, and
 `python/sglang/srt/layers/logits_processor.py:249` `compute_dp_attention_metadata` carries
-them to the output stage (Chapter 7).
+them to the output stage (Chapter 8).
 
-Chapter 5's scheduling implication is real: keeping DP ranks *balanced* matters, because an
+Chapter 6's scheduling implication is real: keeping DP ranks *balanced* matters, because an
 unbalanced batch means padding, and padding is wasted compute on every rank.
 
 ---
@@ -286,7 +286,7 @@ with its own weights and its own cache; the controller routes requests between t
 
 The two have nothing in common. DP attention splits *one* model's attention across ranks
 that cooperate every layer; the DP controller runs *n* independent models that never
-communicate. Chapter 2's `use_dp_controller` branch in `_launch_scheduler_processes` selects
+communicate. Chapter 3's `use_dp_controller` branch in `_launch_scheduler_processes` selects
 the latter.
 
 When someone says "DP size 8," ask which one they mean.
@@ -303,7 +303,7 @@ The decision procedure, in order:
    transfers; they would not tolerate TP's.
 3. **MLA model?** Consider DP attention instead of pure TP, to stop replicating the
    compressed cache.
-4. **MoE model?** EP is a separate axis on top (Chapter 16).
+4. **MoE model?** EP is a separate axis on top (Chapter 17).
 5. **Enough capacity but need throughput?** DP replicas, via the controller.
 
 `docs/docs/advanced_features/pipeline_parallelism.mdx`,
@@ -312,6 +312,6 @@ The decision procedure, in order:
 `.claude/skills/debug-distributed-hang/SKILL.md` is what you want when a layout deadlocks —
 which, as the padding comment above shows, is the characteristic failure of this chapter.
 
-This chapter split a dense model. Chapter 16 turns to models that are sparse by
+This chapter split a dense model. Chapter 17 turns to models that are sparse by
 construction, where the arithmetic barely moves but the communication bill changes shape
 entirely.

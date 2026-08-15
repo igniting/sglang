@@ -1,4 +1,4 @@
-# 21. Observability and Tuning
+# 22. Observability and Tuning
 
 > *The instrumentation reveals the design — every metric the engine emits exists because
 > someone needed it to answer a question this book has already raised.*
@@ -8,9 +8,9 @@ on a particular machine, under a particular workload, right now.
 
 There is a pleasant symmetry here. Every metric SGLang emits exists because someone needed
 it to answer a question, and by this point in the book you have asked most of those
-questions yourself. Queue depth is Chapter 5's admission problem. Cache hit rate is Chapter
-9. Retraction count is what happens when Chapter 5 guesses wrong. Acceptance length is
-Chapter 18 telling you whether it is earning its keep. The instrumentation is a map back to
+questions yourself. Queue depth is Chapter 6's admission problem. Cache hit rate is Chapter
+10. Retraction count is what happens when Chapter 6 guesses wrong. Acceptance length is
+Chapter 19 telling you whether it is earning its keep. The instrumentation is a map back to
 the design.
 
 The chapter has three parts. First, reading the metrics — including the five numbers that
@@ -30,19 +30,19 @@ fastest way to understand it is to notice that its collectors partition along th
 as this book's chapters:
 
 ```
-:238   SchedulerMetricsCollector      the loop and its queues       (Ch. 4, 5)
-:1480  TokenizerMetricsCollector      request-level latency          (Ch. 3, 7)
-:1962  RadixCacheMetricsCollector     prefix cache behavior          (Ch. 9)
-:1849  StorageMetricsCollector        HiCache tiers                  (Ch. 10)
-:1947  ExpertDispatchCollector        MoE routing balance            (Ch. 16)
-:2160  EncoderMetricsCollector        multimodal encoding            (Ch. 20)
+:238   SchedulerMetricsCollector      the loop and its queues       (Ch. 5, 5)
+:1480  TokenizerMetricsCollector      request-level latency          (Ch. 4, 7)
+:1962  RadixCacheMetricsCollector     prefix cache behavior          (Ch. 10)
+:1849  StorageMetricsCollector        HiCache tiers                  (Ch. 11)
+:1947  ExpertDispatchCollector        MoE routing balance            (Ch. 17)
+:2160  EncoderMetricsCollector        multimodal encoding            (Ch. 21)
 ```
 
 `:65` `SchedulerStats` is the core snapshot, and `:45` `QueueCount` breaks the queue down by
 state — because "queue depth" is not one number when requests can be waiting for admission,
-waiting for a grammar to compile (Chapter 19), or waiting for a KV transfer (Chapter 17).
+waiting for a grammar to compile (Chapter 20), or waiting for a KV transfer (Chapter 18).
 
-`:172` `DPCooperationInfo` measures Chapter 15's imbalance, which matters because a
+`:172` `DPCooperationInfo` measures Chapter 16's imbalance, which matters because a
 data-parallel rank with nothing to do still runs an `IDLE` forward.
 
 `:215` `_StatLoggerDIMixin` is dependency injection for the logging backend, so the same
@@ -52,21 +52,21 @@ collector serves Prometheus, logs, or a test double.
 
 Everything else is diagnostic. These five tell you what the engine is doing:
 
-**Cache hit rate** (Chapter 9). The single highest-leverage number. If it is low on a
+**Cache hit rate** (Chapter 10). The single highest-leverage number. If it is low on a
 workload with shared prefixes, something is wrong — the cache is too small, requests are
-being routed badly (Chapter 17), or the `extra_key` namespace is fragmenting (Chapter 20).
+being routed badly (Chapter 18), or the `extra_key` namespace is fragmenting (Chapter 21).
 
-**Token pool utilization** (Chapter 8). Consistently near 100% means you are memory-bound
+**Token pool utilization** (Chapter 9). Consistently near 100% means you are memory-bound
 and admission is throttling. Consistently low means `--mem-fraction-static` is leaving
 memory unused.
 
-**Retraction count** (Chapter 5). Should be near zero. Anything else means admission is
+**Retraction count** (Chapter 6). Should be near zero. Anything else means admission is
 over-optimistic and work is being destroyed.
 
 **Queue depth** with **waiting time**. Growing queues mean you are past capacity; the
 question is whether to shed load or add replicas.
 
-**Spec acceptance length** (Chapter 18). Must be comfortably above 1 or speculation is
+**Spec acceptance length** (Chapter 19). Must be comfortably above 1 or speculation is
 costing you. `python/sglang/srt/managers/tokenizer_manager.py:2766`
 `_calculate_spec_decoding_metrics` computes it.
 
@@ -110,7 +110,7 @@ for a while.
 **Variance is as expensive as the mean.** The formula above understates the damage when
 service times vary — and LLM service times vary enormously, since a request generating 2,000
 tokens occupies a slot a hundred times longer than one generating 20. That variance is why
-Chapter 5's admission control and its priority policies exist, and why shedding load at the
+Chapter 6's admission control and its priority policies exist, and why shedding load at the
 queue boundary beats accepting work you will time out later.
 
 None of this is visible from throughput. An engine at 99% utilization posts the best tokens
@@ -130,13 +130,13 @@ capacity — so dashboards can label series without separate configuration.
 
 Metrics tell you the aggregate. When one request is slow, you need its path.
 
-That path crosses Chapter 2's process boundaries, so a stack trace is useless — the request
+That path crosses Chapter 3's process boundaries, so a stack trace is useless — the request
 exists in the tokenizer process, then the scheduler, then the detokenizer, and no single
 call stack spans them.
 
 `python/sglang/srt/observability/trace.py` and
 `python/sglang/srt/observability/trace_async.py` propagate a trace context by `rid` across
-those hops. `python/sglang/srt/observability/mooncake_trace.py` extends it into Chapter 17's
+those hops. `python/sglang/srt/observability/mooncake_trace.py` extends it into Chapter 18's
 KV transfers, so a disaggregated request can be followed across machines.
 `docs/docs/references/production_request_trace.mdx` covers it, and
 `python/sglang/srt/entrypoints/http_server.py:1160` `set_trace_level` adjusts verbosity live.
@@ -147,10 +147,10 @@ and
 `python/sglang/srt/observability/startup_func_log_and_timer.py` break it down;
 `python/sglang/srt/managers/scheduler.py:656` `init_startup_timing_begin` and `:659`
 `init_startup_timing_summary` produce the summary. The answer is usually weight loading
-(Chapter 11) or CUDA graph capture (Chapter 14), and the breakdown tells you which.
+(Chapter 12) or CUDA graph capture (Chapter 15), and the breakdown tells you which.
 
 `python/sglang/srt/observability/cpu_monitor.py` watches for the case where the CPU is the
-bottleneck — the condition Chapter 4's overlap scheduler and Chapter 14's graphs both exist
+bottleneck — the condition Chapter 5's overlap scheduler and Chapter 15's graphs both exist
 to prevent.
 
 ---
@@ -177,9 +177,9 @@ The ways to get this wrong are consistent enough to list:
 - **Measuring your client.** At high request rates, a Python client can become the
   bottleneck and you end up benchmarking `asyncio`.
 - **Not warming up.** First requests pay CUDA graph capture, JIT compilation, and allocator
-  warm-up — including the ROCm `torch.unique` case Chapter 8 quoted, which shows up
+  warm-up — including the ROCm `torch.unique` case Chapter 9 quoted, which shows up
   precisely as a slow *second* request.
-- **Accidental cache hits.** Sending the same prompt repeatedly measures Chapter 9's cache,
+- **Accidental cache hits.** Sending the same prompt repeatedly measures Chapter 10's cache,
   not the model. Sometimes that is the point; it should be deliberate.
 - **Reporting the mean.** Latency distributions are skewed. P50 and P99 differ by an order
   of magnitude under load, and only one of them is your SLO.
@@ -205,17 +205,17 @@ synthetic reproduction.
 and `.claude/skills/generate-profile/SKILL.md` drives capture. What to look for, in order:
 
 **Gap time.** Space between kernels means the GPU is starved — a CPU-side problem. Chapter
-4's overlap loop and Chapter 14's graphs are the fixes. If gaps dominate, nothing you do to
+5's overlap loop and Chapter 15's graphs are the fixes. If gaps dominate, nothing you do to
 kernels will help.
 
-**Kernel time distribution.** Which kernels actually cost. Usually attention (Chapter 13) and
-the large GEMMs, but for MoE models often the all-to-all (Chapter 16).
+**Kernel time distribution.** Which kernels actually cost. Usually attention (Chapter 14) and
+the large GEMMs, but for MoE models often the all-to-all (Chapter 17).
 
 **Communication time.** Collectives on the critical path. If all-to-all dominates, Chapter
-16's two-batch overlap is the answer; if all-reduce dominates, the parallelism layout
-(Chapter 15) is wrong.
+17's two-batch overlap is the answer; if all-reduce dominates, the parallelism layout
+(Chapter 16) is wrong.
 
-**Fusion opportunities.** Adjacent elementwise kernels that could be one — Chapter 14's
+**Fusion opportunities.** Adjacent elementwise kernels that could be one — Chapter 15's
 compilation.
 
 ### Deciding whether a kernel is worth optimizing
@@ -235,8 +235,8 @@ The interesting number is not the efficiency but *which* term of the `min` was b
 
 **If *I* × β is the smaller term, the kernel is memory-bound.** Its ceiling is bandwidth, so
 making the arithmetic faster is worthless. What helps is moving fewer bytes — a smaller
-dtype (Chapter 14), fusing it with a neighbour so the intermediate never reaches HBM
-(Chapter 14 again), or restructuring the data so the reads coalesce. Most decode kernels are
+dtype (Chapter 15), fusing it with a neighbour so the intermediate never reaches HBM
+(Chapter 15 again), or restructuring the data so the reads coalesce. Most decode kernels are
 here, which is why most decode optimizations are about traffic rather than math.
 
 **If π is the smaller term, the kernel is compute-bound.** Now tensor-core utilization,
@@ -249,7 +249,7 @@ and at decode's kernel sizes it is a common answer.
 
 Two adjustments make this usable in practice. Attention's arithmetic intensity depends on
 what is cached and what is recomputed, so a paged-attention kernel's *effective* byte count
-is the KV it actually reads, not the sequence length — which is why Chapter 9's hit rate
+is the KV it actually reads, not the sequence length — which is why Chapter 10's hit rate
 changes the kernel's position on the roofline, not just the amount of work above it. And the
 ceiling to compare against is the *achievable* one for the dtype in use: an FP8 kernel is
 being measured against FP8 peak, not BF16 peak, and confusing the two makes a good kernel
@@ -263,7 +263,7 @@ conclusion is worth reaching before spending a week on it.
 Two more tools: `python/sglang/kernel_api_logging.py` logs kernel API calls, which
 `.claude/skills/debug-cuda-crash/SKILL.md` uses to find the call that crashed; and
 `python/sglang/srt/debug_utils/comparator/` compares tensors layer-by-layer against a
-reference, which is how a model producing wrong output gets localized (Chapter 22).
+reference, which is how a model producing wrong output gets localized (Chapter 23).
 
 ---
 
@@ -272,31 +272,31 @@ reference, which is how a model producing wrong output gets localized (Chapter 2
 Tune in the order that relieves binding constraints, not in the order the flags appear in
 `--help`.
 
-**1. `--mem-fraction-static`** (Chapter 8). Sets the KV pool, which sets concurrency, which
+**1. `--mem-fraction-static`** (Chapter 9). Sets the KV pool, which sets concurrency, which
 sets everything. Raise until you see OOM under load, then back off. Too high fails not at
 startup but under the first large batch, when activation memory is demanded from a pool that
 already took it.
 
-**2. Parallelism layout** (Chapters 15, 16). TP to fit the model, PP across nodes, DP
+**2. Parallelism layout** (Chapters 16, 17). TP to fit the model, PP across nodes, DP
 attention for MLA, EP for MoE. Getting this wrong cannot be compensated for by anything
 below it.
 
-**3. `--chunked-prefill-size`** (Chapter 5). Smaller chunks lower ITL for active decodes and
+**3. `--chunked-prefill-size`** (Chapter 6). Smaller chunks lower ITL for active decodes and
 raise TTFT for long prompts. Set it by which latency you are being measured on.
 
-**4. `--max-running-requests`** (Chapter 5). Caps concurrency independently of memory. Useful
+**4. `--max-running-requests`** (Chapter 6). Caps concurrency independently of memory. Useful
 when memory allows more than latency does.
 
-**5. Attention backend** (Chapter 13). Worth benchmarking; the default is not always best for
+**5. Attention backend** (Chapter 14). Worth benchmarking; the default is not always best for
 your shapes, and prefill and decode can be set separately.
 
-**6. `--cuda-graph-max-bs`** (Chapter 14). Higher covers more batch sizes with graphs, at
+**6. `--cuda-graph-max-bs`** (Chapter 15). Higher covers more batch sizes with graphs, at
 capture memory that comes out of the KV pool. Interacts with step 1.
 
-**7. Speculative decoding** (Chapter 18). Large wins at low batch size, negative at high.
+**7. Speculative decoding** (Chapter 19). Large wins at low batch size, negative at high.
 Check accepted length before keeping it.
 
-**8. HiCache** (Chapter 10) and **routing** (Chapter 17). Only pay off with real prefix
+**8. HiCache** (Chapter 11) and **routing** (Chapter 18). Only pay off with real prefix
 sharing — check the cache hit rate first.
 
 `docs/docs/advanced_features/hyperparameter_tuning.mdx` carries the project's guidance, and
@@ -307,5 +307,5 @@ The general rule: **measure which of Chapter 1's two phases you are bound by, an
 resource within it, before changing anything.** Most tuning effort is spent optimizing a
 constraint that was not binding.
 
-One chapter left. Chapter 22 is about changing the engine rather than watching it — and it
+One chapter left. Chapter 23 is about changing the engine rather than watching it — and it
 is the last check on whether everything before it landed.

@@ -1,4 +1,4 @@
-# 7. Sampling and the Return Path
+# 8. Sampling and the Return Path
 
 > *Turning hidden states into user-visible text is three separate hard problems that happen
 > to sit next to each other.*
@@ -29,7 +29,7 @@ make that stop.
 
 ---
 
-Chapter 6 ended with `ModelRunnerOutput` carrying logits. Getting from there to a token
+Chapter 7 ended with `ModelRunnerOutput` carrying logits. Getting from there to a token
 streamed to a client crosses three subsystems and two process boundaries, and each stage
 has a difficulty that is not obvious from its name.
 
@@ -81,7 +81,7 @@ The cases where more than the last position matters are worth naming, because th
 reason the pruning logic is not a one-liner:
 
 - **Input logprobs** — the client asked for the likelihood of its own prompt tokens.
-- **Speculative decoding** — Chapter 18 verifies *k* draft tokens, so *k* positions produce
+- **Speculative decoding** — Chapter 19 verifies *k* draft tokens, so *k* positions produce
   logits.
 - **Hidden state capture** — EAGLE needs intermediate hidden states, not just logits.
   `python/sglang/srt/layers/logits_processor.py:593` `_get_hidden_states_to_store` handles it, driven by
@@ -116,7 +116,7 @@ concerns:
 
 Gather across data-parallel ranks, compute, all-gather across tensor-parallel ranks (the
 vocabulary is sharded, so each rank holds a slice of the logits), then scatter back. Three
-collectives around one matrix multiply. Chapter 15 explains why the vocabulary is sharded
+collectives around one matrix multiply. Chapter 16 explains why the vocabulary is sharded
 and what `use_attn_tp_group` distinguishes.
 
 ---
@@ -340,13 +340,13 @@ may have already sent part of it to the client.
         return output
 ```
 
-This is why Chapter 4's finish reasons are a *class hierarchy* rather than an enum:
+This is why Chapter 5's finish reasons are a *class hierarchy* rather than an enum:
 `FINISH_MATCHED_STR` carries the matched string so the trimmer knows how much to remove;
 `FINISH_MATCHED_TOKEN` carries the token id. The reason needs a payload.
 
 `no_stop_trim` is the client's choice about whether the stop sequence appears in the
 output. And the hardcoded `200012` is honest special-casing: for gpt-oss the tool-call token
-is *also* an EOS token, and trimming it would destroy the tool call Chapter 19 is about to
+is *also* an EOS token, and trimming it would destroy the tool call Chapter 20 is about to
 parse. A comment and a constant beat a plausible-looking abstraction here.
 
 On the scheduler side, `python/sglang/srt/managers/schedule_batch.py:1445`
@@ -357,7 +357,7 @@ token boundary can still be detected — the lookback that makes any of this pos
 
 ## Streaming out
 
-The last hop is back to `TokenizerManager`, where Chapter 3's `ReqState` machinery resolves
+The last hop is back to `TokenizerManager`, where Chapter 4's `ReqState` machinery resolves
 the client's awaiting coroutine.
 
 `python/sglang/srt/managers/tokenizer_manager.py:1641` `_coalesce_streaming_chunks` handles
@@ -390,7 +390,7 @@ hidden_states                        [num_tokens, hidden_size]        GPU
 LogitsProcessorOutput                [num_seqs, vocab_size]
   │  Sampler.forward
   │    _preprocess_logits            custom processors, NaN handling
-  │    grammar mask (Ch. 19)         if constrained
+  │    grammar mask (Ch. 20)         if constrained
   │    penalties, top-k/p/min-p
   ▼
 next_token_ids                       [num_seqs]                        GPU → CPU
@@ -404,7 +404,7 @@ TokenizerManager._handle_batch_output → ReqState.event.set()
 client
 ```
 
-Two process hops for one token. The overlap loop of Chapter 4 hides the CPU cost of all of
+Two process hops for one token. The overlap loop of Chapter 5 hides the CPU cost of all of
 it behind the next forward pass — which is the whole reason that loop is shaped the way it
 is.
 

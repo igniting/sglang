@@ -1,4 +1,4 @@
-# 4. The Scheduler Loop
+# 5. The Scheduler Loop
 
 > *One synchronous loop owns the GPU and answers one question per iteration — what runs
 > next? Everything else in the engine is input to that question.*
@@ -21,7 +21,7 @@ of the GPU — the optimization SGLang calls its zero-overhead scheduler, and th
 several style rules elsewhere in the codebase exist.
 
 One decision inside that loop is large enough to need its own chapter, so we will name it
-here and open it in Chapter 5.
+here and open it in Chapter 6.
 
 ---
 
@@ -41,7 +41,7 @@ the *fill* sequence (what has been written to the KV cache) is not always the sa
 input plus output.
 
 **Cache position** — `prefix_indices`, `last_node`, `cache_protected_len`, `req_pool_idx`.
-This is the request's stake in Chapter 9's radix tree and Chapter 8's pools:
+This is the request's stake in Chapter 10's radix tree and Chapter 9's pools:
 which prefix it matched, which tree node it holds a lock on, how much of its KV the tree
 owns, and which row of `req_to_token` is its own.
 
@@ -53,9 +53,9 @@ agree.
 `FINISH_MATCHED_TOKEN` (`:228`), `FINISH_MATCHED_STR` (`:240`),
 `FINISHED_MATCHED_REGEX` (`:252`), `FINISH_LENGTH` (`:264`), `FINISH_ABORT` (`:276`). Each
 serializes itself through `to_json`, so the reason survives the trip back to the client.
-Chapter 7 shows why stop *strings* need their own class rather than a flag.
+Chapter 8 shows why stop *strings* need their own class rather than a flag.
 
-**Feature state** — grammar objects (Chapter 19), LoRA ids (Chapter 20), multimodal inputs
+**Feature state** — grammar objects (Chapter 20), LoRA ids (Chapter 21), multimodal inputs
 (`:318` `MultimodalDataItem`, `:590` `MultimodalInputs`), logprob accumulators, and
 speculative-decoding histograms such as `:1241` `update_spec_correct_drafts_histogram`.
 
@@ -63,7 +63,7 @@ The single most useful method for understanding the loop is `:1298`
 `init_next_round_input`, which recomputes the request's prefix match against the tree
 before each scheduling round. A request's cached prefix is not fixed at arrival — other
 requests may have inserted an overlapping prefix in the meantime, which is exactly the
-concurrency Chapter 9's `cache_unfinished_req` re-match protects against.
+concurrency Chapter 10's `cache_unfinished_req` re-match protects against.
 
 ---
 
@@ -78,7 +78,7 @@ manipulates. Its operations are the verbs of scheduling:
 
 - `prepare_for_extend` — allocate KV for prompt tokens, build the extend metadata.
 - `prepare_for_decode` — allocate one slot per sequence, advance positions.
-- `retract_decode` — evict running requests when memory ran out. Chapter 5's failure path.
+- `retract_decode` — evict running requests when memory ran out. Chapter 6's failure path.
 - `filter_batch` — drop finished requests.
 - `merge_batch` — fold a newly-prefilled batch into the running one.
 - `copy` — snapshot, which the overlap loop below depends on.
@@ -87,7 +87,7 @@ manipulates. Its operations are the verbs of scheduling:
 scheduler's private state.
 
 **`ForwardBatch`** (`python/sglang/srt/model_executor/forward_batch_info.py:412`) is the
-GPU-side view: tensors, positions, page tables, attention metadata. Chapter 6 covers it.
+GPU-side view: tensors, positions, page tables, attention metadata. Chapter 7 covers it.
 
 The separation is enforced by rule.
 `.claude/rules/schedule-batch-out-of-place-mutation.md` forbids in-place mutation of
@@ -150,12 +150,12 @@ thirty lines. Read it before anything else in the file:
 
 Receive, decide, run, process results, repeat. Four steps.
 
-- **Receive** — `:1872` `process_input_requests` drains the socket from Chapter 3 and
+- **Receive** — `:1872` `process_input_requests` drains the socket from Chapter 4 and
   dispatches each message through the type table at `:1523` `init_request_dispatcher`. A
   generate request lands in `:2363` `handle_generate_request`, which builds a `Req` and
   queues it via `:2715` `_add_request_to_queue`.
-- **Decide** — `:3012` `get_next_batch_to_run` is the whole of Chapter 5.
-- **Run** — `:3623` `run_batch` hands the batch to the worker (Chapter 6).
+- **Decide** — `:3012` `get_next_batch_to_run` is the whole of Chapter 6.
+- **Run** — `:3623` `run_batch` hands the batch to the worker (Chapter 7).
 - **Process** — `:3917` `process_batch_result` appends sampled tokens, checks stop
   conditions, frees KV for finished requests, and sends output onward.
 
@@ -223,7 +223,7 @@ GPU-side ordering, not just Python-side ordering.
 ```
 
 Sampling for batch *N* may depend on state that processing batch *N−1* updates — a grammar
-advanced by the token *N−1* just produced (Chapter 19). So the forward is overlapped but
+advanced by the token *N−1* just produced (Chapter 20). So the forward is overlapped but
 the sample is not.
 
 Overlap cannot always be done. `:1823` `is_disable_overlap_for_batch` decides per batch,
@@ -276,7 +276,7 @@ What breaks this is any operation that forces the host to wait for the device:
 
 Each one drains the launch queue and re-exposes every microsecond of Python. This is why
 "don't call `.item()` in the hot path" appears as a rule in this codebase rather than as
-advice, why Chapter 13's backends carry a lint contract about it in a docstring, and why
+advice, why Chapter 14's backends carry a lint contract about it in a docstring, and why
 `FutureMap` exists at all.
 
 The bind is this. To build batch *N+1*, the scheduler needs to know what token batch *N*
@@ -384,7 +384,7 @@ stopped making progress and to fail loudly, because a scheduler wedged inside a 
 operation produces no error at all — it simply stops, and every request behind it times
 out.
 
-This is the same reasoning behind `/health_generate` from Chapter 2 running a real forward
+This is the same reasoning behind `/health_generate` from Chapter 3 running a real forward
 pass. In a system where the failure mode is *silence*, liveness has to be proven by doing
 work, not by answering a question.
 
@@ -454,5 +454,5 @@ deferred sample.
 
 ---
 
-Chapter 5 opens up the one call this chapter skipped — `get_next_batch_to_run`, where the
+Chapter 6 opens up the one call this chapter skipped — `get_next_batch_to_run`, where the
 actual scheduling decision is made.

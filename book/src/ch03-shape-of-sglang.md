@@ -1,4 +1,4 @@
-# 2. The Shape of SGLang
+# 3. The Shape of SGLang
 
 > *The engine's process topology is its architecture; understanding the boundaries explains
 > most design choices that follow.*
@@ -42,19 +42,19 @@ be its own project.
 arranged by dependency they tell you almost everything:
 
 ```
-entrypoints/        HTTP, gRPC, and the embeddable Engine        → Ch. 2, 3
+entrypoints/        HTTP, gRPC, and the embeddable Engine        → Ch. 3, 3
    ↓
 managers/           TokenizerManager, Scheduler, DetokenizerManager
-                    schedule_batch.py, schedule_policy.py        → Ch. 3–7
+                    schedule_batch.py, schedule_policy.py        → Ch. 4–7
    ↓
-model_executor/     ModelRunner, ForwardBatch, CUDA graphs       → Ch. 6, 14
+model_executor/     ModelRunner, ForwardBatch, CUDA graphs       → Ch. 7, 14
    ↓
-models/             218 model definitions                        → Ch. 12
+models/             218 model definitions                        → Ch. 13
    ↓
-layers/             attention, MoE, quantization, linear, sampler → Ch. 7, 13, 14, 16
+layers/             attention, MoE, quantization, linear, sampler → Ch. 8, 13, 14, 16
    ↓
-mem_cache/          KV pools, allocators, radix cache            → Ch. 8–10
-distributed/        process groups, communicators                → Ch. 15
+mem_cache/          KV pools, allocators, radix cache            → Ch. 9–10
+distributed/        process groups, communicators                → Ch. 16
 ```
 
 Roughly, a request flows top to bottom and its results flow back up. Cutting across that
@@ -117,7 +117,7 @@ So SGLang splits them across processes:
 </figure>
 
 Note the cycle: the detokenizer does not reply to the scheduler, it sends *forward* to the
-tokenizer manager, which holds the client's async future. Chapter 3 walks that return path.
+tokenizer manager, which holds the client's async future. Chapter 4 walks that return path.
 
 The split buys three things. **Parallelism** — tokenization and detokenization run
 genuinely concurrently with GPU work, not interleaved by the GIL. **Isolation** — a
@@ -177,7 +177,7 @@ class PortArgs:
 
 Each comment names an edge in the diagram above. Note "scheduler (rank 0)": under tensor
 parallelism only rank 0 receives from the tokenizer, and it broadcasts to its peers.
-Chapter 3 explains why that asymmetry exists and what it costs.
+Chapter 4 explains why that asymmetry exists and what it costs.
 
 `_launch_scheduler_processes` (`python/sglang/srt/entrypoints/engine.py:848`) does the
 spawning, and its first decision shows the topology is not fixed:
@@ -191,7 +191,7 @@ spawning, and its first decision shows the topology is not fixed:
 With data parallelism there is an extra process in front — a
 `DataParallelController` that routes requests across whole replicas. Without it, schedulers
 are spawned directly, one per (pipeline rank, tensor rank) pair computed by
-`_calculate_rank_ranges` (`python/sglang/srt/entrypoints/engine.py:1794`). Chapter 15
+`_calculate_rank_ranges` (`python/sglang/srt/entrypoints/engine.py:1794`). Chapter 16
 covers what those ranks mean.
 
 `_launch_detokenizer_subprocesses` (`python/sglang/srt/entrypoints/engine.py:966`)
@@ -236,7 +236,7 @@ about which requests are in the batch will launch different collectives and dead
 crash, deadlock, which is a much worse failure to debug. This is why so much of the
 scheduler is careful about ordering: dictionaries iterated in insertion order, sorts made
 total by tie-breaking on request id, decisions taken from broadcast data rather than local
-timing. Chapter 4's loop and Chapter 5's batching policy both read differently once you know
+timing. Chapter 5's loop and Chapter 6's batching policy both read differently once you know
 that every line of them is running eight times in parallel and must agree eight times over.
 
 The three-way split of the *front end* is a different argument entirely. Tokenization and
@@ -267,7 +267,7 @@ keep a broken replica in the load balancer.
 `python/sglang/srt/entrypoints/engine.py:199` `class Engine` embeds everything in your own
 process, and `:352` `generate` is a direct call. This is the path used for offline batch
 inference and for RL rollouts, where an HTTP hop per rollout would be pure overhead.
-Chapter 11 covers the weight-update API that makes the RL case work.
+Chapter 12 covers the weight-update API that makes the RL case work.
 
 **gRPC** exists for deployments that want a binary protocol; `serve_grpc` and the Rust gRPC
 server are alternate front ends onto the same `TokenizerManager`.
@@ -313,7 +313,7 @@ The payoff is co-design. Two of the IR nodes are the argument:
 **`SglFork`** (`python/sglang/lang/ir.py:552`) branches a program into several
 continuations that share everything before the branch. To a plain HTTP API that is *n*
 independent requests, each re-sending and re-prefilling the shared context. To SGLang it is
-one prefix in the radix tree of Chapter 9 with *n* children — the shared part is computed
+one prefix in the radix tree of Chapter 10 with *n* children — the shared part is computed
 once because the runtime can *see* that it is shared.
 
 **`SglSelect`** (`python/sglang/lang/ir.py:533`) picks among a fixed set of options. Without
@@ -346,7 +346,7 @@ Three habits make it tractable:
    flags encode which combinations actually work — often the only place that is written
    down.
 3. **Treat a default as a claim.** `--mem-fraction-static`'s default is the outcome of the
-   Chapter 8 memory calculation; `--chunked-prefill-size`'s is the Chapter 5 latency trade.
+   Chapter 9 memory calculation; `--chunked-prefill-size`'s is the Chapter 6 latency trade.
 
 Appendix A groups the arguments by subsystem with pointers into the chapters.
 
@@ -364,25 +364,25 @@ in the repository — each one is a hazard the architecture has already hit.
 > Why: `copy()` snapshots and the overlap scheduler's queued references rely on old objects
 > staying frozen.
 
-That is Chapter 4's overlap scheduler leaking into a style rule. Because step *N+1* is
+That is Chapter 5's overlap scheduler leaking into a style rule. Because step *N+1* is
 prepared while step *N* is still in flight, two batch objects are live at once and the
 older one must not change underneath the GPU.
 
 **`.claude/rules/forward-batch-init-new-purity.md`** requires `ForwardBatch.init_new` to
-treat its input `ScheduleBatch` as read-only — the same concern one layer down (Chapter 6).
+treat its input `ScheduleBatch` as read-only — the same concern one layer down (Chapter 7).
 It also lists its own tolerated exceptions, which is unusually honest for a style rule and
 tells you where the abstraction is still leaking.
 
 **`.claude/rules/no-dataclasses.md`** requires `msgspec.Struct` over `@dataclass`, partly
 for strict typing and partly because these objects cross process boundaries and are
-candidates for a future Rust port (Chapter 17's gateway is the precedent).
+candidates for a future Rust port (Chapter 18's gateway is the precedent).
 
 **`.claude/rules/no-getattr-defensive.md`** bans defensive `getattr(obj, "field", default)`.
 In a system with this many configuration permutations, a silently-swallowed
 `AttributeError` becomes a wrong answer rather than a crash.
 
 **`.claude/rules/general-code-style.md`** collects the rest, including "avoid mixins" — a
-rule that Chapter 4 will show `Scheduler` violating twenty-two times over, for reasons the
+rule that Chapter 5 will show `Scheduler` violating twenty-two times over, for reasons the
 `.claude/skills/large-class-style/SKILL.md` playbook explains.
 
 Read all five before your first patch. They will save you a review cycle each.

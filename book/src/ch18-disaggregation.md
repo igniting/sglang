@@ -1,9 +1,9 @@
-# 17. Disaggregation and Routing
+# 18. Disaggregation and Routing
 
 > *Prefill and decode want different hardware and different SLOs, so at scale the right move
 > is to stop running them on the same machine.*
 
-Chapter 1 showed that prefill and decode are opposite workloads. Chapter 5 showed the
+Chapter 1 showed that prefill and decode are opposite workloads. Chapter 6 showed the
 scheduler negotiating between them every single iteration, and chunked prefill softening the
 conflict without removing it.
 
@@ -15,14 +15,14 @@ cost is that the shipping is now on the critical path — a 4,000-token prefill 
 a gigabyte of cache that has to arrive before the first output token.
 
 The chapter ends one level further out, with the router that decides which instance gets
-each request. That decision turns out to depend on Chapter 9, and the dependence is strong
+each request. That decision turns out to depend on Chapter 10, and the dependence is strong
 enough that routing policy can matter more than any kernel in this book.
 
 ---
 
 ## Why colocation compromises both
 
-Chapter 1's two phases have opposite characteristics, and Chapter 5 showed the scheduler
+Chapter 1's two phases have opposite characteristics, and Chapter 6 showed the scheduler
 negotiating between them every iteration. Chunked prefill mitigates the conflict; it does
 not remove it.
 
@@ -71,7 +71,7 @@ interference lands unevenly.
 Once you accept two pools, a second freedom appears that a single pool cannot have: **the two
 phases can use different parallelism.** Prefill is compute-bound, so tensor parallelism buys
 it real latency reduction. Decode is bandwidth-bound and cache-hungry, so replicating the KV
-cache across TP ranks is precisely wrong for it, and Chapter 15's data-parallel attention is
+cache across TP ranks is precisely wrong for it, and Chapter 16's data-parallel attention is
 right. On one machine you must choose one layout for both. DistServe's placement algorithm
 searches the two configurations independently and reports **7.4× the request rate**, or 12.6×
 tighter SLOs, at 90% attainment.
@@ -84,7 +84,7 @@ is the real constraint: the placement algorithm is bandwidth-aware precisely bec
 conclusion inverts on a slow one. Given NVLink between the pools, disaggregation is nearly
 free; given commodity Ethernet, the transfer becomes the bottleneck it appears to be.
 
-This is the counter-argument to Chapter 5's chunked prefill, and the two papers genuinely
+This is the counter-argument to Chapter 6's chunked prefill, and the two papers genuinely
 disagree. Sarathi says: interleave them, and the decodes ride along on compute the prefill
 was buying anyway. DistServe says: interleaving is what causes the interference, chunking
 only bounds it, and chunking makes attention re-read the prefix once per chunk — a cost that
@@ -117,17 +117,17 @@ class PrefillBootstrapQueue:
     ):
 ```
 
-The constructor names the moving parts. `token_to_kv_pool` is Chapter 8's pool — the source
+The constructor names the moving parts. `token_to_kv_pool` is Chapter 9's pool — the source
 of the bytes. `metadata_buffers` carry the small out-of-band information (sampled token,
 finish state) that must accompany the KV. `draft_token_to_kv_pool` is there because
-speculative decoding (Chapter 18) has a second cache that must also cross.
+speculative decoding (Chapter 19) has a second cache that must also cross.
 
 `:299` `create_sender`, `:326` `ensure_metadata_buffer`, and `:336` `finalize_bootstrap`
 are the handshake steps, and `:383` `pop_bootstrapped` yields requests ready to run.
 `:367` `_check_if_req_exceed_kv_capacity` rejects early: a request too large for the decode
 node's pool must fail before prefill spends compute on it.
 
-`:485` `SchedulerDisaggregationPrefillMixin` is how this attaches to Chapter 4, and the
+`:485` `SchedulerDisaggregationPrefillMixin` is how this attaches to Chapter 5, and the
 important detail is that it provides *variant event loops*:
 
 ```
@@ -137,12 +137,12 @@ important detail is that it provides *variant event loops*:
 :501  resolve_waiting_queue_bootstrap
 ```
 
-Same structure as Chapter 4 — receive, decide, run, process — with two changes. Requests
+Same structure as Chapter 5 — receive, decide, run, process — with two changes. Requests
 must be bootstrapped before they are schedulable, and a request is *finished* when its KV
 has been sent rather than when it produced a token. A prefill instance never decodes.
 
 `python/sglang/srt/disaggregation/decode.py` is the mirror. Its requests arrive with KV
-already computed, which is Chapter 6's `PREBUILT` forward mode:
+already computed, which is Chapter 7's `PREBUILT` forward mode:
 
 > Used in disaggregated decode worker. Represent a batch of requests having their KV cache
 > ready to start decoding.
@@ -150,14 +150,14 @@ already computed, which is Chapter 6's `PREBUILT` forward mode:
 The decode side has its own queues — waiting for transfer, transfer complete, ready to run —
 and `python/sglang/srt/disaggregation/decode_schedule_batch_mixin.py`,
 `python/sglang/srt/disaggregation/decode_kvcache_offload_manager.py`, and
-`python/sglang/srt/disaggregation/decode_hicache_mixin.py` connect it to Chapters 8 and 10.
+`python/sglang/srt/disaggregation/decode_hicache_mixin.py` connect it to Chapters 9 and 11.
 
 ---
 
 ## The handshake
 
 Before a byte moves, the two sides must agree on where it goes. The decode instance
-allocates KV pages from *its own* pool (Chapter 8) and tells the prefill instance the
+allocates KV pages from *its own* pool (Chapter 9) and tells the prefill instance the
 addresses; the prefill instance writes directly into them.
 
 `python/sglang/srt/disaggregation/base/conn.py` defines the interface and
@@ -167,7 +167,7 @@ addresses; the prefill instance writes directly into them.
 sides in touch, and `python/sglang/srt/disaggregation/common/staging_buffer.py` and
 `python/sglang/srt/disaggregation/common/staging_handler.py` handle cases where a direct write is not possible.
 
-Two details make this harder than it sounds. **Layout must match**: Chapter 8's pool layouts
+Two details make this harder than it sounds. **Layout must match**: Chapter 9's pool layouts
 differ, and a page-major sender writing into a layer-major receiver produces garbage. And
 **parallelism may differ**: a prefill instance running TP 8 and a decode instance running TP
 4 with DP attention hold their caches in different shard shapes, so the transfer is a
@@ -199,13 +199,13 @@ an external system (the router below) know what is cached where.
 
 ## EPD: a third stage
 
-Multimodal models (Chapter 20) add another asymmetric phase. Running a vision encoder is
+Multimodal models (Chapter 21) add another asymmetric phase. Running a vision encoder is
 compute-heavy, bursty, and needs no KV cache at all — a third workload with a third profile.
 
 `python/sglang/srt/disaggregation/encode_server.py` and
 `python/sglang/srt/disaggregation/encode_grpc_server.py` run encoding as its own service,
 with `python/sglang/srt/disaggregation/encode_receiver.py` on the consuming side. The
-`--encoder-only` flag in `python/sglang/launch_server.py` (Chapter 2) selects it.
+`--encoder-only` flag in `python/sglang/launch_server.py` (Chapter 3) selects it.
 
 `docs/docs/advanced_features/epd_disaggregation.mdx` covers the three-stage arrangement.
 
@@ -216,7 +216,7 @@ with `python/sglang/srt/disaggregation/encode_receiver.py` on the consuming side
 Disaggregation multiplies instances, and something must decide which one gets each request.
 `sgl-model-gateway/` is that something, in Rust.
 
-Round-robin is the obvious policy and the wrong one, **because Chapter 9 exists**. If
+Round-robin is the obvious policy and the wrong one, **because Chapter 10 exists**. If
 request *B* shares a prefix with request *A*, sending it to the replica that already served
 *A* turns a full prefill into a cache hit. Sending it elsewhere throws that away. At an 80%
 prefix-sharing rate, routing policy is worth more than any kernel optimization in this book.
@@ -239,7 +239,7 @@ each replica has cached. It cannot be exact — it does not see evictions — bu
 need to be. It only needs to rank replicas well enough that requests land near their
 prefixes.
 
-This is Chapter 9's feedback loop lifted one level. Within an instance, the tree tells the
+This is Chapter 10's feedback loop lifted one level. Within an instance, the tree tells the
 scheduler which request is cheapest to run next. Across instances, an approximate copy of
 the same tree tells the router which replica makes a request cheapest. Same idea, two
 scales.
@@ -259,7 +259,7 @@ instances are different pools with different roles.
 
 The router sits in front of every request and does non-trivial work per request — prefix
 hashing, tree lookup, load comparison. In Python that would be a bottleneck at the request
-rates this is built for, and it would inherit the GIL problems Chapter 2 described. It also
+rates this is built for, and it would inherit the GIL problems Chapter 3 described. It also
 has no reason to touch a GPU, so nothing pulls it toward the Python ecosystem.
 
 `sgl-model-gateway/bindings/` exposes it to Python for embedded use, and
@@ -301,8 +301,8 @@ has no reason to touch a GPU, so nothing pulls it toward the Python ecosystem.
 <figcaption>Prefill and decode want opposite hardware and opposite parallelism. Disaggregation stops asking one machine to be good at both.</figcaption>
 </figure>
 
-Every box is a chapter. The pools are Chapter 8, the routing is Chapter 9, the parallelism
-choices are Chapters 15 and 16, and the transfer is this one.
+Every box is a chapter. The pools are Chapter 9, the routing is Chapter 10, the parallelism
+choices are Chapters 16 and 17, and the transfer is this one.
 
 Whether it is worth it is a scale question. Disaggregation adds a network hop to every
 request's critical path and a great deal of operational complexity. Below a few dozen GPUs

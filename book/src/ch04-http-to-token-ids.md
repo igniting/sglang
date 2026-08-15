@@ -1,4 +1,4 @@
-# 3. From HTTP to Token IDs
+# 4. From HTTP to Token IDs
 
 > *The front of the engine is an async/sync boundary, and most of its complexity is in
 > making message passing look like `await`.*
@@ -7,7 +7,7 @@ A request has arrived. Over the next five chapters we follow it all the way to a
 appearing on someone's screen, and this chapter covers the first leg: from an HTTP socket
 to a message sitting in the scheduler's queue.
 
-Chapter 2 established the topology — a tokenizer process at the front, schedulers owning the
+Chapter 3 established the topology — a tokenizer process at the front, schedulers owning the
 GPUs, detokenizers at the back, ZeroMQ between them. What that diagram does not convey is
 the awkwardness of the boundary it creates. The web server is asynchronous, with thousands
 of coroutines in flight. The scheduler is a synchronous loop that would not know what an
@@ -27,7 +27,7 @@ what this chapter is about.
 
 `python/sglang/srt/managers/tokenizer_manager.py:374` `TokenizerManager` runs in the main
 process, on the same asyncio event loop as the HTTP server. Its `__init__` (`:387`) is a
-sequence of named setup steps in the style Chapter 4 discusses:
+sequence of named setup steps in the style Chapter 5 discusses:
 `:449` `init_model_config`, `:466` `init_tokenizer_and_processor`,
 `:534` `init_ipc_channels`, `:567` `init_running_status`,
 `:732` `init_request_dispatcher`.
@@ -47,7 +47,7 @@ on:
 `auto_create_handle_loop` (`:2175`) lazily starts the background task that drains results
 from the scheduler. It is called per request rather than at construction because the
 manager may be built before an event loop exists — in the embedded `Engine` case
-(Chapter 2), construction happens in a context where `asyncio.get_running_loop()` would
+(Chapter 3), construction happens in a context where `asyncio.get_running_loop()` would
 fail. Doing it on first use sidesteps the ordering problem entirely.
 
 ---
@@ -75,7 +75,7 @@ of input it actually received:
 ```
 
 Three input formats — raw embeddings, pre-tokenized ids, or text — and the first branch is
-a genuine cross-subsystem constraint stated as a runtime error. Chapter 9 explains why:
+a genuine cross-subsystem constraint stated as a runtime error. Chapter 10 explains why:
 the radix cache is keyed on *token ids*. Supplying embeddings directly means two requests
 with identical ids may have entirely different activations, so prefix sharing would return
 the wrong data. The engine cannot detect this, so it refuses the combination.
@@ -108,17 +108,17 @@ Three consequences matter downstream:
 **Encoding is greedy and order-dependent, so it is not compositional.** The tokens for
 `"foo"` need not be a prefix of the tokens for `"foobar"`, because a merge that spans the
 boundary can fire in the longer string and not the shorter one. This is exactly why
-Chapter 7's detokenizer cannot decode one token at a time and concatenate, and why the
+Chapter 8's detokenizer cannot decode one token at a time and concatenate, and why the
 `--skip-tokenizer-init` path exists for callers that manage ids themselves.
 
 **Byte-level BPE has no out-of-vocabulary case.** GPT-2 and its descendants start from the
 256 possible bytes, so any byte string is encodable. The price is that a single token can be
 *part of* a UTF-8 sequence rather than a whole character, which is the direct cause of the
-partial-codepoint problem Chapter 7 spends a section on, and the reason Chapter 19's grammar
+partial-codepoint problem Chapter 8 spends a section on, and the reason Chapter 20's grammar
 engine works over *bytes* rather than characters.
 
 **One token is roughly four characters of English, and much less of anything else.** Every
-token budget in Chapter 5, every KV-cache calculation in Chapter 1, and every context-length
+token budget in Chapter 6, every KV-cache calculation in Chapter 1, and every context-length
 limit is denominated in this unit — which is a property of the corpus the tokenizer was
 trained on, not of the text being served. The same prompt in Thai or in JSON can cost several
 times what it costs in English prose.
@@ -276,7 +276,7 @@ reimplemented in another language.
 
 Sockets are created in `python/sglang/srt/managers/scheduler.py:733` `init_ipc_channels`
 (with `python/sglang/srt/managers/scheduler_components/ipc_channels.py` holding the
-details) using the names from `PortArgs` that Chapter 2 introduced. The transport is Unix
+details) using the names from `PortArgs` that Chapter 3 introduced. The transport is Unix
 domain sockets for same-node communication — the common case, and considerably cheaper
 than TCP loopback.
 
@@ -315,7 +315,7 @@ Under tensor parallelism, `PortArgs` says the tokenizer sends to "scheduler (ran
 other ranks receive nothing from the front end.
 
 They cannot. Tensor parallelism requires every rank to execute the *same* collective
-operations in the *same* order (Chapter 15). If ranks independently received from a socket,
+operations in the *same* order (Chapter 16). If ranks independently received from a socket,
 network timing alone could give them different batches, and the first `all_reduce` would
 deadlock — or worse, silently mismatch. So rank 0 receives and broadcasts, and every rank
 proceeds from an identical view.
@@ -343,7 +343,7 @@ is a CUDA IPC handle — a reference other processes can map directly — rather
 `_validate_cuda_vmm_feature_transport_support` refuses the path where the platform cannot
 support it.
 
-Chapter 20 covers the multimodal pipeline in full. The point here is that the process
+Chapter 21 covers the multimodal pipeline in full. The point here is that the process
 boundary, which buys isolation and parallelism, charges for every byte crossing it — and
 the engine pays that toll only where it is cheap.
 
@@ -361,7 +361,7 @@ the engine pays that toll only where it is cheap.
    ranks agree.
 4. The scheduler removes the request from the waiting queue, or marks a running request
    finished with `FINISH_ABORT` (`python/sglang/srt/managers/schedule_batch.py:276`).
-5. Its KV cache is released through the Chapter 9 path — `cache_finished_req`, which frees
+5. Its KV cache is released through the Chapter 10 path — `cache_finished_req`, which frees
    the request's pages and decrements the tree's lock references.
 6. A final output flows back through the detokenizer, `_handle_batch_output` sets the
    state's event, and the awaiting coroutine — if any is still there — unblocks and cleans
@@ -373,5 +373,5 @@ boundary, but a `msgspec.Struct` can.
 
 ---
 
-Chapter 4 picks the request up on the other side of the socket, where a synchronous loop is
+Chapter 5 picks the request up on the other side of the socket, where a synchronous loop is
 deciding what to do with it.

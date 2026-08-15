@@ -64,39 +64,39 @@ other platforms.
 
 Ranked by how much they change behavior, with the chapter that explains the mechanism.
 
-**`--mem-fraction-static`** (Ch. 8) — the fraction of GPU memory reserved for weights plus
+**`--mem-fraction-static`** (Ch. 9) — the fraction of GPU memory reserved for weights plus
 KV pool. Sets `max_total_num_tokens`, which sets concurrency, which sets everything. Too
 high fails under load rather than at startup.
 
-**`--tp-size`, `--pp-size`, `--dp-size`, `--ep-size`** (Ch. 15, 16) — the parallelism
+**`--tp-size`, `--pp-size`, `--dp-size`, `--ep-size`** (Ch. 16, 16) — the parallelism
 layout. TP within a node, PP across nodes, DP for replicas or (with
 `--enable-dp-attention`) for attention.
 
-**`--chunked-prefill-size`** (Ch. 5) — how finely long prompts are split. Trades the long
+**`--chunked-prefill-size`** (Ch. 6) — how finely long prompts are split. Trades the long
 request's TTFT against everyone else's ITL.
 
-**`--max-running-requests`** (Ch. 5) — concurrency cap independent of memory.
+**`--max-running-requests`** (Ch. 6) — concurrency cap independent of memory.
 
 **`--attention-backend`**, `--prefill-attention-backend`, `--decode-attention-backend`
-(Ch. 13) — the phases can differ.
+(Ch. 14) — the phases can differ.
 
-**`--cuda-graph-max-bs`**, `--disable-cuda-graph` (Ch. 14) — graph coverage against capture
+**`--cuda-graph-max-bs`**, `--disable-cuda-graph` (Ch. 15) — graph coverage against capture
 memory.
 
-**`--quantization`**, `--kv-cache-dtype` (Ch. 14) — weight and cache precision, independent
+**`--quantization`**, `--kv-cache-dtype` (Ch. 15) — weight and cache precision, independent
 choices.
 
 **`--speculative-algorithm`**, `--speculative-num-steps`, `--speculative-eagle-topk`,
-`--speculative-num-draft-tokens` (Ch. 18) — draft depth and width.
+`--speculative-num-draft-tokens` (Ch. 19) — draft depth and width.
 
-**`--disable-radix-cache`** (Ch. 9) — turns off prefix caching. Almost always wrong in
+**`--disable-radix-cache`** (Ch. 10) — turns off prefix caching. Almost always wrong in
 production; occasionally necessary for measurement or when using `input_embeds`.
 
-**`--schedule-policy`** (Ch. 5) — `lpm`, `fcfs`, `dfs-weight`, `random`, `priority`.
+**`--schedule-policy`** (Ch. 6) — `lpm`, `fcfs`, `dfs-weight`, `random`, `priority`.
 
-**`--enable-hierarchical-cache`** and the `--hicache-*` family (Ch. 10).
+**`--enable-hierarchical-cache`** and the `--hicache-*` family (Ch. 11).
 
-**`--load-format`** (Ch. 11) — including `dummy` for benchmarking without real weights.
+**`--load-format`** (Ch. 12) — including `dummy` for benchmarking without real weights.
 
 ## Reading the constraints
 

@@ -4,24 +4,24 @@ Part II kept running into the same wall.
 
 The scheduler could not admit more requests because memory was full. It had to evict
 running requests when it guessed wrong about memory. Its priority ordering depended on a
-cache. Every interesting decision in Chapter 5 came back to the same constraint that
+cache. Every interesting decision in Chapter 6 came back to the same constraint that
 Chapter 1 predicted: **memory capacity, not arithmetic, sets how many people a GPU serves.**
 
 These three chapters are about that memory — how it is stored, how it is shared, and what
 happens when it runs out.
 
-**Chapter 8** is the mechanism. Two levels of indirection turn "each request owns a buffer"
+**Chapter 9** is the mechanism. Two levels of indirection turn "each request owns a buffer"
 into "each request owns a list of page numbers," which is what makes everything else in
 this part possible. This is also where the flag people tune first — `--mem-fraction-static`
 — stops being a number and becomes an amount of memory.
 
-**Chapter 9** is the idea SGLang is known for, and the centre of this book.
+**Chapter 10** is the idea SGLang is known for, and the centre of this book.
 Real conversations share long prefixes: a chat turn re-sends the whole history, every
 request in an application carries the same system prompt, an agent loop re-sends its whole
 trajectory. Computing those prefixes repeatedly is arithmetic being repeated. RadixAttention
 notices, and stores each shared prefix once.
 
-**Chapter 10** extends the same tree past the GPU, into host memory and disk — a bandwidth
+**Chapter 11** extends the same tree past the GPU, into host memory and disk — a bandwidth
 arbitrage that pays only above a computable prefix length, and the chapter is honest about
 when it does not pay at all.
 

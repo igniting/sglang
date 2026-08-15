@@ -46,15 +46,15 @@ glance, never to write them.
 Three kinds of reader, and what each will find:
 
 **The curious engineer** who uses LLM APIs and wants to know what is behind them. Parts I
-and II are written for you, and they stand alone — you can stop after Chapter 7 with a
+and II are written for you, and they stand alone — you can stop after Chapter 8 with a
 complete picture of a request's life and be glad you did.
 
 **The practitioner** running SGLang in production. Parts III through V explain what your
-configuration flags actually do, and Chapter 21 turns that into a tuning procedure. Chapter
+configuration flags actually do, and Chapter 22 turns that into a tuning procedure. Chapter
 1 is worth reading first anyway, because most tuning mistakes come from optimizing a
 constraint that was not binding.
 
-**The contributor** about to change something. Read straight through. Chapter 22 collects
+**The contributor** about to change something. Read straight through. Chapter 23 collects
 the extension points, but the chapters before it are what make those seams make sense.
 
 ## The journey
@@ -62,9 +62,11 @@ the extension points, but the chapters before it are what make those seams make 
 The book is a descent. It starts where a request arrives and ends where the electrons are,
 and each part goes one level below the last.
 
-**Part I — Why any of this exists.** Two chapters. The first establishes the cost model
-above, in enough detail that you can compute it yourself. The second is a tour of the
-machine's shape: four processes, connected by sockets, each doing one job.
+**Part I — Why any of this exists.** Three chapters. The first establishes the cost model
+above, in enough detail that you can compute it yourself. The second is about the hardware
+that model is parameterized by — accelerators, interconnects, and how to read a spec sheet.
+The third is a tour of the software's shape: four processes, connected by sockets, each
+doing one job.
 
 **Part II — The life of a request.** Five chapters following one request from an HTTP
 socket to a streamed token. This is the spine of the book. Everything after it is a detour
@@ -99,7 +101,7 @@ of the repository, an annotated startup log, and further reading.
 rest of the book assumes both.
 
 **After that, follow your interest.** Every later chapter names its dependencies in its
-opening, and cross-references are specific — "Chapter 9's reference counting," not "as
+opening, and cross-references are specific — "Chapter 10's reference counting," not "as
 discussed earlier."
 
 **Do not try to hold the code in your head.** Code references are links: every
@@ -125,10 +127,10 @@ chapter.
 Code references are pinned to one commit of SGLang, `7562e74` (August 2026). The project
 moves fast, and a book that chased it would be wrong in a different way every month.
 
-What ages well: the cost model of Chapter 1, the process topology of Chapter 2, the request
+What ages well: the cost model of Chapter 1, the process topology of Chapter 3, the request
 path of Part II, and the memory system of Part III. These have been stable for the
 project's life. What ages quickly: specific kernel backends, quantization formats, and
-speculative algorithms — Chapters 13, 14, and 18 name implementations that will change.
+speculative algorithms — Chapters 14, 15, and 19 name implementations that will change.
 
 The diffusion stack for image and video generation is out of scope. It is a large parallel
 system with its own scheduler and its own caching, and it deserves separate treatment

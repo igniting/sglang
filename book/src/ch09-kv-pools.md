@@ -1,7 +1,7 @@
-# 8. KV Cache Pools and Allocators
+# 9. KV Cache Pools and Allocators
 
 > *The engine's central data structure is a two-level indirection, and its shape explains
-> both paged attention and everything Chapter 9 builds on top.*
+> both paged attention and everything Chapter 10 builds on top.*
 
 Part II kept hitting the same wall. The scheduler could not admit requests because memory
 was full; it evicted running requests when it guessed wrong; its priorities depended on a
@@ -46,7 +46,7 @@ SGLang splits the mapping in two:
 Level 1 answers "where are *my* tokens?" Level 2 answers "where does token index *i*
 live?" The indirection is what makes sharing possible: two requests can hold the same
 `kv_index` at different positions in their own rows, and the storage is written once. That
-is the mechanical precondition for Chapter 9.
+is the mechanical precondition for Chapter 10.
 
 `python/sglang/srt/mem_cache/memory_pool.py:256` `ReqToTokenPool` is level one, and it is
 refreshingly plain:
@@ -72,7 +72,7 @@ A dense `[max_requests, max_context_len]` int32 matrix. For 4,096 requests and a
 context that is 512 MB — real memory, spent on indices rather than data, and the price of
 the indirection.
 
-The padding row is a nice piece of defensive design. CUDA-graph batches (Chapter 14) are
+The padding row is a nice piece of defensive design. CUDA-graph batches (Chapter 15) are
 padded to a captured size, and padded slots default to `req_pool_idx = 0`. Rather than
 branching to skip them, row 0 is a scratch row where dummy reads and writes land
 harmlessly. Note `free_slots` starts at 1, so row 0 is never allocated.
@@ -85,7 +85,7 @@ harmlessly. Note `free_slots` starts at 1, so row 0 is never allocated.
         reusing = [i for i, r in enumerate(reqs) if r.req_pool_idx is not None]
 ```
 
-A chunked-prefill request (Chapter 5) spans several scheduler iterations and must keep its
+A chunked-prefill request (Chapter 6) spans several scheduler iterations and must keep its
 row across all of them. Allocation is therefore not "give me *n* free slots" but "give me
 slots for the requests that lack one."
 
@@ -102,7 +102,7 @@ waste into three kinds:
 
 **Internal fragmentation.** A request allocated for 2,048 tokens that generates 100 wastes
 the other 1,948 slots for its entire lifetime. Nobody knows the output length in advance
-(Chapter 5's central difficulty), so the reservation is always sized for the worst case.
+(Chapter 6's central difficulty), so the reservation is always sized for the worst case.
 
 **Reservation waste.** Slots that the request *will* eventually use are unusable by anyone
 else *now*. Even a perfectly-sized allocation holds memory for a future that has not arrived.
@@ -127,7 +127,7 @@ mapping each virtual page to any physical frame. The correspondence is exact:
 | Page table | `req_to_token` row |
 | Physical frame | Slot in the flat `k_buffer` / `v_buffer` |
 | Page fault → allocate | `alloc()` on demand as the sequence grows |
-| `fork()` + copy-on-write | Prefix sharing, Chapter 9 |
+| `fork()` + copy-on-write | Prefix sharing, Chapter 10 |
 
 Each of the three wastes disappears for the same reason it does in an OS. External
 fragmentation cannot occur, because every page is the same size and therefore
@@ -137,7 +137,7 @@ partially-filled page per request* — a few tokens, not a few thousand.
 
 What it costs is indirection: every KV access now needs a table lookup, and every attention
 kernel has to be rewritten to do that lookup itself. That rewrite is what the phrase "paged
-attention" names, and it is why Chapter 13's kernels take page tables as arguments.
+attention" names, and it is why Chapter 14's kernels take page tables as arguments.
 
 The remaining design freedom is the page size, and it is the same tension an OS faces.
 Larger pages mean fewer table entries, fewer lookups, and better locality inside a page;
@@ -145,7 +145,7 @@ smaller pages mean less internal fragmentation and finer-grained sharing. SGLang
 of one token per page — page size 1 — is the extreme end: zero internal fragmentation and
 maximally precise prefix sharing, paid for with the largest possible page table. Larger
 sizes exist for backends whose kernels want them, and `PAGE_SIZE` being a compile-time
-constant in the Triton kernels (Chapter 13) means the page arithmetic vanishes entirely when
+constant in the Triton kernels (Chapter 14) means the page arithmetic vanishes entirely when
 it is 1.
 
 ---
@@ -168,7 +168,7 @@ class PagedTokenToKVPoolAllocator(BaseTokenToKVPoolAllocator):
 
 The trade is the classic one. Larger pages mean less metadata and better locality, but more
 internal fragmentation — a request needing 33 tokens with a 32-token page consumes 64. This
-is the rounding Chapter 5's `ceil_paged_tokens` charges against the budget, and Chapter 9's
+is the rounding Chapter 6's `ceil_paged_tokens` charges against the budget, and Chapter 10's
 `page_aligned` truncates the cache key by.
 
 `:149` `alloc` is the simple case:
@@ -196,12 +196,12 @@ this part of the codebase.
 
 `merge_and_sort_free` is deferred defragmentation: coalescing runs only when an allocation
 is about to fail. Returning `None` rather than raising is deliberate too — running out of
-KV memory is an *expected* condition that Chapter 5 handles by retracting, not an error.
+KV memory is an *expected* condition that Chapter 6 handles by retracting, not an error.
 
 `:172` `alloc_extend` and `:222` `alloc_decode` are the specialized paths. Extend allocates
 a variable number of tokens per request; decode allocates exactly one per sequence and can
 be a much tighter kernel. `:273` `free_segment` takes a `start_pos`, which is what lets
-Chapter 9's `cache_finished_req` free two disjoint ranges of a request's row while leaving
+Chapter 10's `cache_finished_req` free two disjoint ranges of a request's row while leaving
 the tree-owned middle alone.
 
 The most interesting comment in the file is not about allocation at all:
@@ -252,10 +252,10 @@ Sibling allocators handle the other pool shapes: `python/sglang/srt/mem_cache/al
 ```
 
 The `dtype` / `store_dtype` split is a PyTorch workaround made permanent: FP8 tensors do
-not support `index_put`, so the buffer is typed `uint8` and reinterpreted. Chapter 14
+not support `index_put`, so the buffer is typed `uint8` and reinterpreted. Chapter 15
 returns to quantized caches; note here that the pool, not the kernel, owns the storage type.
 
-`start_layer` / `end_layer` are pipeline parallelism (Chapter 15) — a rank holding layers
+`start_layer` / `end_layer` are pipeline parallelism (Chapter 16) — a rank holding layers
 20–39 allocates cache only for those.
 
 The implementations:
@@ -266,26 +266,26 @@ indexed by token slot. Read this one first.
 **`:3932` `MLATokenToKVPool`** — DeepSeek's multi-head latent attention. Instead of K and V
 per head, a single compressed latent vector per token, decompressed during attention. An
 order of magnitude smaller per token, which is why DeepSeek models serve long contexts on
-modest hardware — and, as Chapter 15 explains, the reason data-parallel attention exists:
+modest hardware — and, as Chapter 16 explains, the reason data-parallel attention exists:
 replicating a cache this small across tensor-parallel ranks wastes exactly what made it
 valuable.
 
 **`:3135` `PageMajorMHATokenToKVPool`** — same data, different memory layout. Layer-major
 stores all tokens for layer 0, then layer 1; page-major groups all layers for a page
 together. Page-major makes a page contiguous, which matters when you are transferring pages
-to host memory (Chapter 10) or across machines (Chapter 17). Layout is a transfer
+to host memory (Chapter 11) or across machines (Chapter 18). Layout is a transfer
 optimization, not a compute one.
 
 **`:3577` `HybridLinearKVPool`** and **`:335` `MambaPool`** — for models where some layers
 are not attention. An SSM layer carries a fixed-size recurrent state, not a growing KV run.
 Fixed-size is a different allocation problem: it cannot be evicted incrementally, and it
-cannot be reconstructed from a prefix. Chapter 5's separate `rem_mamba_slots` gate exists
+cannot be reconstructed from a prefix. Chapter 6's separate `rem_mamba_slots` gate exists
 for exactly this reason.
 
 **`:4348` `DSATokenToKVPool`** and **`:4671` `MiniMaxSparseKVPool`** — sparse attention,
-where only selected tokens are attended to (Chapter 13).
+where only selected tokens are attended to (Chapter 14).
 
-**`:2867` `NoOpMHATokenToKVPool`** — stores nothing. For disaggregated prefill (Chapter 17),
+**`:2867` `NoOpMHATokenToKVPool`** — stores nothing. For disaggregated prefill (Chapter 18),
 where KV is streamed to a decode node instead of retained.
 
 `:1668` `_finalize_allocation_log` produces the `KV Cache is allocated. #tokens: ...` line
@@ -299,13 +299,13 @@ in the startup log, which is the single most useful number for capacity planning
 
 1. `python/sglang/srt/model_executor/model_runner.py:1057` `load_model` puts weights on the
    device.
-2. `:1322` `configure_kv_cache_dtype` fixes bytes per entry (Chapter 14).
+2. `:1322` `configure_kv_cache_dtype` fixes bytes per entry (Chapter 15).
 3. `:807` `alloc_memory_pool` computes what remains and converts it to a token count.
 4. `python/sglang/srt/mem_cache/kv_cache_configurator.py` and
    `python/sglang/srt/mem_cache/allocation_sizing.py` do the arithmetic, and
    `python/sglang/srt/mem_cache/kv_cache_dtype.py` supplies the per-token size.
 
-The result is `max_total_num_tokens` — the budget Chapter 5 spends. Not a request count:
+The result is `max_total_num_tokens` — the budget Chapter 6 spends. Not a request count:
 **a token count, shared across all concurrent requests**, which is why concurrency depends
 on context length rather than being a fixed number.
 
@@ -354,12 +354,12 @@ Putting both levels together, for token *t* of request *r*:
 <figcaption>Attention kernels do not walk this chain token by token: they receive the <code>req_to_token</code> row as a page table and index it inside the kernel. That is what “paged attention” names.</figcaption>
 </figure>
 
-Two lookups per token per layer. The attention backends of Chapter 13 do not walk this
+Two lookups per token per layer. The attention backends of Chapter 14 do not walk this
 chain per token — they receive the `req_to_token` slice as a *page table* and index it
 inside the kernel, which is what "paged attention" names.
 
-Every other chapter in this book is spending the resource this chapter allocates. Chapter 5
-budgets it, Chapter 9 shares it, Chapter 10 tiers it, Chapter 14 shrinks it, Chapter 15
-avoids replicating it, and Chapter 17 moves it between machines.
+Every other chapter in this book is spending the resource this chapter allocates. Chapter 6
+budgets it, Chapter 10 shares it, Chapter 11 tiers it, Chapter 15 shrinks it, Chapter 16
+avoids replicating it, and Chapter 18 moves it between machines.
 
-This chapter built a memory system with no memory of its own. Chapter 9 gives it one.
+This chapter built a memory system with no memory of its own. Chapter 10 gives it one.

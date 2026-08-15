@@ -1,4 +1,4 @@
-# 14. Making the Forward Pass Cheap
+# 15. Making the Forward Pass Cheap
 
 > *Quantization attacks bytes moved, CUDA graphs attack launch overhead, and compilation
 > attacks kernel count — three independent taxes on the same forward pass.*
@@ -22,7 +22,7 @@ a thousand kernels per forward pass, and in decode each may execute for only twe
 microseconds. At that granularity the *CPU* becomes the bottleneck, and the fix is to stop
 launching kernels one at a time.
 
-By the end you will know which tax you are paying, which is the question Chapter 21 turns
+By the end you will know which tax you are paying, which is the question Chapter 22 turns
 into a procedure.
 
 ---
@@ -39,7 +39,7 @@ bytes nearly halves decode time.
 inputs uses hardware FP8 tensor cores. Quantizing activations only to dequantize before the
 GEMM is pure loss.
 
-**KV cache.** Attacks Chapter 8's capacity rather than speed. Halving KV bytes doubles
+**KV cache.** Attacks Chapter 9's capacity rather than speed. Halving KV bytes doubles
 concurrency at the same memory, which is a throughput win by a different route.
 
 The failure modes differ too: weight quantization degrades the model uniformly, while KV
@@ -102,7 +102,7 @@ too — which matters during prefill, where the roofline is on the compute side.
 
 That distinction explains the shape of the table at the end of this chapter, and it explains
 why a deployment might reasonably run FP8 for a compute-bound prefill pool and 4-bit weights
-for a bandwidth-bound decode pool (Chapter 17).
+for a bandwidth-bound decode pool (Chapter 18).
 
 ---
 
@@ -112,7 +112,7 @@ for a bandwidth-bound decode pool (Chapter 17).
 
 `:126` `QuantizationConfig` describes a scheme — what formats it supports, which layers to
 skip, what the minimum GPU capability is. It is what `--quantization` selects and what
-Chapter 12's layers receive as `quant_config`.
+Chapter 13's layers receive as `quant_config`.
 
 `:20` `QuantizeMethodBase` is the per-layer strategy:
 
@@ -137,7 +137,7 @@ tensors, not a float matrix. `apply` runs at inference and dispatches to the rig
 
 The consequence is worth stating plainly: **quantization is not a transformation applied to
 a model — it is a different implementation of every layer, chosen at construction.** That is
-why `quant_config` threads through every constructor in Chapter 12, and why a layer that
+why `quant_config` threads through every constructor in Chapter 13, and why a layer that
 forgets to pass it silently runs unquantized.
 
 A third method appears in the implementations:
@@ -155,8 +155,8 @@ to end. Its structure:
 - `:225` `Fp8Config` — the scheme.
 - `:432` `Fp8LinearMethod` — linear layers, with `:628` `create_weights`, `:845`
   `process_weights_after_loading`, `:957` `apply`.
-- `:1064` `Fp8MoEMethod` — mixture-of-experts (Chapter 16), which needs its own everything.
-- `:2710` `Fp8KVCacheMethod` — quantized KV, closing the loop with Chapter 8.
+- `:1064` `Fp8MoEMethod` — mixture-of-experts (Chapter 17), which needs its own everything.
+- `:2710` `Fp8KVCacheMethod` — quantized KV, closing the loop with Chapter 9.
 
 Note `:655` `process_weights_after_loading_block_quant` as a separate path from the
 per-tensor one. **Scale granularity** is the central design axis of any quantization scheme:
@@ -174,7 +174,7 @@ directories `python/sglang/srt/layers/quantization/compressed_tensors/`, `python
 `python/sglang/srt/layers/quantization/gptq/`, `python/sglang/srt/layers/quantization/quark/` (AMD).
 
 `python/sglang/srt/layers/parameter.py` is the piece that makes it all composable: parameter
-wrappers that know both their *shard* geometry (Chapter 12) and their *scale* geometry, so
+wrappers that know both their *shard* geometry (Chapter 13) and their *scale* geometry, so
 that loading a sharded quantized checkpoint slices the weights and the scales consistently.
 Getting that wrong yields a model that loads cleanly and produces nonsense.
 
@@ -207,7 +207,7 @@ to the epilogue.
 
 ## Quantized KV
 
-`python/sglang/srt/layers/quantization/kv_cache.py` connects to Chapter 8. Recall that
+`python/sglang/srt/layers/quantization/kv_cache.py` connects to Chapter 9. Recall that
 `KVCache.__init__` sets `store_dtype = torch.uint8` for FP8 types because `index_put` is not
 implemented for FP8 — the pool holds bytes and reinterprets them.
 
@@ -233,7 +233,7 @@ In prefill, kernels run for milliseconds and launch overhead vanishes. In decode
 may run for 20 µs — so a thousand launches at 5 µs each is 5 ms of CPU time against maybe
 20 ms of GPU work. **The CPU cannot keep the GPU fed.**
 
-Chapter 4's overlap scheduler removed the *scheduling* gap. This is the *launch* gap, one
+Chapter 5's overlap scheduler removed the *scheduling* gap. This is the *launch* gap, one
 level down, and CUDA graphs are the fix: record the entire sequence of kernels once, then
 replay it with a single call.
 
@@ -297,7 +297,7 @@ template methods. `python/sglang/srt/model_executor/runner/decode_cuda_graph_run
 `python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py:61` `get_batch_sizes_to_capture` chooses which sizes to record —
 typically 1, 2, 4, 8, 16, 24, 32, … up to `--cuda-graph-max-bs` — and `python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py:134` `_pad_to_bucket`
 rounds a real batch up to the nearest one. A batch of 37 replays the 40-graph with three
-padded slots, which is where Chapter 8's row-0 padding trick earns its place: padded
+padded slots, which is where Chapter 9's row-0 padding trick earns its place: padded
 requests point at the scratch row and their work is harmlessly discarded.
 
 The cost is memory. Each captured graph holds its own static input and output buffers, and
@@ -309,7 +309,7 @@ capturing forty shapes is forty sets. `python/sglang/srt/model_executor/cuda_gra
 the slack to the KV pool afterwards.
 
 `python/sglang/srt/model_executor/cuda_graph_buffer_registry.py` tracks the static buffers,
-which is what the attention backends' `init_cuda_graph_state` (Chapter 13) populates.
+which is what the attention backends' `init_cuda_graph_state` (Chapter 14) populates.
 
 `python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py:43` `freeze_gc` is a small, telling detail: Python garbage
 collection during capture can free a tensor whose address the graph has already recorded.
@@ -321,8 +321,8 @@ collection during capture can free a tensor whose address the graph has already 
 Full capture requires the *whole* forward to be graph-safe. One host synchronization, one
 data-dependent branch, one dynamically-shaped allocation, and capture fails.
 
-That happens often enough to need an answer. Chapter 13's `.item()` prohibition is one
-example; MoE routing (Chapter 16) is another, since expert dispatch is inherently
+That happens often enough to need an answer. Chapter 14's `.item()` prohibition is one
+example; MoE routing (Chapter 17) is another, since expert dispatch is inherently
 data-dependent.
 
 `python/sglang/srt/model_executor/runner_backend/` holds the graduated responses:
@@ -330,7 +330,7 @@ data-dependent.
 - `python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py` — capture everything.
   Fastest when possible.
 - `python/sglang/srt/model_executor/runner_backend/breakable_cuda_graph_backend.py` — capture around an
-  eager "break" region. Chapter 12's
+  eager "break" region. Chapter 13's
   `RadixAttention` cooperates via `python/sglang/srt/layers/radix_attention.py:47`
   `force_eager_attention`, whose comment describes a caller wrapping norm + attention +
   short-conv in one eager region.
@@ -361,7 +361,7 @@ reads and writes once.
   `python/sglang/srt/compilation/fix_functionalization.py` — custom passes.
   `fix_functionalization` deals with PyTorch's functionalization pass introducing copies
   around in-place operations, which for a memory-bound workload is exactly wrong.
-- `python/sglang/srt/compilation/compilation_config.py` with `register_split_op`, which Chapter 12's `RadixAttention`
+- `python/sglang/srt/compilation/compilation_config.py` with `register_split_op`, which Chapter 13's `RadixAttention`
   calls to mark itself as a split point.
 
 Compilation and CUDA graphs compose: compile to fuse, then capture the compiled result.
@@ -382,7 +382,7 @@ compilation is slow and paying it on every server start is not viable.
 
 The gains are not additive, because they attack different bottlenecks: once graphs remove
 the launch gap, further launch reduction buys nothing. The right order is to find which tax
-you are actually paying — Chapter 21's profiling — before spending effort on the others.
+you are actually paying — Chapter 22's profiling — before spending effort on the others.
 
 Part IV assumed throughout that the model fits on one GPU. Part V is what happens when it
 does not.

@@ -17,6 +17,7 @@ command = "python3 book/scripts/linkify_anchors.py"
 default-theme = "light"
 preferred-dark-theme = "navy"
 additional-css = ["theme/custom.css"]
+additional-js = ["theme/calculators.js"]
 git-repository-url = "https://github.com/igniting/sglang"
 edit-url-template = "https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/{path}"
 no-section-label = true

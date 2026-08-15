@@ -1,4 +1,4 @@
-# 20. Per-Request Variation: LoRA and Multimodal
+# 21. Per-Request Variation: LoRA and Multimodal
 
 > *Both features break the assumption that every request in a batch needs the same weights
 > and the same kind of input — and both are solved by extending the batch, not splitting it.*
@@ -20,8 +20,8 @@ being idle.
 
 So both are solved the same way instead: keep one batch, and turn the per-request variation
 into a tensor the kernel indexes into. If that sounds familiar, it should — it is the same
-move as the page table in Chapter 8, the sorted expert order in Chapter 16, and the page
-directory passed to the attention kernel in Chapter 13. This chapter is where the pattern
+move as the page table in Chapter 9, the sorted expert order in Chapter 17, and the page
+directory passed to the attention kernel in Chapter 14. This chapter is where the pattern
 becomes impossible to miss.
 
 ---
@@ -71,7 +71,7 @@ exactly as before. The correction is a pair of very thin matrix multiplies — r
 a 4,096-dimensional weight is well under 1% of the work — but it is a *ragged* one, because
 each row wants a different *A* and *B*, and possibly a different *r*.
 
-That is the same shape as Chapter 16's grouped GEMM and Chapter 8's page table: irregularity
+That is the same shape as Chapter 17's grouped GEMM and Chapter 9's page table: irregularity
 expressed as an index tensor rather than as control flow. Punica and S-LoRA named the
 resulting primitive **segmented gather matrix-vector multiply** — group the batch's rows by
 adapter, and have the kernel look up each row's factors from a shared pool. That is precisely
@@ -121,14 +121,14 @@ The CUDA-graph interaction shows in the same method:
         )
 ```
 
-Chapter 14's graphs need static buffers, so the index arrays must live at fixed addresses
+Chapter 15's graphs need static buffers, so the index arrays must live at fixed addresses
 and be *updated in place* rather than reallocated. `:121` `init_cuda_graph_batch_info` and
 `:146` `init_prefill_cuda_graph_batch_info` allocate them once.
 
 `python/sglang/srt/lora/backend/` holds the kernels — grouped GEMMs of the punica family,
 which compute many small rank-*r* products in one launch.
-`python/sglang/srt/lora/layers.py` wraps the Chapter 12 layers,
-`python/sglang/srt/lora/lora_moe_runners.py` handles MoE layers (Chapter 16), and
+`python/sglang/srt/lora/layers.py` wraps the Chapter 13 layers,
+`python/sglang/srt/lora/lora_moe_runners.py` handles MoE layers (Chapter 17), and
 `python/sglang/srt/lora/deepseek_mla_correction.py` handles MLA, where the compressed KV
 representation means the correction cannot be applied the usual way.
 
@@ -136,7 +136,7 @@ representation means the correction cannot be applied the usual way.
 
 ## Adapters as a memory pool
 
-Adapters live in a fixed pool of buffer slots, exactly as KV does in Chapter 8.
+Adapters live in a fixed pool of buffer slots, exactly as KV does in Chapter 9.
 `python/sglang/srt/lora/mem_pool.py` manages it, `max_loras_per_batch` caps how many can be
 active at once, and `python/sglang/srt/lora/eviction_policy.py` decides what leaves when a
 new one arrives.
@@ -148,7 +148,7 @@ reachable through `python/sglang/srt/entrypoints/engine.py:1523` `load_lora_adap
 `python/sglang/srt/lora/lora_overlap_loader.py` overlaps loading with compute.
 
 Admission gains a constraint. `python/sglang/srt/managers/scheduler.py:3450`
-`_can_schedule_lora_req` is consulted during Chapter 5's prefill admission: a request whose
+`_can_schedule_lora_req` is consulted during Chapter 6's prefill admission: a request whose
 adapter is not resident, in a batch already using all slots, cannot be scheduled — a
 *non-memory* reason to reject a request, which the token budget alone would never catch.
 `python/sglang/srt/lora/lora_manager.py:361` `validate_lora_batch` enforces it.
@@ -158,11 +158,11 @@ adapter is not resident, in a batch already using all slots, cannot be scheduled
 Here is the correctness trap.
 
 Two requests with identical token sequences but different adapters produce **different KV
-entries**, because the adapter changes the projections that compute K and V. If Chapter 9's
+entries**, because the adapter changes the projections that compute K and V. If Chapter 10's
 radix cache matched them by tokens alone, the second request would receive the first
 adapter's activations. No error, no crash — just a model producing subtly wrong output.
 
-Chapter 9's `RadixKey` extra key
+Chapter 10's `RadixKey` extra key
 (`python/sglang/srt/mem_cache/radix_cache.py:64`) is the guard. Setting `extra_key` to the
 adapter id makes the namespaces disjoint, and `:169` `_check_compatible` raises rather than
 silently comparing across namespaces.
@@ -205,7 +205,7 @@ projector is trained, on a comparatively small dataset.
 Three consequences follow, and all three are visible in the code below.
 
 **The image becomes tokens, with a token's costs.** A 336×336 image at patch size 14 is 576
-patches, so 576 positions of context, 576 rows of KV cache, and 576 tokens of Chapter 5's
+patches, so 576 positions of context, 576 rows of KV cache, and 576 tokens of Chapter 6's
 budget. High-resolution schemes that tile an image into sub-images multiply that — a single
 photograph can cost more context than a page of text. Every accounting question in this book
 applies to it unchanged, which is exactly why the engine treats image embeddings as tokens
@@ -219,7 +219,7 @@ real ones.
 
 **The encoder is a separate model with separate economics.** It runs once per image, is
 compute-bound, and its output depends only on the image. That combination is the definition
-of something worth caching, and — in Chapter 17's terms — worth running somewhere else
+of something worth caching, and — in Chapter 18's terms — worth running somewhere else
 entirely.
 
 `python/sglang/srt/multimodal/processors/` holds 53 processors — one per model family,
@@ -240,7 +240,7 @@ with `:374` `set_pad_value` and `:218` `_compute_pad_value` deriving placeholder
 a hash. Hashing matters for two reasons: the placeholder must not collide with a real token
 id (hence `:194` `sanity_check_mm_pad_shift_value`), and the hash identifies the item for
 caching. `python/sglang/srt/mem_cache/multimodal_cache.py` caches encoder outputs, so the
-same image in a follow-up turn is not re-encoded — Chapter 9's idea applied to a different
+same image in a follow-up turn is not re-encoded — Chapter 10's idea applied to a different
 resource.
 
 ---
@@ -258,7 +258,7 @@ moves up the stack: `python/sglang/srt/managers/scheduler.py:2308`
 `python/sglang/srt/model_executor/forward_batch_info.py:1163` `_compute_mrope_positions` in
 the forward batch, with separate decode and extend paths (`:1181`
 `_compute_mrope_positions_decode`, `:1247` `_compute_mrope_positions_extend`) and a
-speculative variant (`:1104` `compute_spec_mrope_positions`) for Chapter 18.
+speculative variant (`:1104` `compute_spec_mrope_positions`) for Chapter 19.
 
 This is a genuine abstraction leak — position computation belongs to the model — and it is
 accepted because the scheduler is the only component that knows the batch layout.
@@ -267,7 +267,7 @@ accepted because the scheduler is the only component that knows the batch layout
 
 ## Not sending pixels through a socket
 
-Chapter 3 introduced the problem: images are megabytes, and serializing them through ZeroMQ
+Chapter 4 introduced the problem: images are megabytes, and serializing them through ZeroMQ
 per request would dwarf the forward pass.
 
 `python/sglang/srt/managers/scheduler.py:2209` `_process_and_broadcast_mm_inputs` is the
@@ -296,12 +296,12 @@ There are three placements:
 **Data-parallel.** Several encoder replicas feeding one decoder, for image-heavy workloads.
 `docs/docs/advanced_features/dp_for_multi_modal_encoder.mdx`.
 
-**Separate service.** Chapter 17's EPD disaggregation —
+**Separate service.** Chapter 18's EPD disaggregation —
 `python/sglang/srt/disaggregation/encode_server.py`.
 
 `python/sglang/srt/managers/mm_schedule.py` handles the scheduling interaction, and
 `docs/docs/advanced_features/cuda_graph_for_multi_modal_encoder.mdx` covers capturing the
-encoder under Chapter 14's graphs, which is harder than for the decoder because image sizes
+encoder under Chapter 15's graphs, which is harder than for the decoder because image sizes
 vary more than batch sizes do.
 
 ---
@@ -320,7 +320,7 @@ Strip away the specifics and both features have the same structure:
 | Cache interaction | namespaced by `extra_key` | hashed and cached separately |
 
 Both convert what looks like control flow into a data structure the kernel indexes. That is
-the same move as Chapter 8's page table, Chapter 13's `kv_indptr`, and Chapter 16's
+the same move as Chapter 9's page table, Chapter 14's `kv_indptr`, and Chapter 17's
 expert-major sort — probably the single most repeated idea in this codebase.
 
 Part VI ends here. You now have the whole engine. Part VII is about living with it: seeing

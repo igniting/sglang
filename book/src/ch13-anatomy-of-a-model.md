@@ -1,4 +1,4 @@
-# 12. Anatomy of a Model
+# 13. Anatomy of a Model
 
 > *Models are rewritten rather than imported because every layer must cooperate with
 > parallelism, quantization, and the KV cache — and llama.py shows exactly how.*
@@ -18,7 +18,7 @@ single file, top to bottom, with the reason for each decision.
 Watch for one thing in particular. Almost nothing in the file is about caching, sharding,
 quantization, or graph capture, even though all four are happening. They live in the layers
 the model is built from. That is what makes adding a model a bounded task rather than an
-expert one, and it is why Chapter 22's checklist is as short as it is.
+expert one, and it is why Chapter 23's checklist is as short as it is.
 
 ---
 
@@ -31,7 +31,7 @@ def forward(self, input_ids, positions, forward_batch) -> LogitsProcessorOutput
 def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]])
 ```
 
-`forward_batch` is Chapter 6's `ForwardBatch`, and it carries everything the model needs to
+`forward_batch` is Chapter 7's `ForwardBatch`, and it carries everything the model needs to
 know about *how* it is being run. Everything else is optional capability, declared by
 defining a method.
 
@@ -53,7 +53,7 @@ RMSNorm(x) = x / sqrt(mean(x²) + ε) × g
 ```
 
 One reduction instead of two, no mean, no bias. For the engine this matters twice: it is one
-of the three kernels Chapter 7's determinism work has to make batch-invariant, and being a
+of the three kernels Chapter 8's determinism work has to make batch-invariant, and being a
 single reduction is what makes it cheap enough to fuse with the residual add and the
 downstream quantization, as this chapter's `LlamaDecoderLayer` does.
 
@@ -83,10 +83,10 @@ Because rotations compose, the inner product *q̃_m* · *k̃_n* depends on *m* �
 and *n* separately. Absolute positions go in; relative position comes out of the dot product
 for free. Three engine consequences follow. RoPE is applied to Q and K *after* projection and
 *before* the cache write, so cached keys are already rotated and a KV entry is valid at
-whatever position it was written at — which is what makes Chapter 9's prefix sharing sound.
+whatever position it was written at — which is what makes Chapter 10's prefix sharing sound.
 Context extension becomes a matter of rescaling *θ* rather than retraining, which is why
 `rope_scaling` is a config key that the loader has to handle several dialects of. And
-Chapter 13's MLA has to work around RoPE specifically, because a rotation cannot be commuted
+Chapter 14's MLA has to work around RoPE specifically, because a rotation cannot be commuted
 through a low-rank compression.
 
 **GQA instead of MHA.** Chapter 1 showed that KV cache size is the direct limiter on batch
@@ -124,11 +124,11 @@ matrices.
 
 The reason is arithmetic intensity again (Chapter 1). `gate` and `up` read the *same*
 input and have the same shape; running them as one GEMM loads that input once and doubles
-the work per byte. This is why Chapter 11's `stacked_params_mapping` has to split one
+the work per byte. This is why Chapter 12's `stacked_params_mapping` has to split one
 checkpoint tensor across two slices — the fusion is SGLang's, not the checkpoint's.
 
 Column-parallel for the up-projections and row-parallel for the down-projection is the
-standard Megatron pattern, and Chapter 15 explains why that specific pairing needs exactly
+standard Megatron pattern, and Chapter 16 explains why that specific pairing needs exactly
 one collective per block.
 
 ### `LlamaAttention` (`:138`)
@@ -161,7 +161,7 @@ heads and 8 KV heads. On 8-way TP each rank gets 8 query heads and 1 KV head —
 16-way TP there are more ranks than KV heads, so KV heads must be **replicated**: two ranks
 hold the same KV head and therefore store the same KV cache entries twice. That is real
 memory duplication, and it is why raising TP does not reduce KV memory per GPU beyond the
-KV head count. Chapter 15's data-parallel attention is one answer.
+KV head count. Chapter 16's data-parallel attention is one answer.
 
 Then the layers:
 
@@ -195,16 +195,16 @@ Four things to notice.
 and KV correctly despite their different counts.
 
 `quant_config` is threaded into every layer. A layer decides its own kernel; the model just
-passes the config down (Chapter 14).
+passes the config down (Chapter 15).
 
 `prefix=add_prefix(...)` builds the parameter's dotted name, which must match the
-checkpoint. This is the thread connecting the module tree to Chapter 11's loader — and to
+checkpoint. This is the thread connecting the module tree to Chapter 12's loader — and to
 quantization configs that name specific layers to skip.
 
-And `RadixAttention` (Chapter 9) takes `layer_id`. That is the whole cache integration: the
+And `RadixAttention` (Chapter 10) takes `layer_id`. That is the whole cache integration: the
 layer knows which slice of the pool is its own, and the rest — which pages to read, where
 to write — arrives through `forward_batch`. **The model contains no cache logic**, which is
-why adding a model does not require understanding Chapters 8 through 10.
+why adding a model does not require understanding Chapters 9 through 10.
 
 ### `LlamaDecoderLayer` (`:283`)
 
@@ -260,10 +260,10 @@ because the fusion is worth it.
 ### `LlamaModel` (`:372`) and `LlamaForCausalLM` (`:496`)
 
 `LlamaModel` is embeddings plus the layer stack, and `:640` `start_layer` / `:644`
-`end_layer` are its pipeline-parallel bounds (Chapter 15) — this rank builds only its own
-layers, which is what Chapter 11's weight filter pairs with.
+`end_layer` are its pipeline-parallel bounds (Chapter 16) — this rank builds only its own
+layers, which is what Chapter 12's weight filter pairs with.
 
-`LlamaForCausalLM` adds the LM head and the logits processor (Chapter 7), and is where the
+`LlamaForCausalLM` adds the LM head and the logits processor (Chapter 8), and is where the
 optional capabilities live:
 
 | Method | Enables | Chapter |
@@ -298,10 +298,10 @@ Model files are written almost entirely in terms of a small set of layers from
 | `python/sglang/srt/layers/linear.py:921` `QKVParallelLinear` | Q/K/V fused, GQA-aware | none |
 | `python/sglang/srt/layers/linear.py:195` `ReplicatedLinear` | nothing | none |
 | `python/sglang/srt/layers/vocab_parallel_embedding.py:188` `VocabParallelEmbedding` | vocabulary | all-reduce |
-| `python/sglang/srt/layers/vocab_parallel_embedding.py:587` `ParallelLMHead` | vocabulary | all-gather (Chapter 7) |
+| `python/sglang/srt/layers/vocab_parallel_embedding.py:587` `ParallelLMHead` | vocabulary | all-gather (Chapter 8) |
 
 **The collectives live inside these layers.** A model file contains no `all_reduce` call.
-Chapter 15 explains why column-then-row needs exactly one; the point here is that a model
+Chapter 16 explains why column-then-row needs exactly one; the point here is that a model
 author gets it right by choosing the correct layer type.
 
 `python/sglang/srt/layers/layernorm.py`, `python/sglang/srt/layers/activation.py`, and
@@ -313,18 +313,18 @@ author gets it right by choosing the correct layer type.
 
 **`python/sglang/srt/models/deepseek_v2.py`** — MLA and MoE. Attention is replaced by
 multi-head latent attention, which compresses KV into a single latent vector per token
-(Chapter 8's `MLATokenToKVPool`) and needs its own attention backends (Chapter 13). The MLP
-is replaced by a mixture of experts (Chapter 16). Almost nothing carries over from Llama
+(Chapter 9's `MLATokenToKVPool`) and needs its own attention backends (Chapter 14). The MLP
+is replaced by a mixture of experts (Chapter 17). Almost nothing carries over from Llama
 except the residual structure — a useful demonstration that the "contract" really is just
 `forward` and `load_weights`.
 
 **A Qwen-VL variant** — a vision tower feeding a text decoder. The extra work is not in the
 decoder but in *splicing*: encoder outputs replace placeholder tokens in the embedding
-sequence, and positions become 3D (Chapter 20).
+sequence, and positions become 3D (Chapter 21).
 
 **`python/sglang/srt/models/falcon_h1.py`** — a hybrid where some layers are attention and
 others are Mamba-style state-space. Different layers need different cache types in the same
-model, which is what Chapter 8's `HybridLinearKVPool` and Chapter 13's
+model, which is what Chapter 9's `HybridLinearKVPool` and Chapter 14's
 `python/sglang/srt/layers/attention/hybrid_linear_attn_backend.py` exist for.
 
 Across all three, what stays fixed is the shape of a model file: a config-driven
@@ -333,4 +333,4 @@ constructor, layers from the shared vocabulary, a `forward` taking `forward_batc
 else — which is exactly why the abstraction is drawn where it is.
 
 One line of that file has been standing in for the hardest operation in the model. Chapter
-13 goes behind it.
+14 goes behind it.

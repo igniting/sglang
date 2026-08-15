@@ -44,14 +44,14 @@ Verify with a headless measurement, not by eye: body should compute to 19px, the
 
 Inline SVG, **generated** by `scripts/diagrams.py` — never hand-edited. Hand-placed
 coordinates produced overlapping boxes, text spilling past its container, and (in the first
-edition of the Ch. 2 figure) an arrow routed straight through another node. Figures are now
+edition of the Ch. 3 figure) an arrow routed straight through another node. Figures are now
 declared as boxes plus connections, and the geometry is checked before anything is written:
 text fits its box, boxes do not overlap, everything is inside the viewBox.
 
-Nine figures: the roofline (Ch. 1), process topology (Ch. 2), the overlap timeline (Ch. 4),
-address translation (Ch. 8), the radix tree evolving (Ch. 9), what a paged attention kernel
-receives (Ch. 13), one MoE layer across four ranks (Ch. 16), a disaggregated deployment
-(Ch. 17), the draft tree (Ch. 18). To add one, write a builder, register it in `FIGURES`,
+Nine figures: the roofline (Ch. 1), process topology (Ch. 3), the overlap timeline (Ch. 5),
+address translation (Ch. 9), the radix tree evolving (Ch. 10), what a paged attention kernel
+receives (Ch. 14), one MoE layer across four ranks (Ch. 17), a disaggregated deployment
+(Ch. 18), the draft tree (Ch. 19). To add one, write a builder, register it in `FIGURES`,
 and drop `<!-- FIGURE -->` where it belongs in the chapter.
 
 Two conventions make the checks mean something:
@@ -107,6 +107,6 @@ named source, and the source is in Appendix F.
 
 ## Open threads
 
-- **Re-pin cadence.** Fixed for this edition. Chapters 13, 14, and 18 age fastest.
-- **Chapter 9** is the longest at ~4,500 words and could split into the tree and the
+- **Re-pin cadence.** Fixed for this edition. Chapters 14, 15, and 19 age fastest.
+- **Chapter 10** is the longest at ~4,500 words and could split into the tree and the
   scheduling interaction.

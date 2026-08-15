@@ -1,4 +1,4 @@
-# 16. Mixture-of-Experts and Expert Parallelism
+# 17. Mixture-of-Experts and Expert Parallelism
 
 > *MoE inference is all-to-all-bound rather than GEMM-bound, which makes routing, placement,
 > and communication overlap the whole game.*
@@ -127,7 +127,7 @@ one per expert, with different numbers of rows each.
 
 `python/sglang/srt/layers/moe/fused_moe_triton/` is the portable implementation, and
 `python/sglang/srt/layers/moe/moe_runner/` is the abstraction over backends —
-mirroring Chapter 13's attention backend registry for the same reason.
+mirroring Chapter 14's attention backend registry for the same reason.
 
 The specialized paths: `python/sglang/srt/layers/moe/cutlass_moe.py` and
 `python/sglang/srt/layers/moe/cutlass_w4a8_moe.py` (CUTLASS grouped GEMM, including 4-bit
@@ -151,7 +151,7 @@ moe_topk_softmax_kernels.cu   fused routing
 moe_topk_sigmoid_kernels.cu   routing, sigmoid scoring
 moe_sum.cu, moe_sum_reduce.cu combine expert outputs
 prepare_moe_input.cu          gather tokens into expert-major order
-fp8_blockwise_moe_kernel.cu   quantized expert GEMM (Chapter 14)
+fp8_blockwise_moe_kernel.cu   quantized expert GEMM (Chapter 15)
 cutlass_moe/                  grouped GEMM
 ```
 
@@ -166,13 +166,13 @@ grouped GEMM handles every expert in a single launch, with each group reading a 
 slice.
 
 Without that reordering you would launch one GEMM per expert — 256 launches of tiny
-matrices, which is Chapter 14's launch-overhead problem in its worst form.
+matrices, which is Chapter 15's launch-overhead problem in its worst form.
 `python/sglang/kernels/aot/csrc/moe/moe_sum.cu` and `python/sglang/kernels/aot/csrc/moe/moe_sum_reduce.cu`
 then scatter the results back and combine each token's *k* expert
 outputs weighted by its routing scores.
 
 The pattern — **sort, group, one big operation, scatter back** — is the same one that makes
-paged attention work in Chapter 13, applied to a different irregularity.
+paged attention work in Chapter 14, applied to a different irregularity.
 
 ---
 
@@ -254,7 +254,7 @@ Why latency rather than bandwidth dominates: in decode, a batch might be 256 tok
 8 ranks — each rank sends a few kilobytes to each other rank. That is a *small-message*
 all-to-all, where fixed per-message costs and synchronization dominate and raw bandwidth is
 irrelevant. It is also why these kernels are hand-written rather than left to NCCL, and why
-`DpPaddingMode`'s deadlock comment in Chapter 15 exists: a symmetric collective where one
+`DpPaddingMode`'s deadlock comment in Chapter 16 exists: a symmetric collective where one
 rank contributes nothing hangs.
 
 ### The arithmetic that makes it hurt
@@ -329,7 +329,7 @@ If all-to-all dominates the step, the highest-value optimization is to make it h
 them: while half A is in its all-to-all, half B is computing, and vice versa. The
 communication disappears behind compute rather than adding to it.
 
-This is Chapter 4's overlap idea one level down. There it was CPU scheduling hidden behind
+This is Chapter 5's overlap idea one level down. There it was CPU scheduling hidden behind
 GPU compute; here it is GPU communication hidden behind GPU compute. Same shape, different
 resources.
 
@@ -350,15 +350,15 @@ The DeepSeek deployments described in the LMSYS blog posts — 96 H100s, GB200 N
 combine everything in this chapter and the last:
 
 - **EP** across dozens of ranks, so each holds a handful of experts.
-- **DP attention** (Chapter 15), because DeepSeek is MLA and TP would replicate the cache.
+- **DP attention** (Chapter 16), because DeepSeek is MLA and TP would replicate the cache.
 - **EPLB**, because at that scale imbalance is the difference between good and unusable.
 - **TBO**, because all-to-all across 96 ranks must overlap or it dominates.
-- **PD disaggregation** (Chapter 17), because prefill and decode want different layouts
+- **PD disaggregation** (Chapter 18), because prefill and decode want different layouts
   entirely.
 
 None of these is optional at that scale, and each was added because the previous
 combination hit a wall. `docs/docs/advanced_features/expert_parallelism.mdx` covers the
 configuration; the blog posts linked from `README.md` cover the results.
 
-Chapters 15 and 16 split the model. Chapter 17 splits the *work* — and stops asking one
+Chapters 16 and 17 split the model. Chapter 18 splits the *work* — and stops asking one
 machine to be good at two opposite things.

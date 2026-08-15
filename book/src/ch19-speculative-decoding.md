@@ -1,4 +1,4 @@
-# 18. Speculative Decoding
+# 19. Speculative Decoding
 
 > *Verifying k tokens costs nearly what generating one costs, so the only question is how
 > good a draft you can produce cheaply.*
@@ -147,8 +147,8 @@ what the target actually computed.
 
 The cost is a coupling the rest of the engine has to carry: the draft consumes the target's
 hidden states, so the target's forward pass must *return* them. That is the
-`carries_draft_hidden_states` capability below, and it reaches into Chapter 7's logits
-processor, Chapter 8's memory pools, and Chapter 14's CUDA graphs.
+`carries_draft_hidden_states` capability below, and it reaches into Chapter 8's logits
+processor, Chapter 9's memory pools, and Chapter 15's CUDA graphs.
 
 ---
 
@@ -188,9 +188,9 @@ Callers never compare against enum members. They ask **capability questions**:
 ```
 
 This matters because speculation touches nearly every subsystem in this book, and each
-subsystem cares about a *property*, not an algorithm name. Chapter 8's memory pool needs to
-know whether there is a second KV cache. Chapter 7's logits processor needs to know whether
-to capture hidden states. Chapter 19's grammar needs to know whether it can overlap.
+subsystem cares about a *property*, not an algorithm name. Chapter 9's memory pool needs to
+know whether there is a second KV cache. Chapter 8's logits processor needs to know whether
+to capture hidden states. Chapter 20's grammar needs to know whether it can overlap.
 
 Predicates keep those subsystems from enumerating algorithms — which is what makes
 `_get_registered_spec` and plugin algorithms possible at all. Read
@@ -207,7 +207,7 @@ draft is better-informed than an independent small model could be, because it se
 target model actually computed.
 
 `python/sglang/srt/speculative/eagle_worker_v2.py:1008` `EAGLEWorkerV2` implements Chapter
-6's worker interface, so Chapter 4's scheduler calls `forward_batch_generation` (`:1105`)
+7's worker interface, so Chapter 5's scheduler calls `forward_batch_generation` (`:1105`)
 and never learns that two models are involved.
 
 ### Drafting
@@ -285,7 +285,7 @@ number of verified tokens.
 <figcaption>A tree hedges where a chain cannot: if the top choice at depth two is wrong, a sibling may still be right.</figcaption>
 </figure>
 
-The `can_run_decode_cuda_graph` check threads Chapter 14 through here. The draft model gets
+The `can_run_decode_cuda_graph` check threads Chapter 15 through here. The draft model gets
 its own captured graphs (`python/sglang/srt/speculative/eagle_draft_cuda_graph_runner.py`,
 `python/sglang/srt/speculative/eagle_draft_extend_cuda_graph_runner.py`,
 `python/sglang/srt/speculative/multi_layer_eagle_draft_extend_cuda_graph_runner.py`) because it runs the same
@@ -320,13 +320,13 @@ verification needs:
         )
 ```
 
-The target model runs on the whole draft tree at once — Chapter 6's `TARGET_VERIFY` mode,
+The target model runs on the whole draft tree at once — Chapter 7's `TARGET_VERIFY` mode,
 which `is_extend()` returns true for because verifying *n* tokens has the same shape as
 prefilling *n*. Attention must respect the tree structure: a candidate may attend to its
 ancestors but not to its siblings, which is a custom mask
 (`python/sglang/srt/layers/attention/verify_mask.py`) rather than the usual causal one.
 
-`grammar_barrier` is Chapter 19 intruding. If output is grammar-constrained, every drafted
+`grammar_barrier` is Chapter 20 intruding. If output is grammar-constrained, every drafted
 token must be legal, and the grammar state advances as tokens are accepted — creating a
 dependency between verification and grammar that has to be synchronized.
 
@@ -359,26 +359,26 @@ accepted few.
 
 Speculation is not a self-contained feature. It reaches into most of this book:
 
-**Chapter 6 — modes.** `TARGET_VERIFY` and `DRAFT_EXTEND_V2` exist for it, and
+**Chapter 7 — modes.** `TARGET_VERIFY` and `DRAFT_EXTEND_V2` exist for it, and
 `is_cuda_graph()` includes `TARGET_VERIFY` so verification can be captured.
 
-**Chapter 8 — memory.** With `has_draft_kv`, the draft model needs its own KV pool. Both
-grow, and Chapter 5's budget must account for both.
+**Chapter 9 — memory.** With `has_draft_kv`, the draft model needs its own KV pool. Both
+grow, and Chapter 6's budget must account for both.
 
-**Chapter 5 — scheduling.** A step may produce 1 to *k* tokens per sequence, so memory
+**Chapter 6 — scheduling.** A step may produce 1 to *k* tokens per sequence, so memory
 demand per step is variable rather than exactly one slot per sequence. The new-token-ratio
 estimate becomes correspondingly harder.
 
-**Chapter 9 — the radix cache.** EAGLE's `RadixKey.is_bigram` flag — the one Chapter 9
+**Chapter 10 — the radix cache.** EAGLE's `RadixKey.is_bigram` flag — the one Chapter 10
 explained as an O(1) view flip — exists because EAGLE's cached unit is a token *pair*.
 
-**Chapter 7 — logits.** `CaptureHiddenMode` and `_get_hidden_states_to_store` exist so the
+**Chapter 8 — logits.** `CaptureHiddenMode` and `_get_hidden_states_to_store` exist so the
 draft head can consume target hidden states.
 
-**Chapter 14 — graphs.** A second model means a second set of captured graphs and more
+**Chapter 15 — graphs.** A second model means a second set of captured graphs and more
 capture memory.
 
-**Chapter 17 — disaggregation.** `draft_token_to_kv_pool` in the bootstrap queue is the
+**Chapter 18 — disaggregation.** `draft_token_to_kv_pool` in the bootstrap queue is the
 draft cache crossing machines.
 
 That breadth is why `SpeculativeAlgorithm`'s predicates matter so much. Without them, every
@@ -427,8 +427,8 @@ severely memory-bound (Chapter 1's batching argument), the spare arithmetic spec
 spending is already in use, and speculation costs more than it saves. Adaptive speculation
 turns itself down.
 
-Chapter 4's per-request histograms (`update_spec_correct_drafts_histogram`,
-`update_spec_cap_lens_histogram`) and Chapter 21's
+Chapter 5's per-request histograms (`update_spec_correct_drafts_histogram`,
+`update_spec_cap_lens_histogram`) and Chapter 22's
 `python/sglang/srt/managers/tokenizer_manager.py:2766` `_calculate_spec_decoding_metrics`
 are how you see it happening.
 
@@ -439,5 +439,5 @@ The parameters that matter are `--speculative-num-steps` (depth),
 and the number to watch is accepted length per step, because if it is not comfortably above
 1, speculation is costing you.
 
-Speculation changes *how many* tokens the engine produces per step. Chapter 19 changes
+Speculation changes *how many* tokens the engine produces per step. Chapter 20 changes
 *which* tokens it is allowed to produce at all.

@@ -1,4 +1,4 @@
-# 6. Executing a Batch
+# 7. Executing a Batch
 
 > *The handoff from Python scheduling objects to GPU tensors is where the mode of the batch
 > starts determining everything downstream.*
@@ -56,10 +56,10 @@ class ForwardMode(IntEnum):
 ```
 
 The comments are a table of contents for the rest of the book. `EXTEND` and `DECODE` are
-Chapter 1's two phases. `MIXED` is Chapter 5's chunked prefill sharing a batch with decode.
-`IDLE` is Chapter 15's data-parallel attention, where a rank with no work must still
-participate in collectives. `TARGET_VERIFY` and `DRAFT_EXTEND_V2` are Chapter 18.
-`PREBUILT` is Chapter 17's disaggregated decode, receiving KV computed elsewhere.
+Chapter 1's two phases. `MIXED` is Chapter 6's chunked prefill sharing a batch with decode.
+`IDLE` is Chapter 16's data-parallel attention, where a rank with no work must still
+participate in collectives. `TARGET_VERIFY` and `DRAFT_EXTEND_V2` are Chapter 19.
+`PREBUILT` is Chapter 18's disaggregated decode, receiving KV computed elsewhere.
 
 What makes the enum interesting is that it is queried through *predicates*, not equality —
 and the predicates do not partition cleanly:
@@ -93,10 +93,10 @@ The other predicate worth reading is `:175` `is_cuda_graph`:
         )
 ```
 
-This is the Chapter 14 constraint expressed as a mode property. CUDA graphs need static
+This is the Chapter 15 constraint expressed as a mode property. CUDA graphs need static
 shapes; these four modes have a fixed number of tokens per sequence, so they can be
 captured. `EXTEND` has a variable prompt length per request and cannot — hence the
-piecewise and prefill-graph machinery Chapter 14 covers.
+piecewise and prefill-graph machinery Chapter 15 covers.
 
 When reading unfamiliar code in `model_executor/` or `layers/`, the first question is
 almost always *which modes reach this line*.
@@ -117,7 +117,7 @@ by a rule. `.claude/rules/forward-batch-init-new-purity.md`:
 > Per-forward overrides go through the kw-only params of `init_new` /
 > `TpModelWorker.forward_batch_generation`, never a ScheduleBatch field.
 
-The reason is Chapter 4's overlap loop. `ScheduleBatch` objects are snapshotted and queued;
+The reason is Chapter 5's overlap loop. `ScheduleBatch` objects are snapshotted and queued;
 if constructing a `ForwardBatch` mutated the batch it read from, the queued snapshot would
 drift from what the GPU actually ran.
 
@@ -134,8 +134,8 @@ not, and why."
 
 Two `ForwardBatch` methods carry real weight. `:640` `mark_forward_metadata_ready` and
 `:657` `needs_forward_metadata_init` manage the attention backend's two-phase contract from
-Chapter 13 — metadata is prepared once per forward, and the batch tracks whether that has
-happened. `:1305` `prepare_mlp_sync_batch` is Chapter 15's cross-rank agreement, and it is
+Chapter 14 — metadata is prepared once per forward, and the batch tracks whether that has
+happened. `:1305` `prepare_mlp_sync_batch` is Chapter 16's cross-rank agreement, and it is
 called from inside the forward path rather than the scheduler because the required padding
 depends on what every other rank is doing.
 
@@ -155,7 +155,7 @@ same length, shorter ones padded and masked. It is convenient and, for serving, 
 batch holding a 4,000-token prefill and thirty 12-token decodes would pad every row to 4,000
 and spend 99% of its arithmetic on padding.
 
-Chapter 5's admission policy makes this worse rather than better: a well-packed batch is
+Chapter 6's admission policy makes this worse rather than better: a well-packed batch is
 *deliberately* heterogeneous — one prefill chunk plus every available decode row. Padding a
 batch that was constructed to be uneven defeats the point of constructing it.
 
@@ -174,7 +174,7 @@ dimension. The structure lives beside it, in the offsets:
 `extend_seq_lens[i]` is how many *new* tokens sequence *i* contributes; `extend_start_loc[i]`
 is where they begin in the flat buffer; `extend_prefix_lens[i]` is how many tokens the
 sequence already had cached, which is where its new positions start counting from and, in
-Chapter 9's terms, how much of it was a prefix hit.
+Chapter 10's terms, how much of it was a prefix hit.
 
 This is the same CSR-style representation used everywhere data is jagged — an offsets array
 plus a values array — and every consumer splits cleanly along Orca's line:
@@ -184,21 +184,21 @@ plus a values array — and every consumer splits cleanly along Orca's line:
   each came from. Every `nn.Linear` in every model file operates on the flat form without
   knowing it is a batch at all.
 - **Attention** reads the offsets, because it must not let sequence 3 attend to sequence 4.
-  The kernels of Chapter 13 take `extend_start_loc` and `extend_seq_lens` and treat each
+  The kernels of Chapter 14 take `extend_start_loc` and `extend_seq_lens` and treat each
   segment as its own attention problem, which is why their signatures carry `indptr` arrays
   rather than a batch dimension.
-- **Anything positional** — RoPE in Chapter 12, the sampler in Chapter 7 — reads them to
+- **Anything positional** — RoPE in Chapter 13, the sampler in Chapter 8 — reads them to
   recover per-sequence structure from the flat buffer.
 
 Two costs come with it. Every kernel that touches attention must be varlen-aware, which
-rules out naive PyTorch implementations and is part of why Chapter 13's backend layer exists
+rules out naive PyTorch implementations and is part of why Chapter 14's backend layer exists
 at all. And the `_cpu` mirrors of these arrays — `extend_seq_lens_cpu`,
 `extend_prefix_lens_cpu` — exist because host-side logic needs the same structure without
-paying for the synchronization Chapter 4 warned about, so both copies are maintained and
+paying for the synchronization Chapter 5 warned about, so both copies are maintained and
 must be kept consistent.
 
 The payoff is that a batch costs exactly the tokens it contains. That is the precondition
-for Chapter 5's budget being denominated in tokens rather than requests, and for Chapter 1's
+for Chapter 6's budget being denominated in tokens rather than requests, and for Chapter 1's
 critical batch size being reachable at all.
 
 ---
@@ -206,10 +206,10 @@ critical batch size being reachable at all.
 ## The worker boundary
 
 `python/sglang/srt/managers/tp_worker.py:74` `BaseTpWorker` is deliberately thin — mostly
-delegation to `ModelRunner` plus the weight-update and LoRA methods Chapters 11 and 20
+delegation to `ModelRunner` plus the weight-update and LoRA methods Chapters 12 and 21
 cover. `:299` `TpModelWorker` is the standard implementation.
 
-The abstraction exists because the worker is a substitution point. Chapter 18's speculative
+The abstraction exists because the worker is a substitution point. Chapter 19's speculative
 decoding replaces it with a worker that runs a draft model and a target model
 (`python/sglang/srt/speculative/eagle_worker_v2.py:1008` `EAGLEWorkerV2` implements the same
 interface). The scheduler calls `forward_batch_generation` and does not know which is
@@ -234,7 +234,7 @@ init_cuda_graphs              (:992)    capture needs a working backend and real
 
 Memory is the through-line. `:807` `alloc_memory_pool` runs *after* weights are loaded
 because the pool is sized from what remains — that is what `--mem-fraction-static` means,
-and why the same flag behaves differently across models. Chapter 8 covers the arithmetic.
+and why the same flag behaves differently across models. Chapter 9 covers the arithmetic.
 
 CUDA graph capture comes last because it allocates too, and its cost is not always
 predictable up front. `:885` `post_capture_resize_kv_pool` exists for exactly that: after
@@ -278,7 +278,7 @@ corresponding `init_*`.
 ```
 
 Three context managers wrap every forward: a numerical-correctness canary, a profiling
-span (Chapter 21), and the expert-distribution recorder (Chapter 16). They are stacked
+span (Chapter 22), and the expert-distribution recorder (Chapter 17). They are stacked
 here, at the single chokepoint every forward passes through, rather than sprinkled through
 the model.
 
@@ -319,7 +319,7 @@ looks arbitrary:
 ```
 
 The decode graph path pre-pads at capture time, so it can skip this. Everything else must
-pad now, because Chapter 15's collectives require every rank to agree on token counts
+pad now, because Chapter 16's collectives require every rank to agree on token counts
 before any of them starts communicating.
 
 Then the remaining modes are dispatched in turn — split prefill, prefill CUDA graph, eager
@@ -333,11 +333,11 @@ extend — each with its own eligibility conditions. The layered structure is th
 `:258` `ModelRunnerOutput` carries the `logits_output` plus whether a graph was used. The
 model produced logits; it did not produce tokens.
 
-Sampling is a separate call — `:1766` `sample` — which Chapter 4 showed the overlap loop
+Sampling is a separate call — `:1766` `sample` — which Chapter 5 showed the overlap loop
 deliberately deferring past result processing, because sampling may depend on grammar state
 advanced by the previous step.
 
-Chapter 7 picks up there.
+Chapter 8 picks up there.
 
 ---
 
@@ -358,7 +358,7 @@ ForwardBatch           GPU view: tensors, positions, page table, attn metadata
 LogitsProcessorOutput  logits, and optionally hidden states / logprobs
   │  ModelRunner.sample
   ▼
-next_token_ids         back to process_batch_result in Chapter 4's loop
+next_token_ids         back to process_batch_result in Chapter 5's loop
 ```
 
 Four representations for one request in one step. Each exists because its consumers need a
@@ -366,5 +366,5 @@ different subset with different mutability rules — and the rules files in `.cl
 exist because keeping those boundaries straight under an overlapping scheduler is where the
 bugs are.
 
-The batch has run. What comes back is logits — not tokens, and certainly not text. Chapter 7
+The batch has run. What comes back is logits — not tokens, and certainly not text. Chapter 8
 covers the last leg, and closes Part II.

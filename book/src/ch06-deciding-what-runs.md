@@ -1,9 +1,9 @@
-# 5. Deciding What Runs Next
+# 6. Deciding What Runs Next
 
 > *Continuous batching is an admission-control problem under a hard memory budget, and the
 > memory system is what makes the decision interesting.*
 
-Chapter 4 left one call unopened: `get_next_batch_to_run`. This chapter opens it.
+Chapter 5 left one call unopened: `get_next_batch_to_run`. This chapter opens it.
 
 "Continuous batching" is usually explained as requests joining and leaving the batch every
 step instead of waiting for the slowest one to finish. That is true, and it is not the hard
@@ -18,7 +18,7 @@ way to make room except by destroying work.
 This chapter is about how that decision is made: the budget arithmetic, the heuristic that
 predicts demand that has not happened yet, what happens when the prediction is wrong, and
 the ordering policy that decides *which* requests get in. That last one turns out to depend
-on the cache we meet in Chapter 9, which is the first appearance of a loop between
+on the cache we meet in Chapter 10, which is the first appearance of a loop between
 scheduling and memory that recurs throughout the book.
 
 ---
@@ -38,10 +38,10 @@ to the scheduler after *every* forward pass, not every request. A request that f
 removed immediately; a request that just arrived joins on the very next iteration. Slot
 occupancy stops depending on the unlucky neighbour. The reported effect was large — on the
 order of 36× the throughput of FasterTransformer at the same latency — and every serving
-engine built since, SGLang included, is an iteration-level scheduler. Chapter 4's loop *is*
+engine built since, SGLang included, is an iteration-level scheduler. Chapter 5's loop *is*
 that idea: one iteration, one scheduling decision, forever.
 
-Orca's second contribution is subtler and shows up in Chapter 6 rather than here.
+Orca's second contribution is subtler and shows up in Chapter 7 rather than here.
 Iteration-level scheduling puts requests of *different lengths* in one batch, and not every
 operator tolerates that. The linear layers do: rows are independent, so you can stack a
 prefill's 2,000 rows and a decode's single rows into one matrix and the GEMM neither knows
@@ -51,13 +51,13 @@ operators that can be batched, and split attention out to run per sequence.
 
 Modern engines inherit the split but not the implementation. SGLang keeps the batched linear
 layers and hands attention a *ragged* representation — a flat token buffer plus offsets —
-which the kernels of Chapter 13 consume directly. The concatenated `input_ids` and the
-`extend_seq_lens` array that Chapter 6 describes are exactly this: one tensor for the parts
+which the kernels of Chapter 14 consume directly. The concatenated `input_ids` and the
+`extend_seq_lens` array that Chapter 7 describes are exactly this: one tensor for the parts
 that batch, and a length directory for the part that does not.
 
 What Orca did not solve is the resource question. It scheduled per iteration but still
 reserved KV memory per request against the maximum length, which vLLM's PagedAttention
-(Chapter 8) later showed was wasting 60–80% of the cache. And it had no answer for a long
+(Chapter 9) later showed was wasting 60–80% of the cache. And it had no answer for a long
 prefill blocking a batch of decodes, which Sarathi-Serve addressed with chunking — the
 subject of this chapter's own section further down. The scheduler here is the composition of
 all three ideas: iteration
@@ -69,7 +69,7 @@ prefix-aware ordering, which is SGLang's own.
 ## Where the decision lives
 
 `python/sglang/srt/managers/scheduler.py:3012` `get_next_batch_to_run` is the entry point
-Chapter 4 skipped. Its opening is not decision-making at all — it is cleanup:
+Chapter 5 skipped. Its opening is not decision-making at all — it is cleanup:
 
 ```python
     def get_next_batch_to_run(
@@ -133,13 +133,13 @@ Its central question is `:664` `rem_total_tokens`:
 ```
 
 Read the arithmetic. Available memory is *free pages plus evictable cache*. The radix tree
-from Chapter 9 is not a competitor for memory — it is a reserve. Cached prefixes that no
+from Chapter 10 is not a competitor for memory — it is a reserve. Cached prefixes that no
 running request holds a lock on can be dropped the moment the space is needed, so from the
 scheduler's point of view they are available. This is precisely the `evictable_size_` /
-`protected_size_` split that Chapter 9's `inc_lock_ref` maintains: **locked cache is
+`protected_size_` split that Chapter 10's `inc_lock_ref` maintains: **locked cache is
 memory; unlocked cache is free space that happens to be useful.**
 
-The branches are for the pool variants of Chapter 8 — sliding-window attention, hybrid SWA,
+The branches are for the pool variants of Chapter 9 — sliding-window attention, hybrid SWA,
 hybrid SSM — each of which has its own notion of what is available, because their caches do
 not grow or shrink the same way.
 
@@ -181,7 +181,7 @@ with an admission of imprecision:
         extend_input_len = self.ceil_paged_tokens(extend_input_len)
 ```
 
-`ceil_paged_tokens` (`:831`) rounds up to a page. Chapter 8's allocator hands out whole
+`ceil_paged_tokens` (`:831`) rounds up to a page. Chapter 9's allocator hands out whole
 pages, so a 33-token request with a 32-token page consumes 64 tokens of budget. Budgeting
 in tokens while allocating in pages would over-admit by up to a page per request — which,
 at 200 concurrent requests, is a substantial and entirely invisible overdraft.
@@ -256,21 +256,21 @@ guarantee no forward progress — the system would thrash. One request always su
 if that means it is the only thing running.
 
 **"don't insert into the tree because we need the space instantly."** Normally a finished
-request's KV goes into the radix tree for reuse (Chapter 9). Here it is discarded outright.
+request's KV goes into the radix tree for reuse (Chapter 10). Here it is discarded outright.
 Inserting would make the memory *evictable* rather than *free*, and the scheduler needs it
 now. The retracted request's computed tokens are thrown away.
 
 **Retraction is not abortion.** The retracted request goes back to the waiting queue and
 will be re-prefilled later — from its prompt, but now with whatever prefix the tree still
-holds. Chapter 9's cache softens the blow: the work is repeated, but often not all of it.
+holds. Chapter 10's cache softens the blow: the work is repeated, but often not all of it.
 
 If even retracting to one request is not enough, `reqs_to_abort` is populated and those
-requests are genuinely failed, with an `AbortReq` sent back through the Chapter 3 return
+requests are genuinely failed, with an `AbortReq` sent back through the Chapter 4 return
 path. That is the terminal case: a single request whose context does not fit in the GPU at
 all.
 
 The metrics around this block — `num_retracted_reqs`, retracted input and output tokens —
-exist because retraction is the clearest signal that admission is mistuned. Chapter 21
+exist because retraction is the clearest signal that admission is mistuned. Chapter 22
 covers reading them.
 
 ---
@@ -290,7 +290,7 @@ nothing from the cache.
 **Cache-aware** — LPM (`:374` `_sort_by_longest_prefix`) and DFS-weight (`:387`
 `_sort_by_dfs_weight`). These consult the radix tree.
 
-`:314` `_compute_prefix_matches` is the bridge: it runs `match_prefix` against the Chapter 9
+`:314` `_compute_prefix_matches` is the bridge: it runs `match_prefix` against the Chapter 10
 tree for queued requests, so the sort can rank by how much each would hit.
 
 **LPM** sorts by longest match. Run the biggest cache hit first: it needs the least new
@@ -330,9 +330,9 @@ next improvement is.
 disabled or the queue is too long to bother matching — the sort itself has a cost, and at
 sufficient queue depth it stops paying for itself.
 
-This closes the loop Chapter 9 opened. The cache determines what is cheap; the scheduler
+This closes the loop Chapter 10 opened. The cache determines what is cheap; the scheduler
 runs what is cheap; running it extends the cache along the same branch; the next similar
-request is cheaper still. Chapter 17 lifts the same loop one level up, into routing.
+request is cheaper still. Chapter 18 lifts the same loop one level up, into routing.
 
 ---
 
@@ -393,13 +393,13 @@ power-of-two chunk in the low thousands of tokens, which is what
 `--chunked-prefill-size` overrides.
 
 There is a real disagreement in the literature here, and it is worth knowing about because
-it is the same argument Chapter 17 resumes. DistServe's authors argue the opposite of
+it is the same argument Chapter 18 resumes. DistServe's authors argue the opposite of
 Sarathi's conclusion: that chunking mitigates the interference between prefill and decode
 without removing it, that the re-read overhead grows quadratically with context length, and
 that the two phases should simply run on different machines. Both are right about different
 deployments. SGLang implements both and lets the operator choose.
 
-Chapter 17's disaggregation is that alternative answer — instead of interleaving prefill and
+Chapter 18's disaggregation is that alternative answer — instead of interleaving prefill and
 decode on one GPU, run them on different machines entirely.
 
 ---
@@ -440,5 +440,5 @@ Each iteration:
    short, retract from the tail until it is not.
 5. **Return a plan** — which batch to run, and what the running batch now is.
 
-Every step is bounded by the same resource. Chapter 8 is where that resource is actually
+Every step is bounded by the same resource. Chapter 9 is where that resource is actually
 managed.
