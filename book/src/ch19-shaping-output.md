@@ -110,12 +110,65 @@ So compiling a grammar means computing, for every state of the character-level a
 which of the 128,000 tokens could legally come next. That is a large precomputation, and
 doing it naively per step would cost more than the forward pass.
 
-`python/sglang/srt/constrained/xgrammar_backend.py` is the default. XGrammar precomputes
-token-level transitions and compresses the mask representation, which is what makes
-per-step masking affordable.
+### Two automata, and why JSON needs the bigger one
 
-`python/sglang/srt/constrained/outlines_backend.py` is the original approach — regex to
-finite automaton, with the FSM compiled against the tokenizer.
+The right machine depends on the language, and the two backends here are built on different
+ones.
+
+A **regular** language — anything a regex describes — is recognized by a finite automaton: a
+fixed set of states and a transition per input symbol, no memory beyond the current state.
+Outlines' insight (Willard and Louf, 2023) was that you can compile a regex to an FSM *once*,
+then precompute for every state which tokens are legal, giving `O(1)` mask lookup at
+generation time. That works, and for regular constraints it is complete.
+
+JSON is not regular. Matching `{` against `}` to arbitrary nesting depth requires counting,
+and a finite automaton cannot count. The right machine is a **pushdown automaton** — a finite
+automaton plus a stack — which recognizes context-free languages. The stack is the open
+brackets; a rule that finishes pops back to whatever contained it.
+
+That is the machine XGrammar (Dong et al., 2024) builds, at the *byte* level rather than the
+character level, because tokens are byte sequences and the boundaries do not align with
+characters.
+
+### Making the mask affordable
+
+A pushdown automaton is more expressive but harder to precompute against, and this is the
+problem XGrammar solves. Per token, per step, per request, you need a bitmask over 128,000
+vocabulary entries. Naively checking each token against the current stack is 128,000 automaton
+simulations per step, which costs more than the forward pass.
+
+The key observation is a partition of the vocabulary. For most tokens, legality depends only
+on the automaton's **current node** — where you are inside the rule you are matching. Those
+are **context-independent**, and their masks can be precomputed per node and cached. A
+minority of tokens are legal or not depending on what is *below* on the stack, because they
+would complete the current rule and return control to a parent. Those are
+**context-dependent** and must be checked at runtime. In practice, under 1% of the
+vocabulary.
+
+So the cost collapses: look up a cached bitmask for 99% of the vocabulary, and simulate the
+automaton for the remaining fraction of a percent. The cache is stored adaptively — rejected
+tokens when most are accepted, accepted tokens when most are rejected, a bitset when it is
+balanced — which for Llama-3.1 with a JSON grammar takes the mask cache from 160 MB to
+**0.46 MB**.
+
+Two more structural tricks make the runtime side cheap. The **persistent execution stack**
+stores all live parse stacks as one tree, so branching a state is a pointer rather than a
+copy and rolling back is `O(1)` — which matters because Chapter 18's speculation and this
+chapter's jump-forward both need to advance a grammar and then undo it. And the vocabulary is
+sorted lexicographically so that checking tokens in order reuses the previous token's prefix
+work.
+
+The last piece is scheduling, and it is Chapter 4's argument reappearing. Mask computation is
+CPU work over automaton state; the forward pass is GPU work. Neither depends on the other's
+result within a step — the mask for step *t* depends only on tokens through *t−1*. So the
+mask is computed on the CPU *while the GPU runs the forward*, and the two meet just before
+sampling. Done that way, the mask is free in the same sense Chapter 4's scheduling is free.
+The reported end result is up to 100× faster per-token mask generation than prior
+implementations, and up to 80× higher output token rate end to end.
+
+`python/sglang/srt/constrained/xgrammar_backend.py` is the default and implements the above.
+`python/sglang/srt/constrained/outlines_backend.py` is the FSM approach —
+regex to finite automaton, compiled against the tokenizer.
 `python/sglang/srt/constrained/llguidance_backend.py` is a third.
 
 All three sit behind `BaseGrammarBackend`, so a request does not know which is compiled.

@@ -184,8 +184,49 @@ one, and loading `lm_head.` would fail on a parameter that does not exist.
 
 ## Formats and sources
 
-**Safetensors** is the default — memory-mappable, so tensors are read lazily rather than
-deserialized wholesale. **GGUF** is supported through
+### Why the format matters more than the loader
+
+A 70B model in BF16 is 140 GB. Loading it is, in the best case, a question of moving 140 GB
+from storage into HBM, and the interesting engineering is entirely about not doing anything
+*else*.
+
+The floor is set by the slowest link on the path:
+
+```
+load_time ≥ bytes / min(storage_bandwidth, PCIe_bandwidth)
+```
+
+At 5 GB/s from NVMe that is 28 seconds for 140 GB; at 25 GB/s over PCIe 4 it is 5.6 seconds
+if storage could keep up. Anything above that floor is overhead, and historically the
+overhead came from one place: **deserialization**.
+
+PyTorch's native `.pt`/`.bin` format is a zip archive of pickled Python objects. Loading it
+means running the pickle interpreter, allocating a host tensor per parameter, copying bytes
+into it, then copying again to the device. That is three passes over 140 GB and an arbitrary
+amount of Python object churn — plus the security problem that `pickle` executes code by
+design, so loading an untrusted checkpoint is loading untrusted code.
+
+**Safetensors** is a response to both. The format is a JSON header giving each tensor's
+name, dtype, shape, and byte offsets, followed by the raw tensor bytes contiguously. There
+is nothing to interpret and nothing to execute. Because the layout on disk is exactly the
+layout in memory, the file can be `mmap`ed and a tensor constructed as a *view* over the
+mapped region — no parse, no host copy, no allocation. The bytes go from page cache to HBM
+in one DMA, and a tensor the rank does not need is never touched at all.
+
+That last property is what makes Chapter 11's central trick work. A tensor-parallel rank
+loading only its own slice does not read the other ranks' slices from a mmapped file; the
+pages are simply never faulted in. With a format that requires deserialization, every rank
+would pay to decode the whole checkpoint and then throw most of it away.
+
+So the practical hierarchy is:
+
+| Format | Cost per byte | Zero-copy | Executes code |
+| --- | --- | --- | --- |
+| Safetensors | one DMA | yes | no |
+| GGUF | one DMA, plus dequantization | mostly | no |
+| PyTorch `.bin` | parse + 2 copies | no | yes |
+
+**GGUF** is supported through
 `python/sglang/srt/model_loader/gguf_name_maps.py`. **Sharded checkpoints** are the norm at
 scale, and multiple ranks reading different shards in parallel is where load time actually
 goes.

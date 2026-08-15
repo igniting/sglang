@@ -199,6 +199,55 @@ completes the picture.
 
 ---
 
+## One controller, or one per rank?
+
+The diagram hides a decision that shapes everything downstream, and it is worth pulling out
+because the alternative is what several other systems chose.
+
+When a model is split across eight GPUs, somebody has to decide what the next batch is. There
+are two ways to arrange that.
+
+**Single controller.** One process owns the scheduling state and drives eight worker
+processes, sending each an instruction per step. This is the shape of a classic
+parameter-server or Ray-style actor system, and it is how vLLM originally drove its workers.
+It is easy to reason about: there is exactly one copy of the truth.
+
+**Multi-controller, or SPMD** — *single program, multiple data*. Every rank runs the same
+scheduler code over the same inputs and reaches the same conclusions independently. Nobody
+issues instructions; the ranks stay in step because they are computing the same function of
+the same data. This is the shape of MPI programs, and of Megatron-LM's training loop.
+
+SGLang is SPMD, with one qualification: the ranks do not re-derive the request stream
+independently, because they cannot — requests arrive over a socket, and a socket delivers to
+one reader. Rank 0 receives, then `broadcast_pyobj` hands the identical Python objects to
+every peer. From that point the ranks are running the same program on the same data, and
+each independently concludes that the same batch should run.
+
+The reason to prefer it here is per-step latency. A decode step is on the order of ten
+milliseconds. A single controller would need a round trip to every rank inside that budget —
+send the instruction, wait for eight acknowledgements, gather results — and each round trip
+crosses a process boundary, a serializer, and a socket. That overhead does not shrink as the
+model gets faster; it grows as a fraction of the step as GPUs get quicker. SPMD pays a
+single broadcast of a small object instead, on a collective the ranks are already
+synchronized on for the forward pass itself.
+
+The cost is that *every rank must stay deterministic in lockstep*. Two ranks that disagree
+about which requests are in the batch will launch different collectives and deadlock — not
+crash, deadlock, which is a much worse failure to debug. This is why so much of the
+scheduler is careful about ordering: dictionaries iterated in insertion order, sorts made
+total by tie-breaking on request id, decisions taken from broadcast data rather than local
+timing. Chapter 4's loop and Chapter 5's batching policy both read differently once you know
+that every line of them is running eight times in parallel and must agree eight times over.
+
+The three-way split of the *front end* is a different argument entirely. Tokenization and
+detokenization are pure CPU string work, they are on the critical path of every request, and
+in CPython they would hold the GIL. Putting them in the scheduler's process would mean the
+GPU waits on a regex. So they are separated for concurrency, while the schedulers are
+replicated for scale — two different problems that happen to be solved with the same
+primitive.
+
+---
+
 ## Three front doors
 
 **The HTTP server** is the common path.

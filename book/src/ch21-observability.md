@@ -74,6 +74,49 @@ costing you. `python/sglang/srt/managers/tokenizer_manager.py:2766`
 `python/sglang/srt/observability/req_time_stats.py` the per-request breakdown that turns a
 TTFT number into "queueing versus prefill."
 
+### Why latency falls off a cliff rather than a slope
+
+Two of those five numbers — queue depth and waiting time — behave in a way that surprises
+people the first time they watch it, and the surprise is worth pre-empting because it changes
+what a dashboard is telling you.
+
+Chapter 1 introduced Little's Law, `L = λW`. Queueing theory adds the shape of the
+relationship between utilization and delay. For a simple queue at utilization ρ (arrival rate
+over service rate), average waiting time behaves like
+
+```
+W  ∝  1 / (1 − ρ)
+```
+
+Read the denominator. At ρ = 0.5, wait time is proportional to 2. At ρ = 0.9, to 10. At
+ρ = 0.99, to 100. **The curve has a vertical asymptote at full utilization**, and the last few
+percent of capacity cost more latency than all the preceding ones combined.
+
+This is why a serving deployment that looks healthy at 85% utilization becomes unusable at
+95% with no change in code, no bad request, and no obvious event in the logs. The dashboard
+shows GPU utilization climbing smoothly and p99 latency going vertical, and the two look
+unrelated. They are the same curve.
+
+Three practical consequences:
+
+**Target utilization well below 1.** A serving pool run at 70–80% has headroom for the
+variance that real traffic has; one run at 95% is a queue waiting for an excuse. The cost of
+the idle 20% is far less than the cost of the latency it prevents.
+
+**Watch the derivative, not the level.** Queue depth rising steadily is the signal, and it is
+visible well before the latency cliff. By the time p99 has moved, the queue has been growing
+for a while.
+
+**Variance is as expensive as the mean.** The formula above understates the damage when
+service times vary — and LLM service times vary enormously, since a request generating 2,000
+tokens occupies a slot a hundred times longer than one generating 20. That variance is why
+Chapter 5's admission control and its priority policies exist, and why shedding load at the
+queue boundary beats accepting work you will time out later.
+
+None of this is visible from throughput. An engine at 99% utilization posts the best tokens
+per second it will ever post, right up to the point where every individual request misses its
+SLO — which is exactly the failure mode goodput was defined to catch.
+
 Wiring: `python/sglang/srt/managers/scheduler.py:718` `init_metrics_collector`, `:1191`
 `init_metrics_reporter`, and
 `python/sglang/srt/managers/scheduler_components/metrics_reporter.py`. `:1095`

@@ -58,6 +58,64 @@ sequence.
 
 ---
 
+## What quantization actually is
+
+Quantization is a lossy encoding of a tensor into fewer bits, plus enough metadata to undo
+the encoding approximately. Every scheme in this directory is a different answer to two
+questions: what the encoding is, and how finely the metadata varies.
+
+The basic form is affine:
+
+```
+q = round(x / s) + z        encode
+x̂ = s · (q − z)             decode
+```
+
+with *s* the **scale** and *z* the **zero point**. Symmetric schemes fix `z = 0` and lose the
+ability to represent an asymmetric range in exchange for dropping a term from the inner loop.
+The scale is what carries the dynamic range: an INT8 value holds 256 levels, and *s* decides
+what interval those levels span.
+
+Floating-point formats change the shape of the trade rather than the arithmetic. FP8 comes in
+two variants that split the exponent and mantissa differently — **E4M3** (4 exponent bits, 3
+mantissa) has better precision and a narrower range, **E5M2** has the reverse. Inference uses
+E4M3 for weights and activations because the range is bounded by the scale anyway, and
+precision is what is scarce.
+
+Three properties decide whether a scheme is any good.
+
+**Where the error goes.** Rounding error is uniform in the quantized domain but not in the
+original one. A tensor with one large outlier forces a large scale, which coarsens every
+other value. Real transformer activations have exactly that structure — a handful of channels
+with magnitudes far above the rest — which is why activation quantization is much harder than
+weight quantization, and why schemes like SmoothQuant migrate difficulty from activations
+into weights by rescaling the two against each other.
+
+**What gets a scale.** This is the axis the code below calls granularity, and it is a direct
+accuracy-versus-overhead trade:
+
+- **Per-tensor** — one scale for the whole matrix. One extra multiply per GEMM; least
+  accurate, because one outlier anywhere coarsens everything.
+- **Per-channel** — one scale per output channel. The outlier's damage is confined to its own
+  channel. Still applies outside the inner loop.
+- **Per-block** — one scale per tile, say 128×128. Most accurate, and the only one that
+  requires the *kernel* to apply scales during accumulation rather than after, which is why
+  it needs its own code path rather than a different constant.
+
+**Whether it is faster or only smaller.** These are separate wins and it is easy to conflate
+them. *Weight-only* quantization (AWQ, GPTQ) stores 4-bit weights and dequantizes them to
+BF16 inside the kernel before a normal BF16 GEMM. The arithmetic is unchanged; the win is
+entirely the 4× reduction in weight traffic — which, by Chapter 1's argument, is exactly the
+win that matters during decode. *Weight-and-activation* quantization (FP8, INT8) keeps both
+operands narrow and uses the hardware's low-precision tensor cores, so it wins on arithmetic
+too — which matters during prefill, where the roofline is on the compute side.
+
+That distinction explains the shape of the table at the end of this chapter, and it explains
+why a deployment might reasonably run FP8 for a compute-bound prefill pool and 4-bit weights
+for a bandwidth-bound decode pool (Chapter 17).
+
+---
+
 ## The quantization architecture
 
 `python/sglang/srt/layers/quantization/base_config.py` defines a three-level structure.
@@ -189,8 +247,41 @@ Chapter 4's overlap scheduler removed the *scheduling* gap. This is the *launch*
 level down, and CUDA graphs are the fix: record the entire sequence of kernels once, then
 replay it with a single call.
 
-The price is rigidity. A recorded graph has fixed shapes, fixed buffer addresses, and no
-data-dependent control flow. Everything below is a consequence.
+### What a graph actually removes
+
+It is worth being precise about which cost disappears, because "CUDA graphs make it faster"
+hides three different savings and one of them is much larger than the others.
+
+A kernel launch is not one operation. It is: PyTorch dispatch (resolve the operator, check
+dtypes and devices, allocate an output tensor); the CUDA runtime's argument marshalling and
+validation; a write into the driver's command buffer; and eventually the GPU's own work
+scheduling. The first two are pure host CPU time and account for most of the 5–10 µs.
+
+Capture runs the sequence once in a special mode where kernels are *recorded into a graph*
+rather than executed. What is recorded is a DAG of nodes: each kernel, its arguments, its
+grid dimensions, and its dependencies on other nodes. Replay hands that whole DAG to the
+driver in one call.
+
+So three things are saved, in descending order of value:
+
+1. **Host-side launch cost**, per kernel, gone — a thousand launches become one. This is the
+   dominant term and the reason the technique exists.
+2. **Driver-side validation**, done once at capture rather than every replay.
+3. **Scheduling latency between kernels.** The driver knows the entire dependency graph up
+   front, so it can begin a node the instant its predecessors retire rather than waiting for
+   the host to submit it. This closes the small gaps *between* kernels, which at 20 µs per
+   kernel is not nothing.
+
+And the price is exactly the information the graph froze. A recorded node holds the *pointer*
+its argument had at capture time, not a reference to a Python variable — so every buffer must
+live at a fixed address for the lifetime of the graph, and replay must write inputs into
+those exact buffers rather than passing new tensors. The grid dimensions are recorded too, so
+shapes are fixed. And nothing in the recorded region may have depended on a value the host
+read from the device, because there was no host in the loop when the decision was made.
+
+That is the whole constraint list, and everything below is a consequence of it: static
+buffers, bucketed shapes, padding to a bucket, the ban on `.item()`, and the partial-capture
+machinery for models whose forward genuinely cannot be made shape-static.
 
 ---
 

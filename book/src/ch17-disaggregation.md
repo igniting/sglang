@@ -54,6 +54,51 @@ The cost is that the transfer is now on the critical path. A 4,000-token prefill
 1.25 GB of KV (Chapter 1's figure for a 70B model) that must reach the decode node before
 the first output token. That is why this chapter is mostly about the transfer.
 
+### The interference, measured
+
+Zhong et al.'s DistServe (OSDI '24) is the paper that made this case, and its central
+measurement is worth restating because it is sharper than the table above.
+
+Add **one** prefill request to a batch of decodes, and both get worse. The decodes wait for
+the prefill's much longer forward pass, so ITL spikes for every sequence in the batch — one
+long prompt taxes every user in the batch, whether or not they asked for anything. And the
+prefill itself is slowed by the decode rows sharing its kernels. Neither phase gets what it
+wants, and the damage is proportional to how heterogeneous the batch is — which continuous
+batching, by design, maximizes.
+
+The reason this is worse than it sounds is that the two phases are graded on different
+scales. Prefill is measured by **TTFT**, decode by **TPOT/ITL**, and an SLO is normally
+stated as both: "95% of requests under 500 ms to first token and under 50 ms between
+tokens." **Goodput** — the request rate at which both targets are met — is the honest metric,
+and it is not a function of average throughput. A colocated deployment can post excellent
+aggregate tokens per second while missing one SLO or the other on most requests, because the
+interference lands unevenly.
+
+Once you accept two pools, a second freedom appears that a single pool cannot have: **the two
+phases can use different parallelism.** Prefill is compute-bound, so tensor parallelism buys
+it real latency reduction. Decode is bandwidth-bound and cache-hungry, so replicating the KV
+cache across TP ranks is precisely wrong for it, and Chapter 15's data-parallel attention is
+right. On one machine you must choose one layout for both. DistServe's placement algorithm
+searches the two configurations independently and reports **7.4× the request rate**, or 12.6×
+tighter SLOs, at 90% attainment.
+
+The obvious objection is the transfer, and the paper's answer is arithmetic. The KV for a
+request is `bytes_per_token × prompt_length`, and it is transferred exactly once, against a
+prefill that took tens of milliseconds of GPU time to produce. For OPT-175B they measure the
+transfer at **under 0.1%** of total request latency — provided it crosses a fast link. Which
+is the real constraint: the placement algorithm is bandwidth-aware precisely because the
+conclusion inverts on a slow one. Given NVLink between the pools, disaggregation is nearly
+free; given commodity Ethernet, the transfer becomes the bottleneck it appears to be.
+
+This is the counter-argument to Chapter 5's chunked prefill, and the two papers genuinely
+disagree. Sarathi says: interleave them, and the decodes ride along on compute the prefill
+was buying anyway. DistServe says: interleaving is what causes the interference, chunking
+only bounds it, and chunking makes attention re-read the prefix once per chunk — a cost that
+grows quadratically with context length. Both are correct in their own regime. Short prompts
+and modest SLOs favour chunking, which needs one pool and no network. Long prompts, strict
+TTFT targets, and a fast interconnect favour disaggregation. SGLang implements both, and the
+choice is a deployment decision rather than an architectural one.
+
 ---
 
 ## The two sides

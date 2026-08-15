@@ -113,6 +113,80 @@ where a new feature usually lands first.
 
 ---
 
+## The algorithm every backend implements
+
+All of these backends compute the same function, and they all compute it the same *way* —
+the way FlashAttention introduced. It is worth deriving, because every parameter name in the
+kernel below is a term in it.
+
+Attention is
+
+```
+O = softmax(QKᵀ / √d) V
+```
+
+and the naive implementation materializes `S = QKᵀ`, an `N × N` matrix, writes it to HBM,
+reads it back to softmax it, writes it again, reads it again to multiply by V. For
+`N = 8192` at FP16 that is 128 MB per head per layer, moved four times. The arithmetic is
+`O(N²d)` but the *memory traffic* is `Θ(N² + Nd)`, and Chapter 1 says memory traffic is what
+costs.
+
+Dao et al. (2022) observed that the matrix never needs to exist. The obstacle is softmax:
+its denominator is a sum over the entire row, so you apparently cannot emit any output until
+you have seen every key. **Online softmax** (Milakov and Gimelshein, 2018) removes the
+obstacle. Track a running maximum and a running normalizer, and rescale as you go:
+
+```
+m_j = max(m_{j−1}, x_j)
+d_j = d_{j−1} · e^(m_{j−1} − m_j)  +  e^(x_j − m_j)
+```
+
+Every time the running maximum rises, the accumulated denominator is corrected by
+`e^(m_old − m_new)`. By induction, after the last element `m` is the true row maximum and
+`d` the true denominator — the same numbers the two-pass algorithm computes, in one pass and
+with the same numerical stability.
+
+FlashAttention applies exactly that to the output accumulator as well. Process K and V in
+tiles; for each tile compute the local scores, update `m` and `ℓ`, and rescale the partial
+output before adding the tile's contribution:
+
+```
+O_i ← diag(ℓ_new)⁻¹ [ diag(ℓ_old) e^(m_old − m_new) O_i  +  e^(m̃ − m_new) P̃ V_j ]
+```
+
+Tiles are sized to fit SRAM: with on-chip memory *M*, the paper takes `B_c = ⌈M/4d⌉`
+columns and `B_r = min(⌈M/4d⌉, d)` rows. The score tile is created in SRAM, consumed in
+SRAM, and discarded. HBM never sees it.
+
+The result is Theorem 2 of the paper, and it is the reason this is not merely a constant-
+factor optimization:
+
+| | HBM accesses |
+| --- | --- |
+| Standard attention | `Θ(Nd + N²)` |
+| FlashAttention | `Θ(N²d²M⁻¹)` |
+
+With `d = 128` and `M ≈ 100 KB`, `d²/M` is around 0.16 — so FlashAttention moves several
+times less memory, and the advantage *grows* with SRAM. Proposition 3 adds that no exact
+attention algorithm can do asymptotically better across the range of SRAM sizes. This is an
+optimality result about memory traffic, which is why every serious attention kernel written
+since has this shape.
+
+Two properties of the algorithm reappear throughout the rest of this chapter.
+
+**It stores `O(N)` extra state, not `O(N²)`** — just `m` and `ℓ` per row. Those are the
+`Att_Lse` outputs below: the log-sum-exp statistics that let partial results be combined.
+
+**It is associative across tiles.** Two partial outputs computed over disjoint key ranges
+can be merged, given their log-sum-exps, by the same rescaling formula. That is what permits
+splitting one sequence's keys across many thread blocks — the `num_kv_splits` parameter — and
+combining them in a second pass. It is also what makes Chapter 15's ring and context
+parallelism possible at all, and what Chapter 21's determinism work has to constrain: the
+merge is associative in exact arithmetic, not in floating point, so *how many* splits there
+are changes the last bits of the answer.
+
+---
+
 ## Down to the kernel
 
 The Triton backend's kernels are in `python/sglang/kernels/ops/attention/`, and they are
@@ -238,12 +312,45 @@ differ again.
 
 ## MLA needs its own everything
 
-DeepSeek's multi-head latent attention compresses KV into a single latent vector per token
-rather than per-head keys and values. Chapter 8 showed the pool
-(`python/sglang/srt/mem_cache/memory_pool.py:3932` `MLATokenToKVPool`); the consequence
-here is that the *stored* form is not the form attention consumes. The latent must be
-decompressed, and whether that happens before or inside the kernel is a real design choice
-with real performance consequences.
+DeepSeek's multi-head latent attention takes GQA's premise — that the KV cache is the thing
+worth shrinking — and pushes it past what sharing heads can achieve.
+
+GQA reduces the *number* of KV heads. MLA instead compresses what each token stores. A single
+down-projection maps the hidden state to a latent vector, and per-head keys and values are
+reconstructed from it on the fly:
+
+```
+c_t  = W_DKV · h_t          (the only thing cached, dimension d_c)
+k_t  = W_UK  · c_t
+v_t  = W_UV  · c_t
+```
+
+With `d_c = 4·d_h` against a full cache of `2·n_h·d_h`, DeepSeek-V2 reports a **93.3%**
+reduction in KV bytes per token versus its own dense predecessor — roughly what GQA with
+2.25 groups would cost, at better quality than full multi-head attention.
+
+The part that makes it more than compression is that **the up-projections need never be
+computed at all**. Attention scores are `qᵀk = qᵀ(W_UK c)`, which is `(W_UKᵀ q)ᵀ c`: fold
+`W_UK` into the query projection and attend directly against the latent. Fold `W_UV` into the
+output projection and the values never materialize either. What is stored is what the kernel
+reads.
+
+Except that RoPE breaks it. A rotary embedding is a position-dependent rotation applied
+*after* projection, so the fold above would require `R(mθ) W_UK` — a different matrix at
+every position, which cannot be absorbed into a fixed weight. DeepSeek's answer is
+**decoupled RoPE**: carry a small extra set of dimensions that exist only to hold position
+information, apply RoPE to those, and leave the compressed path un-rotated. The cached vector
+is the concatenation of a rotation-free latent and a shared rotary key. It is a workaround
+that looks arbitrary until you know what it is protecting.
+
+The engine-level consequence is the one this chapter cares about. Chapter 8 showed the pool
+(`python/sglang/srt/mem_cache/memory_pool.py:3932` `MLATokenToKVPool`); what follows from it
+is that the *stored* form is not the form ordinary attention consumes, and the head dimension
+the kernel sees is not the head dimension the model declares. Whether decompression happens
+before the kernel or inside it — whether the absorption above is exploited or the latent is
+expanded into conventional K and V first — is a genuine design choice, and it goes different
+ways depending on batch shape: absorbing wins in decode where the cache read dominates, while
+expanding can win in prefill where there is arithmetic to spare.
 
 Hence a family of MLA backends: `python/sglang/srt/layers/attention/flashinfer_mla_backend.py`,
 `python/sglang/srt/layers/attention/flashmla_backend.py`,

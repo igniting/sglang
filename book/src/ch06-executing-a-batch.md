@@ -145,6 +145,62 @@ current batch, and threading them through every constructor would mean every lay
 one of the 218 model files takes parameters it does not use. The context is set once per
 forward and read where needed.
 
+### Ragged, not rectangular
+
+There is a shape assumption buried in almost every tutorial description of a transformer,
+and this is the point where SGLang abandons it.
+
+Textbook batching is rectangular: a `[batch, seq_len, hidden]` tensor, every sequence the
+same length, shorter ones padded and masked. It is convenient and, for serving, ruinous. A
+batch holding a 4,000-token prefill and thirty 12-token decodes would pad every row to 4,000
+and spend 99% of its arithmetic on padding.
+
+Chapter 5's admission policy makes this worse rather than better: a well-packed batch is
+*deliberately* heterogeneous — one prefill chunk plus every available decode row. Padding a
+batch that was constructed to be uneven defeats the point of constructing it.
+
+So `ForwardBatch` carries a **ragged** layout instead. `input_ids` is a flat 1-D tensor: all
+of sequence 0's new tokens, then all of sequence 1's, with no padding and no batch
+dimension. The structure lives beside it, in the offsets:
+
+```python
+    # For extend
+    extend_num_tokens: Optional[int] = None
+    extend_seq_lens: Optional[torch.Tensor] = None
+    extend_prefix_lens: Optional[torch.Tensor] = None
+    extend_start_loc: Optional[torch.Tensor] = None
+```
+
+`extend_seq_lens[i]` is how many *new* tokens sequence *i* contributes; `extend_start_loc[i]`
+is where they begin in the flat buffer; `extend_prefix_lens[i]` is how many tokens the
+sequence already had cached, which is where its new positions start counting from and, in
+Chapter 9's terms, how much of it was a prefix hit.
+
+This is the same CSR-style representation used everywhere data is jagged — an offsets array
+plus a values array — and every consumer splits cleanly along Orca's line:
+
+- **Linear layers** ignore the offsets entirely. A `[total_tokens, hidden]` matrix times a
+  weight matrix is one GEMM; the rows are independent and it does not matter which sequence
+  each came from. Every `nn.Linear` in every model file operates on the flat form without
+  knowing it is a batch at all.
+- **Attention** reads the offsets, because it must not let sequence 3 attend to sequence 4.
+  The kernels of Chapter 13 take `extend_start_loc` and `extend_seq_lens` and treat each
+  segment as its own attention problem, which is why their signatures carry `indptr` arrays
+  rather than a batch dimension.
+- **Anything positional** — RoPE in Chapter 12, the sampler in Chapter 7 — reads them to
+  recover per-sequence structure from the flat buffer.
+
+Two costs come with it. Every kernel that touches attention must be varlen-aware, which
+rules out naive PyTorch implementations and is part of why Chapter 13's backend layer exists
+at all. And the `_cpu` mirrors of these arrays — `extend_seq_lens_cpu`,
+`extend_prefix_lens_cpu` — exist because host-side logic needs the same structure without
+paying for the synchronization Chapter 4 warned about, so both copies are maintained and
+must be kept consistent.
+
+The payoff is that a batch costs exactly the tokens it contains. That is the precondition
+for Chapter 5's budget being denominated in tokens rather than requests, and for Chapter 1's
+critical batch size being reachable at all.
+
 ---
 
 ## The worker boundary

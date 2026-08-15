@@ -252,6 +252,82 @@ compact memory. The `except Exception: pass` is honest about it being best-effor
 ids that do not exist yet, referenced by placeholder so batch *N+1* can be built before
 batch *N* has sampled.
 
+### Why the CPU is allowed to run ahead
+
+The reordering above only works because of a property of the CUDA programming model that is
+easy to forget: **kernel launches are asynchronous**. `some_kernel<<<...>>>()` — and every
+PyTorch operation built on it — enqueues work onto a stream and returns to the host almost
+immediately. The GPU executes the queue in order; the CPU is free to keep going.
+
+So a Python `forward()` call does not compute anything. It *describes* a few thousand kernel
+launches and returns. If the CPU can describe the next step faster than the GPU can execute
+the current one, the queue never runs dry and the GPU never idles. The CPU's Python overhead
+becomes genuinely invisible — not amortized, not reduced, but hidden behind work that was
+going to happen anyway.
+
+What breaks this is any operation that forces the host to wait for the device:
+
+| Operation | Why it synchronizes |
+| --- | --- |
+| `tensor.item()`, `int(t)`, `if t:` | The value must exist on the host *now* |
+| `tensor.cpu()`, `.numpy()`, `.tolist()` | Same, for the whole tensor |
+| `torch.cuda.synchronize()` | Explicitly |
+| Printing a tensor, or asserting on one | Reads its contents |
+
+Each one drains the launch queue and re-exposes every microsecond of Python. This is why
+"don't call `.item()` in the hot path" appears as a rule in this codebase rather than as
+advice, why Chapter 13's backends carry a lint contract about it in a docstring, and why
+`FutureMap` exists at all.
+
+The bind is this. To build batch *N+1*, the scheduler needs to know what token batch *N*
+sampled — that token is the next step's input. But that token lives in GPU memory and will
+not be computed for another ten milliseconds. Reading it means synchronizing, and
+synchronizing means giving back everything overlap just bought.
+
+`FutureMap` (`python/sglang/srt/managers/overlap_utils.py:232`) resolves it by never reading
+the value at all. It keeps a device-side buffer indexed by request-pool slot:
+
+```python
+class FutureMap:
+    """Always-on pool-indexed relay for cross-iter values. Forward writes via
+    publish/stash; next iter reads via resolve_forward_inputs / resolve_seq_lens_cpu.
+    """
+```
+
+Batch *N*'s sampler writes its output tokens into `output_tokens_buf` at each request's pool
+index. Batch *N+1* is built referring to *pool indices*, not token values, and at forward
+entry `:84` `resolve_forward_inputs` turns the reference into the value with a gather that
+runs on the GPU:
+
+```python
+    elif batch.input_ids is None and future_map.spec_algo.is_none():
+        batch.input_ids = future_map.output_tokens_buf[batch.req_pool_indices]
+```
+
+That single line is the whole trick. The token never crosses to the host. The scheduler
+manipulates a *name* for a value that does not exist yet, and the GPU dereferences the name
+at the moment the value does exist — because by then, the kernel that wrote it is ahead of
+this gather in the same stream, and stream order is enough to guarantee it.
+
+The debug build makes the invariant checkable by poisoning the buffer:
+
+```python
+        if _DEBUG_ASSERT:
+            # Poisoned init: every row must be written before its first gather.
+            self.output_tokens_buf = torch.full(
+                (self.req_pool_size,), -1, dtype=torch.int64, device=self.device
+            )
+```
+
+A `-1` surviving into a gather means some path built a batch on a future that was never
+published — a real bug class, caught cheaply.
+
+Sequence lengths need the reverse direction. The scheduler genuinely does need them on the
+host, for budgeting. `:412` `resolve_seq_lens_cpu` handles this with a pinned host buffer
+and a private stream so the device-to-host copy overlaps rather than blocking, falling back
+to a plain `.cpu()` on platforms without the machinery. It is the same idea from the other
+side: pay for the transfer, but never pay for the wait.
+
 ---
 
 ## A 5,000-line class, and why it is shaped that way

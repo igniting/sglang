@@ -161,6 +161,68 @@ Reading it shows how the three truncation methods compose: sort, cumulative-sum,
 below the thresholds, renormalize, sample. Penalties live in
 `python/sglang/srt/sampling/penaltylib/` and are applied to logits before this point.
 
+### What the knobs actually do
+
+The parameter names in an OpenAI-compatible request describe four different operations on a
+distribution, applied in a fixed order, and the order matters more than any single one of
+them.
+
+Start from the model's output: a vector of **logits** `z ∈ R^V`, one real number per
+vocabulary entry, which softmax turns into probabilities:
+
+```
+p_i = exp(z_i) / Σ_j exp(z_j)
+```
+
+**Temperature** divides the logits before the softmax: `p_i ∝ exp(z_i / T)`. It is a
+sharpening control, and the limits are the useful way to hold it. As `T → 0` the largest
+logit dominates completely and sampling degenerates to `argmax` — which is why temperature 0
+is implemented as greedy rather than as a division by zero. As `T → ∞` every exponent goes
+to zero and the distribution becomes uniform over the whole vocabulary. `T = 1` leaves the
+model's own distribution alone.
+
+**Top-k** keeps the *k* highest-probability tokens and zeros the rest, then renormalizes. It
+is the bluntest of the truncations and has a known failure mode: *k* is a fixed count applied
+to a distribution whose useful width varies enormously by position. After `"The capital of
+France is"` the model is nearly certain and *k* = 50 admits 49 wrong answers; mid-sentence in
+open prose, 50 may be far too few.
+
+**Top-p**, or nucleus sampling (Holtzman et al., 2020), fixes exactly that. Sort by
+descending probability and keep the shortest prefix whose cumulative mass reaches *p*:
+
+```
+keep the smallest set S with  Σ_{i ∈ S} p_i ≥ p
+```
+
+The size of the kept set now adapts to the model's own confidence — one token where the model
+is sure, hundreds where it is not. Nucleus sampling was introduced to fix the specific
+pathology that greedy and beam search produce degenerate, repetitive text while unrestricted
+sampling produces incoherent text; truncating the unreliable tail was the middle path.
+
+**Min-p** is the newest and takes a third view: keep tokens whose probability is at least a
+fraction of the *top* token's, `p_i ≥ min_p × max_j p_j`. Where top-p thresholds on
+cumulative mass, min-p thresholds relative to the peak, which behaves better at high
+temperature — the scaling that flattens the distribution also lowers the peak, so the
+threshold moves with it.
+
+The order of operations is where implementations disagree and where bugs live. SGLang's is:
+penalties on logits → temperature → softmax → top-k → top-p → min-p → renormalize → sample.
+Applying temperature *before* the truncations is the consequential choice: temperature
+changes the probabilities, so it changes which tokens survive a top-p cut. The reverse order
+would give a different distribution from the same request parameters.
+
+`top_k_top_p_min_p_sampling_from_probs_torch` implements all three in the one sorted pass
+they share — a sort, a cumulative sum, three mask conditions, a renormalize — because sorting
+a vocabulary-sized tensor per row is the expensive part and there is no reason to do it three
+times.
+
+The penalties are a different kind of operation, applied to logits rather than probabilities
+and dependent on the tokens generated so far rather than on the distribution: presence and
+frequency penalties subtract from the logits of tokens already seen, and the repetition
+penalty divides or multiplies them depending on sign. They live in
+`python/sglang/srt/sampling/penaltylib/` precisely because they need per-request generation
+history, which the rest of the sampler does not.
+
 Two extension points sit here. `python/sglang/srt/sampling/custom_logit_processor.py` lets a
 client ship a processor with its request — applied in `python/sglang/srt/layers/sampler.py:761` `apply_custom_logit_processor`
 — and `python/sglang/srt/layers/sampler.py:527` `register_sampler_backend` lets a hardware backend replace the whole sampler,

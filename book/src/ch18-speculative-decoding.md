@@ -52,6 +52,106 @@ predicted.
 
 ---
 
+## The acceptance rule, and why it is exact
+
+The claim that speculation changes nothing about the output distribution is strong enough to
+deserve its proof, and the proof is four lines. Leviathan et al. (2023) state it as modified
+rejection sampling.
+
+Let `p` be the target model's distribution over the next token and `q` the draft's. Draw a
+candidate `x ~ q`. Then:
+
+```
+accept x  with probability  min(1, p(x) / q(x))
+otherwise  draw x  from  norm(max(0, p − q))
+```
+
+The draft over-proposes some tokens and under-proposes others. Where `q(x) ≤ p(x)` the draft
+was not over-confident and the token is always accepted. Where `q(x) > p(x)` it was, and the
+token is accepted only `p(x)/q(x)` of the time — exactly enough to cancel the excess. The
+rejection branch then samples from the *residual*, the part of `p` the draft failed to cover,
+renormalized.
+
+To see that the composite is `p`, sum the two paths for any token `x`:
+
+```
+P(output x)  =  q(x) · min(1, p(x)/q(x))              accepted
+             +  P(reject) · norm(max(0, p − q))(x)     resampled
+             =  min(q(x), p(x))  +  [p(x) − min(q(x), p(x))]
+             =  p(x)
+```
+
+The first term is `min(p, q)` because `q · min(1, p/q)` is `q` when `q ≤ p` and `p` when
+`q > p`. The second term is what is left over. They telescope. **The output distribution is
+`p` exactly**, for any draft `q` whatsoever — including a terrible one, including an
+adversarial one. A bad draft lowers the acceptance rate and therefore the speedup; it cannot
+change what the model says.
+
+Two engineering consequences follow directly, and both show up in the code below.
+
+The rule needs `q(x)`, the draft's probability of the token it proposed — not just the token.
+That is why `draft` returns `draft_probs` alongside `draft_tokens`, and why the draft's
+sampling path has to be instrumented rather than treated as a black box.
+
+At temperature 0 the rule degenerates into something much cheaper. `p` becomes a point mass
+on `argmax`, so the accept test reduces to "is the drafted token the target's argmax?" — an
+integer comparison. Greedy verification is a different, faster kernel than sampled
+verification, which is why the code below has two paths.
+
+### How many tokens you get back
+
+The gain is quantifiable. Define the **acceptance rate** α as the expected probability that a
+drafted token is accepted. Accepting tokens along a chain is a sequence of Bernoulli trials
+that stops at the first failure, capped at the γ tokens drafted, so the number produced per
+target forward pass is a capped geometric variable with expectation
+
+```
+E[tokens per step] = (1 − α^(γ+1)) / (1 − α)
+```
+
+Read the shape of it rather than the formula. At α = 0.8 and γ = 4 you get about 3.4 tokens
+per step; pushing γ to 8 raises that only to about 4.2, because `α^(γ+1)` has already
+collapsed. **Depth has sharply diminishing returns**, since acceptance decays geometrically —
+one mistake ends the chain regardless of how many tokens followed it.
+
+That is the entire argument for drafting a *tree* instead of a chain. A chain of five tokens
+bets everything on the top choice at every step. A tree spends the same verification budget
+on several branches, so a wrong top choice at depth two does not discard depths three through
+five — a sibling may carry them. The expected accepted length rises for the same number of
+verified positions, which is why every serious implementation since 2024, EAGLE included,
+drafts trees.
+
+### Where EAGLE's draft comes from
+
+The remaining lever is α, and it is where EAGLE (Li et al., 2024) makes its contribution.
+
+An independent small model drafts badly because it is a *different* model — it has its own
+opinions, and its distribution diverges from the target's for reasons that have nothing to do
+with the current context. EAGLE's first observation is that autoregression is easier at the
+**feature** level than the token level: the sequence of second-to-top-layer hidden states is
+far more regular than the sequence of discrete tokens sampled from them. So predict the next
+*feature* from the current one, and let the target model's own LM head turn it into a token.
+
+The second observation is the fix for the first. A feature does not determine the next
+feature, because sampling intervenes: the same hidden state can yield different tokens and
+therefore different continuations. So the draft head is fed the feature sequence *and* the
+token sequence shifted one step ahead — the sampling outcome is given to it rather than
+guessed.
+
+What results is small: an embedding layer and LM head borrowed unchanged from the target, one
+fully-connected layer reducing the concatenated `[feature, token-embedding]` back to hidden
+size, and **a single decoder layer**. That is the whole draft model. It reports 3.6–3.9
+tokens accepted per forward pass on MT-Bench, for 2.7–3.5× end-to-end speedup on a 70B
+target — and it is better-informed than any independent small model could be, because it sees
+what the target actually computed.
+
+The cost is a coupling the rest of the engine has to carry: the draft consumes the target's
+hidden states, so the target's forward pass must *return* them. That is the
+`carries_draft_hidden_states` capability below, and it reaches into Chapter 7's logits
+processor, Chapter 8's memory pools, and Chapter 14's CUDA graphs.
+
+---
+
 ## Capabilities before implementations
 
 `python/sglang/srt/speculative/spec_info.py:30` `SpeculativeAlgorithm` is where to start,

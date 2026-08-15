@@ -45,6 +45,42 @@ scatters across 256 experts, and if those experts live on different GPUs, the to
 be *sent there and the results brought back*. That is an all-to-all, twice per MoE layer,
 and it is the dominant cost.
 
+### The lineage, in four steps
+
+Conditional computation is an old idea, but the version this code implements arrived through
+a specific sequence, and each step left a parameter in the constructor below.
+
+**GShard** (Lepikhin et al., 2020) established the shape still in use: replace the MLP in
+every other transformer layer with *n* experts and a learned router, send each token to its
+top-2, and shard the experts across devices. It also named the two problems that dominate
+everything since. Routing is *learned*, so nothing stops it collapsing onto a few popular
+experts — so GShard added an **auxiliary loss** penalizing imbalance. And a device can only
+hold so many tokens, so GShard added **capacity factors**: each expert accepts a fixed
+number of tokens per batch and *drops* the overflow.
+
+**Switch Transformer** (Fedus et al., 2021) simplified top-2 to top-1, showing the routing
+quality survived it, and made the engineering case that sparse models are worth the trouble
+at scale.
+
+**DeepSeekMoE** (2024) changed the granularity. Instead of a few large experts, use many
+small ones — 256 rather than 8 — so that a token's top-8 selection is a far more expressive
+combination. And carve out **shared experts** that every token passes through
+unconditionally, which frees the routed experts from re-learning what is common to all
+inputs. Both choices are visible in the constructor below.
+
+**DeepSeek-V3** (2024) removed the auxiliary loss. Its argument is that a balance penalty is
+a gradient fighting the quality objective — you get balance by making routing slightly worse.
+Instead, keep a per-expert **bias** added to the affinity scores only for the purpose of
+choosing the top-*k*, and adjust it outside the gradient: raise an underloaded expert's bias,
+lower an overloaded one's. Balance is achieved by moving the selection threshold rather than
+by punishing the router. That bias is the `correction_bias` parameter below, and at inference
+it is a loaded constant.
+
+V3 also constrained routing spatially — **node-limited routing**, where a token may reach at
+most *M* nodes (M = 4 for 256 experts across 8 nodes). This is the grouped top-k described
+below, and it is a systems constraint written into the model architecture: the network
+topology reached back into the training recipe.
+
 ---
 
 ## Routing
@@ -181,6 +217,33 @@ all-to-all, where fixed per-message costs and synchronization dominate and raw b
 irrelevant. It is also why these kernels are hand-written rather than left to NCCL, and why
 `DpPaddingMode`'s deadlock comment in Chapter 15 exists: a symmetric collective where one
 rank contributes nothing hangs.
+
+### The arithmetic that makes it hurt
+
+Put numbers on it. A rank holding *T* tokens, each routed to *k* experts, sends `T × k`
+hidden vectors of `H` elements out and receives roughly as many back — twice, since combine
+mirrors dispatch. For DeepSeek-V3's shape (`H` = 7168, `k` = 8, BF16) that is about 14 KB per
+token per direction, and around 115 KB per token dispatched.
+
+Against a *decode* batch that is a small number of tokens per rank, so the transfer is a few
+megabytes — trivially within NVLink's capacity, and entirely dominated by the fixed cost of
+initiating it. Two all-to-alls per layer across 60 MoE layers is 120 synchronization points
+per forward pass. At even 20 µs each, that is 2.4 ms of pure latency in a step whose compute
+might be 10 ms.
+
+So the optimizations that matter are not bandwidth optimizations. They are:
+
+**Reduce the number of peers.** Node-limited routing caps how many nodes a token reaches, so
+the all-to-all is over a bounded set rather than all-to-everyone. This is the systems
+constraint that shaped the model.
+
+**Exploit the bandwidth asymmetry.** Inside a node, NVLink runs at roughly 160 GB/s; between
+nodes, InfiniBand at roughly 50 GB/s. DeepEP's kernels route a token to one GPU per
+destination node over IB, then fan it out to that node's other GPUs over NVLink — so a token
+crosses the slow link once rather than once per destination rank. Warp specialization lets
+the two transfers proceed concurrently.
+
+**Overlap it with something.** Which is the next section, and the largest of the three.
 
 ---
 

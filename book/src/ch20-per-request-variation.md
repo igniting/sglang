@@ -28,12 +28,57 @@ becomes impossible to miss.
 
 ## Batching across adapters
 
-A LoRA adapter is a low-rank update: instead of `W`, use `W + BA` where `B` and `A` are thin
-matrices. Base weights are shared; only the small factors differ per adapter.
+### The low-rank hypothesis
 
-That structure is what makes batched serving possible. The base GEMM runs once for the whole
-batch, exactly as before. Only the low-rank correction is per-request — and a correction
-with rank 16 against a 4096-dimensional weight is a tiny fraction of the work.
+LoRA (Hu et al., 2021) starts from an empirical claim about fine-tuning: the *change* a
+fine-tune makes to a weight matrix has far lower rank than the matrix itself. If that is
+true, the update can be factored:
+
+```
+W = W₀ + ΔW = W₀ + (α/r) · B A
+```
+
+with `A ∈ R^(r×k)`, `B ∈ R^(d×r)`, and `r ≪ min(d, k)`. `W₀` is frozen; only `A` and `B`
+train. The `α/r` scaling exists so that changing `r` does not force you to re-tune the
+learning rate.
+
+The evidence is that it works at absurd ratios. For GPT-3 175B the paper reports a
+**10,000×** reduction in trainable parameters and 3× less optimizer memory, at quality
+matching full fine-tuning — and finds that on some tasks `r = 1` suffices against a full rank
+of 12,288. They adapt only `W_q` and `W_v`, leaving the MLP untouched.
+
+For training, the win is memory. For *serving*, the win is a different one, and it is the
+reason this chapter exists.
+
+An adapter is a few megabytes against a base model of a hundred gigabytes. So a single loaded
+base model can serve dozens of fine-tunes at once, if — and this is the whole engineering
+problem — you can apply *different* adapters to *different rows of the same batch*.
+
+The paper's own deployment advice points the wrong way for this. It observes there is no
+inference latency penalty because you can fold the update in: compute `W₀ + BA` once and use
+it as an ordinary weight matrix. That is right for one adapter and useless for many, since a
+merged weight serves exactly one fine-tune and re-merging per request would cost more than
+the forward pass.
+
+So a multi-adapter server must keep the factors separate and compute
+
+```
+y = x W₀  +  (α/r) (x A) B
+```
+
+where `W₀` is shared by the whole batch and `A`, `B` vary per row. The base GEMM runs once,
+exactly as before. The correction is a pair of very thin matrix multiplies — rank 16 against
+a 4,096-dimensional weight is well under 1% of the work — but it is a *ragged* one, because
+each row wants a different `A` and `B`, and possibly a different `r`.
+
+That is the same shape as Chapter 16's grouped GEMM and Chapter 8's page table: irregularity
+expressed as an index tensor rather than as control flow. Punica and S-LoRA named the
+resulting primitive **segmented gather matrix-vector multiply** — group the batch's rows by
+adapter, and have the kernel look up each row's factors from a shared pool. That is precisely
+what the arrays below construct.
+
+`python/sglang/srt/lora/lora_manager.py:59` `LoRAManager` orchestrates it, and `:428`
+`prepare_lora_batch` is where the batch is assembled:
 
 `python/sglang/srt/lora/lora_manager.py:59` `LoRAManager` orchestrates it, and `:428`
 `prepare_lora_batch` is where the batch is assembled:
@@ -56,11 +101,10 @@ with rank 16 against a 4096-dimensional weight is a tiny fraction of the work.
                 scalings[weight_indices[i]] = lora.scaling
 ```
 
-Three parallel arrays. `weight_indices` says which adapter buffer each *request* uses;
-`lora_ranks` and `scalings` carry per-adapter parameters. These go to the kernel, which
-looks up each row's adapter and applies the right correction. **One kernel launch, many
-adapters** — the same trick as Chapter 8's page table and Chapter 16's expert sort:
-irregularity expressed as an index tensor rather than as control flow.
+Three parallel arrays, and they are the segmented-gather primitive in concrete form.
+`weight_indices` says which adapter buffer each *request* uses; `lora_ranks` and `scalings`
+carry per-adapter `r` and `α/r`. These go to the kernel, which looks up each row's adapter and
+applies the right correction. **One kernel launch, many adapters.**
 
 Note `lora_ranks` is sized `max_loras_per_batch`, not batch size: it is indexed by *buffer
 slot*, not by request. Several requests sharing an adapter share a slot.

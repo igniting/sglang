@@ -90,6 +90,46 @@ decides when to batch tokenizer calls, and
 `python/sglang/srt/managers/async_dynamic_batch_tokenizer.py` implements the batching so
 the fast Rust tokenizer amortizes across requests.
 
+### What a token actually is
+
+The engine treats token ids as opaque integers, but a few properties of how they are
+produced leak into the rest of the book, so they are worth stating.
+
+Modern tokenizers are **subword** tokenizers, and almost all of them descend from
+byte-pair encoding — Gage's 1994 compression algorithm, repurposed for NLP by Sennrich,
+Haddow, and Birch in 2016. Training is one loop: start with a vocabulary of single bytes,
+count adjacent pairs across a corpus, merge the most frequent pair into a new symbol, and
+repeat until the vocabulary reaches its target size. The merges are recorded in the order
+they were learned. Encoding replays that list against a new string, applying the earliest
+applicable merge at each step.
+
+Three consequences matter downstream:
+
+**Encoding is greedy and order-dependent, so it is not compositional.** The tokens for
+`"foo"` need not be a prefix of the tokens for `"foobar"`, because a merge that spans the
+boundary can fire in the longer string and not the shorter one. This is exactly why
+Chapter 7's detokenizer cannot decode one token at a time and concatenate, and why the
+`--skip-tokenizer-init` path exists for callers that manage ids themselves.
+
+**Byte-level BPE has no out-of-vocabulary case.** GPT-2 and its descendants start from the
+256 possible bytes, so any byte string is encodable. The price is that a single token can be
+*part of* a UTF-8 sequence rather than a whole character, which is the direct cause of the
+partial-codepoint problem Chapter 7 spends a section on, and the reason Chapter 19's grammar
+engine works over *bytes* rather than characters.
+
+**One token is roughly four characters of English, and much less of anything else.** Every
+token budget in Chapter 5, every KV-cache calculation in Chapter 1, and every context-length
+limit is denominated in this unit — which is a property of the corpus the tokenizer was
+trained on, not of the text being served. The same prompt in Thai or in JSON can cost several
+times what it costs in English prose.
+
+The tokenizer itself is not SGLang's code; it is HuggingFace's `tokenizers`, a Rust library
+behind a Python wrapper. What SGLang adds is the concurrency wrapper: at high request rates
+the per-call overhead of crossing into Rust dominates, so `AsyncDynamicbatchTokenizer` in
+`python/sglang/srt/managers/async_dynamic_batch_tokenizer.py` collects requests arriving
+within a short window and encodes them in one batched call, where the Rust side can use its
+own thread pool.
+
 ---
 
 ## Validation as a stability boundary

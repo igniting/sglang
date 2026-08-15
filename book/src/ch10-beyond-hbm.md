@@ -48,6 +48,60 @@ short ones**, because transfer cost is linear in tokens while prefill has fixed 
 and better hardware utilization. Every policy in this chapter is an approximation of that
 threshold.
 
+### The hierarchy, with numbers
+
+Caching is only interesting when the levels differ by orders of magnitude, and here they do.
+Approximate figures for a current server node:
+
+| Tier | Capacity | Bandwidth | Latency to first byte |
+| --- | --- | --- | --- |
+| SRAM / registers | ~50 MB | ~20 TB/s | ~1 ns |
+| HBM3 (GPU) | 80–192 GB | 3–8 TB/s | ~500 ns |
+| Host DRAM over PCIe 5 | 1–2 TB | ~50 GB/s | ~2 µs |
+| NVMe SSD | 10–100 TB | 2–14 GB/s | ~50 µs |
+| Object store / network | unbounded | 1–25 GB/s | ~1 ms |
+
+Each step down is roughly an order of magnitude more capacity and an order of magnitude less
+bandwidth. That is precisely the shape that makes a cache hierarchy worth building — and it
+is the same shape that made FlashAttention worth writing, one level up, between SRAM and
+HBM. Chapter 13 is this chapter's argument applied to the top two rows.
+
+Write the crossover down properly. Let *n* be the prefix length, *b* the bytes of KV per
+token, *B* the tier's bandwidth, and `P(n)` the time to prefill *n* tokens. Fetching is
+worthwhile when
+
+```
+n × b / B  <  P(n)
+```
+
+Prefill time is close to linear in *n* once past the roofline's ridge point (Chapter 1), so
+both sides scale the same way and the comparison reduces to a ratio of rates: the tier's
+bandwidth against the model's prefill throughput measured in bytes of KV produced per second.
+For a 70B model at ~320 KB per token, host DRAM at 50 GB/s supplies about 160k tokens/s of
+KV — comfortably faster than the model can generate it, so host tier hits are almost always
+worth taking. NVMe at 5 GB/s supplies ~16k tokens/s, which is competitive only for large
+models and long prefixes. A remote store at 1 GB/s usually is not, unless the model is very
+large or the alternative is a cold prefill of tens of thousands of tokens.
+
+Two corrections make the real decision less favourable than that arithmetic suggests.
+
+**Fixed costs dominate at small *n*.** Every fetch pays for a lookup, an allocation, a
+transfer setup, and a synchronization. Below a few hundred tokens these swamp the transfer
+itself, which is why every tier in this chapter carries a minimum-size threshold rather than
+fetching whatever it finds.
+
+**Bandwidth is shared, and the thing it is shared with is the model.** PCIe is also carrying
+weight updates, multimodal inputs, and logits; on a disaggregated deployment (Chapter 17) it
+is carrying whole KV caches between machines. A fetch that is free in isolation may not be
+free at load.
+
+The mitigation for both is the same and it is the reason this chapter's write-back is
+asynchronous: if the transfer overlaps with compute the engine would be doing anyway, its
+cost is hidden exactly as Chapter 4's scheduling overhead is hidden. A prefetch issued when a
+request is admitted, landing before its prefill is scheduled, costs nothing at all. A fetch
+issued synchronously at the moment of need costs its full latency. Most of the engineering
+in `HiRadixCache` is about staying in the first case.
+
 ---
 
 ## A radix tree with tiers

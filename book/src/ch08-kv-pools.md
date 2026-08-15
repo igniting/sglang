@@ -91,6 +91,65 @@ slots for the requests that lack one."
 
 ---
 
+## What paging is borrowed from, and what it fixes
+
+Before reading the allocator, it is worth being precise about what problem paging solves,
+because the naming is a deliberate analogy and the analogy is load-bearing.
+
+The pre-2023 approach was to give each request a contiguous KV buffer sized to the maximum
+it might reach. Kwon et al.'s vLLM paper (SOSP '23) measured what that costs and split the
+waste into three kinds:
+
+**Internal fragmentation.** A request allocated for 2,048 tokens that generates 100 wastes
+the other 1,948 slots for its entire lifetime. Nobody knows the output length in advance
+(Chapter 5's central difficulty), so the reservation is always sized for the worst case.
+
+**Reservation waste.** Slots that the request *will* eventually use are unusable by anyone
+else *now*. Even a perfectly-sized allocation holds memory for a future that has not arrived.
+
+**External fragmentation.** Different requests reserve different sizes, so freed regions
+leave holes that no subsequent request quite fits. Classic malloc pathology.
+
+Together these left, in their measurements, only **20.4% to 38.2%** of KV memory holding
+actual token state. Between three-fifths and four-fifths of the scarcest resource in the
+system, doing nothing. Since Chapter 1 established that KV capacity is the direct limiter on
+batch size and therefore on throughput, this is not a memory-efficiency footnote — it is
+most of the available performance.
+
+The fix is the one operating systems reached in the 1960s. Stop giving a process a
+contiguous physical region; give it a contiguous *virtual* address space and a page table
+mapping each virtual page to any physical frame. The correspondence is exact:
+
+| Operating system | KV cache |
+| --- | --- |
+| Process | Request |
+| Page | Block of *n* consecutive tokens' KV |
+| Page table | `req_to_token` row |
+| Physical frame | Slot in the flat `k_buffer` / `v_buffer` |
+| Page fault → allocate | `alloc()` on demand as the sequence grows |
+| `fork()` + copy-on-write | Prefix sharing, Chapter 9 |
+
+Each of the three wastes disappears for the same reason it does in an OS. External
+fragmentation cannot occur, because every page is the same size and therefore
+interchangeable. Reservation waste cannot occur, because pages are allocated as the sequence
+actually grows rather than in advance. Internal fragmentation is bounded to *at most one
+partially-filled page per request* — a few tokens, not a few thousand.
+
+What it costs is indirection: every KV access now needs a table lookup, and every attention
+kernel has to be rewritten to do that lookup itself. That rewrite is what the phrase "paged
+attention" names, and it is why Chapter 13's kernels take page tables as arguments.
+
+The remaining design freedom is the page size, and it is the same tension an OS faces.
+Larger pages mean fewer table entries, fewer lookups, and better locality inside a page;
+smaller pages mean less internal fragmentation and finer-grained sharing. SGLang's default
+of one token per page — page size 1 — is the extreme end: zero internal fragmentation and
+maximally precise prefix sharing, paid for with the largest possible page table. Larger
+sizes exist for backends whose kernels want them, and `PAGE_SIZE` being a compile-time
+constant in the Triton kernels (Chapter 13) means the page arithmetic vanishes entirely when
+it is 1.
+
+---
+
 ## Pages and the allocator's job
 
 Level two is where paging lives.

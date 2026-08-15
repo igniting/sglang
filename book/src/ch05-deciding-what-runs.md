@@ -23,6 +23,48 @@ scheduling and memory that recurs throughout the book.
 
 ---
 
+## Where continuous batching came from
+
+The idea has a specific origin, and knowing it makes the code legible.
+
+Before 2022, serving systems batched at the granularity of a *request*. A batch of eight
+requests entered the model together and left together; the batch was occupied until its
+slowest member finished. This is **request-level scheduling**, and it wastes almost
+everything. A request generating 20 tokens sits in a slot for the 500 steps its neighbour
+needs, contributing nothing, while newly arrived requests wait outside for a slot to open.
+
+Yu et al.'s Orca (OSDI '22) replaced it with **iteration-level scheduling**: return control
+to the scheduler after *every* forward pass, not every request. A request that finished is
+removed immediately; a request that just arrived joins on the very next iteration. Slot
+occupancy stops depending on the unlucky neighbour. The reported effect was large — on the
+order of 36× the throughput of FasterTransformer at the same latency — and every serving
+engine built since, SGLang included, is an iteration-level scheduler. Chapter 4's loop *is*
+that idea: one iteration, one scheduling decision, forever.
+
+Orca's second contribution is subtler and shows up in Chapter 6 rather than here.
+Iteration-level scheduling puts requests of *different lengths* in one batch, and not every
+operator tolerates that. The linear layers do: rows are independent, so you can stack a
+prefill's 2,000 rows and a decode's single rows into one matrix and the GEMM neither knows
+nor cares. Attention does not: each sequence attends over its own KV of its own length, so
+there is no rectangular tensor to form. Orca's answer was **selective batching** — batch the
+operators that can be batched, and split attention out to run per sequence.
+
+Modern engines inherit the split but not the implementation. SGLang keeps the batched linear
+layers and hands attention a *ragged* representation — a flat token buffer plus offsets —
+which the kernels of Chapter 13 consume directly. The concatenated `input_ids` and the
+`extend_seq_lens` array that Chapter 6 describes are exactly this: one tensor for the parts
+that batch, and a length directory for the part that does not.
+
+What Orca did not solve is the resource question. It scheduled per iteration but still
+reserved KV memory per request against the maximum length, which vLLM's PagedAttention
+(Chapter 8) later showed was wasting 60–80% of the cache. And it had no answer for a long
+prefill blocking a batch of decodes, which Sarathi-Serve (Chapter 5, below) addressed with
+chunking. The scheduler in this chapter is the composition of all three ideas: iteration
+granularity from Orca, paged accounting from vLLM, chunked admission from Sarathi — plus
+prefix-aware ordering, which is SGLang's own.
+
+---
+
 ## Where the decision lives
 
 `python/sglang/srt/managers/scheduler.py:3012` `get_next_batch_to_run` is the entry point
@@ -259,6 +301,30 @@ consecutively. LPM optimizes each request in isolation; DFS-weight optimizes the
 keeping a shared prefix hot and locked for the whole group rather than letting it be
 evicted between two requests that both needed it.
 
+That is not a heuristic hope; it is the one place in this system with a clean optimality
+result. The SGLang paper proves that for a batch of requests whose prefixes form a tree,
+**visiting the tree in depth-first order achieves the optimal cache hit rate**, given cache
+capacity at least as large as the longest request. The argument is short once stated: a
+node's KV is computed the first time any request needs it and must survive until the last
+request that needs it. DFS visits every node's entire subtree contiguously, so the interval
+between first and last use of a node is as short as it can be, and a node is never
+recomputed. Any order that interleaves two subtrees stretches at least one such interval,
+and under finite capacity a stretched interval is where an eviction becomes possible.
+
+The paper's second observation is what makes this implementable: **sorting by longest shared
+prefix is equivalent to a depth-first traversal order.** Sorting requests by their matched
+prefix length — cheap, local, no tree walk required — produces the same visiting order that
+the optimal DFS would. So LPM is not an approximation of DFS-weight; on a static batch they
+agree.
+
+They come apart on a *streaming* queue, which is what a server actually has. LPM re-sorts
+whatever happens to be waiting right now, so a group sharing a subtree can be split by a
+request that arrives between them. DFS-weight carries the tree's structure into the ordering
+explicitly, keeping a group together across the gap. In the paper's evaluation the whole
+cache-aware scheduler lands within about 96% of the optimal hit rate that an oracle with
+perfect knowledge would achieve — close enough that the remaining gap is rarely where the
+next improvement is.
+
 `:296` `_validate_and_adjust_policy` can downgrade a cache-aware policy when the tree is
 disabled or the queue is too long to bother matching — the sort itself has a cost, and at
 sufficient queue depth it stops paying for itself.
@@ -288,7 +354,51 @@ chunked request from the merge; `:2922` `stash_chunked_request` parks it between
 The trade is exactly the one Chapter 1 described: TTFT for the long request gets worse,
 ITL for everyone else gets better. Nothing is created; latency is moved between customers.
 
-Chapter 17's disaggregation is the alternative answer — instead of interleaving prefill and
+### Why chunking is nearly free, and how to size a chunk
+
+Chunking a prefill sounds expensive — you are running the same prompt through the model in
+several passes instead of one. The reason it is not is Chapter 1's roofline, applied twice.
+
+Agrawal et al.'s Sarathi (2023) makes the argument in two parts. First, a prefill is
+compute-bound long before it is complete: past a few hundred token rows the GEMMs are on the
+flat part of the roofline, so a 2,048-row chunk achieves essentially the same FLOP/s as a
+16,384-row one. Splitting a long prefill into chunks of that size costs almost nothing in
+prefill efficiency.
+
+Second — and this is the part that makes it a win rather than a wash — the chunk boundary is
+an opportunity. A batch containing one prefill chunk plus every waiting decode row is a
+single forward pass in which the weights are read *once* and serve both. The decode rows
+ride along on traffic the prefill was paying for anyway. Sarathi calls the resulting policy
+**stall-free batching**: never construct a batch that contains only a prefill, because doing
+so stalls every decoding request for the duration.
+
+The measured effect in the paper is the arithmetic-intensity argument made visible — decode
+time per token falling from 12.5 ms to 1.2 ms for Llama-13B on an A6000, because those
+decode rows stopped being their own memory-bound forward pass and became extra rows in
+somebody else's compute-bound one.
+
+What chunking genuinely costs is attention. Chunk *k* must attend over the KV of chunks 1
+through *k−1*, which means re-reading a prefix that grows with each chunk. Total KV traffic
+for the prefill becomes quadratic in the number of chunks rather than linear. For ordinary
+prompt lengths this is a small fraction of a forward pass; for very long contexts it is the
+term that eventually argues for disaggregation instead.
+
+That tension sets the chunk size. Too small and prefill efficiency drops while the re-read
+overhead climbs; too large and decodes wait behind it, which was the problem being solved.
+Sarathi adds a hardware constraint on top: GPU GEMMs are tiled, so a chunk that is not a
+multiple of the tile dimension pays for a partially-empty tile. The practical answer is a
+power-of-two chunk in the low thousands of tokens, which is what
+`python/sglang/srt/managers/scheduler.py:1153` `init_chunked_prefill` arrives at, and what
+`--chunked-prefill-size` overrides.
+
+There is a real disagreement in the literature here, and it is worth knowing about because
+it is the same argument Chapter 17 resumes. DistServe's authors argue the opposite of
+Sarathi's conclusion: that chunking mitigates the interference between prefill and decode
+without removing it, that the re-read overhead grows quadratically with context length, and
+that the two phases should simply run on different machines. Both are right about different
+deployments. SGLang implements both and lets the operator choose.
+
+Chapter 17's disaggregation is that alternative answer — instead of interleaving prefill and
 decode on one GPU, run them on different machines entirely.
 
 ---

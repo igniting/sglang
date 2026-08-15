@@ -37,6 +37,82 @@ defining a method.
 
 ---
 
+## The block, before the code
+
+The file we are about to read assumes you know what a modern decoder block contains. It is
+four ideas, each of
+which replaced something simpler for a reason worth knowing, because each reason shows up
+later as a constraint on the engine.
+
+**RMSNorm instead of LayerNorm.** LayerNorm subtracts the mean and divides by the standard
+deviation. Zhang and Sennrich (2019) observed that the re-centering does almost nothing for
+transformers and dropped it:
+
+```
+RMSNorm(x) = x / sqrt(mean(x²) + ε) × g
+```
+
+One reduction instead of two, no mean, no bias. For the engine this matters twice: it is one
+of the three kernels Chapter 7's determinism work has to make batch-invariant, and being a
+single reduction is what makes it cheap enough to fuse with the residual add and the
+downstream quantization, as this chapter's `LlamaDecoderLayer` does.
+
+**SwiGLU instead of a plain MLP.** The classic feed-forward block is
+`W₂ · act(W₁x)`. A gated linear unit splits the first projection in two and uses one half to
+gate the other. With SiLU as the activation (Shazeer, 2020):
+
+```
+SwiGLU(x) = W_down · ( SiLU(W_gate · x)  ⊙  (W_up · x) )
+```
+
+Three matrices instead of two, so the hidden dimension is usually scaled by 2/3 to keep the
+parameter count level. The engine cares because `W_gate` and `W_up` read the *same* input and
+have the *same* shape — which is exactly the condition for fusing them into one GEMM, and the
+reason `gate_up_proj` exists below.
+
+**RoPE instead of learned position embeddings.** Rather than adding a position vector to the
+input, rotary embeddings (Su et al., 2021) *rotate* each pair of dimensions in Q and K by an
+angle proportional to the token's position. For position *m* and dimension pair *i* with
+frequency `θ_i = base^(−2i/d)`:
+
+```
+q̃_m = R(mθ) q_m ,   k̃_n = R(nθ) k_n
+```
+
+Because rotations compose, the inner product `q̃_m · k̃_n` depends on `m − n` and not on *m*
+and *n* separately. Absolute positions go in; relative position comes out of the dot product
+for free. Three engine consequences follow. RoPE is applied to Q and K *after* projection and
+*before* the cache write, so cached keys are already rotated and a KV entry is valid at
+whatever position it was written at — which is what makes Chapter 9's prefix sharing sound.
+Context extension becomes a matter of rescaling `θ` rather than retraining, which is why
+`rope_scaling` is a config key that the loader has to handle several dialects of. And
+Chapter 12's MLA has to work around RoPE specifically, because a rotation cannot be commuted
+through a low-rank compression.
+
+**GQA instead of MHA.** Chapter 1 showed that KV cache size is the direct limiter on batch
+size, and standard multi-head attention stores one K and one V per query head. Shazeer's
+multi-query attention (2019) cut that to a single shared KV head — a 64× reduction for a
+64-head model — but degraded quality and destabilized training. Ainslie et al. (2023)
+interpolated: divide the query heads into *G* groups and give each group one KV head.
+
+```
+G = H     →  multi-head attention (full cache)
+1 < G < H →  grouped-query attention
+G = 1     →  multi-query attention (smallest cache)
+```
+
+Their T5-XXL numbers make the case: MHA at 47.2 ROUGE-1 and 1.51 s per inference step, MQA at
+46.6 and 0.28 s, GQA-8 at 47.1 and 0.28 s — MHA's quality at MQA's speed. They also showed
+you do not need to train from scratch to get it: mean-pool an existing checkpoint's KV
+projections down to *G* heads and continue training for about 5% of the original compute.
+
+Llama-3-70B is GQA with 64 query heads and 8 KV heads, so its KV cache is one eighth of what
+MHA would need — the difference between Chapter 1's 320 KB per token and 2.5 MB. The cost
+appears in this chapter's constructor, where the head counts no longer divide evenly by the
+tensor-parallel size.
+
+---
+
 ## A full read of llama.py
 
 ### `LlamaMLP` (`python/sglang/srt/models/llama.py:70`)
