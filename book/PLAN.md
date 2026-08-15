@@ -28,8 +28,17 @@ identically offline and on first paint. Warm off-white paper in light mode, desa
 blue-black in dark. Measure held near 72 characters. Inline code carries colour but no
 background box.
 
-Palette selectors must use mdBook's own theme classes (`.light`/`.rust`, `.navy`/`.coal`/`.ayu`).
-An earlier `html:not(.dark)` outranked `.navy` and silently disabled dark mode.
+Two mdBook facts this file has to respect, both learned the hard way:
+
+- **`:root { font-size: 62.5% }`** — mdBook makes 1rem = 10px, and `:root` outranks a
+  plain `html { font-size: 100% }` override. Sizes written for a 16px base render at
+  62.5% of intention; the first pass shipped 11px body text in a 400px column. Every rem
+  here is px ÷ 10.
+- **Theme classes** — palette selectors must be `.light`/`.rust` and `.navy`/`.coal`/`.ayu`.
+  An earlier `html:not(.dark)` outranked `.navy` and silently disabled dark mode.
+
+Verify with a headless measurement, not by eye: body should compute to 19px, the column to
+700px, ~70 characters per line.
 
 ## Diagrams
 

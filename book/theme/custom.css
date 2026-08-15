@@ -1,5 +1,11 @@
 /* ==========================================================================
    SGLang Internals — typography and palette
+
+   IMPORTANT: mdBook sets `:root { font-size: 62.5% }`, so 1rem = 10px, not
+   16px. That selector outranks a plain `html { font-size: ... }` override, and
+   the rest of mdBook's layout (sidebar width, paddings, breakpoints) is built
+   on that base. So this file works in the 10px base rather than fighting it:
+   every rem below is px ÷ 10.
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -23,9 +29,9 @@
   --bk-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", "Fira Code",
              ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
 
-  --bk-measure: 40rem;      /* ~72 characters at the body size */
-  --bk-body-size: 1.05rem;
-  --bk-leading: 1.72;
+  --bk-body-size: 1.9rem;   /* 19px — long-form reading size, not UI size */
+  --bk-measure: 70rem;      /* 700px ≈ 70 characters at 19px serif */
+  --bk-leading: 1.7;
 }
 
 /* --------------------------------------------------------------------------
@@ -35,12 +41,15 @@
    sessions, and it lets code blocks sit slightly darker without a border.
    Dark is a desaturated blue-black, not neutral grey, which keeps syntax
    colour from looking muddy against it.
+
+   Selectors must be mdBook's own theme classes. An earlier `html:not(.dark)`
+   outranked `.navy` and silently disabled dark mode.
    -------------------------------------------------------------------------- */
 
 .light,
 .rust {
   --bg: #faf8f5;
-  --fg: #23201c;
+  --fg: #211e1a;
   --sidebar-bg: #f2ede6;
   --sidebar-fg: #3d3830;
   --sidebar-non-existant: #a8a096;
@@ -77,7 +86,7 @@
   --search-mark-bg: #e8c48a;
 
   --bk-rule: #e2dacd;
-  --bk-muted: #6f665b;
+  --bk-muted: #6b6257;
   --bk-code-bg: #f4efe7;
   --bk-callout-bg: #f3ede2;
 }
@@ -86,7 +95,7 @@
 .coal,
 .ayu {
   --bg: #16181d;
-  --fg: #d6d3cd;
+  --fg: #dad7d1;
   --sidebar-bg: #1b1e24;
   --sidebar-fg: #b3afa8;
   --sidebar-non-existant: #5e6068;
@@ -123,7 +132,7 @@
   --search-mark-bg: #6b5424;
 
   --bk-rule: #2b2f38;
-  --bk-muted: #93979f;
+  --bk-muted: #9aa0a8;
   --bk-code-bg: #1b1e24;
   --bk-callout-bg: #1c2027;
 }
@@ -132,34 +141,31 @@
    Body text
    -------------------------------------------------------------------------- */
 
-html {
+body {
   font-family: var(--bk-serif);
-  font-size: 100%;
 }
 
 .content {
   font-family: var(--bk-serif);
   font-size: var(--bk-body-size);
   line-height: var(--bk-leading);
-  hanging-punctuation: first last;
 }
 
 .content main {
   max-width: var(--bk-measure);
   margin: 0 auto;
-  padding-bottom: 5rem;
+  padding-bottom: 6rem;
 }
 
 .content p {
-  margin: 0 0 1.15em;
+  margin: 0 0 1.1em;
   text-wrap: pretty;
 }
 
 /* Opening paragraph of a chapter carries slightly more weight, so the eye
    lands somewhere deliberate. */
 .content h1 + p {
-  font-size: 1.1em;
-  color: var(--fg);
+  font-size: 1.08em;
 }
 
 /* --------------------------------------------------------------------------
@@ -179,31 +185,37 @@ html {
 }
 
 .content h1 {
-  font-size: 2.05em;
-  margin: 0 0 1.1rem;
-  padding-bottom: 0.5rem;
+  font-size: 2.1em;
+  margin: 0 0 1.4rem;
   letter-spacing: -0.022em;
 }
 
 .content h2 {
-  font-size: 1.42em;
-  margin: 2.9rem 0 0.9rem;
-  padding-top: 1.4rem;
+  font-size: 1.4em;
+  margin: 4rem 0 1.2rem;
+  padding-top: 2rem;
   border-top: 1px solid var(--bk-rule);
 }
 
 .content h3 {
-  font-size: 1.13em;
-  margin: 2rem 0 0.7rem;
+  font-size: 1.14em;
+  margin: 2.8rem 0 1rem;
 }
 
 .content h4 {
-  font-size: 1em;
-  margin: 1.5rem 0 0.5rem;
+  font-family: var(--bk-sans);
+  font-size: 0.82em;
+  margin: 2.2rem 0 0.8rem;
   color: var(--bk-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 0.82em;
+}
+
+/* A markdown rule followed by a section heading would draw two lines. */
+.content hr + h2 {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
 }
 
 /* --------------------------------------------------------------------------
@@ -213,11 +225,11 @@ html {
 .content h1 + blockquote {
   border: none;
   background: none;
-  margin: 0 0 2.2rem;
-  padding: 0 0 0 1.1rem;
+  margin: 0 0 3rem;
+  padding: 0 0 0 1.6rem;
   border-left: 3px solid var(--links);
   color: var(--bk-muted);
-  font-size: 1.06em;
+  font-size: 1.05em;
 }
 
 .content h1 + blockquote p {
@@ -234,8 +246,8 @@ html {
   border-top: none;
   border-bottom: none;
   border-right: none;
-  margin: 1.5rem 0;
-  padding: 0.9rem 1.2rem;
+  margin: 2.2rem 0;
+  padding: 1.4rem 1.8rem;
   font-size: 0.97em;
 }
 
@@ -254,15 +266,12 @@ html {
   font-variant-ligatures: none;
 }
 
-.content code {
-  font-size: 0.855em;
-}
-
 /* Inline code: no background box. At this density the boxes stripe the page
    and fight the prose. Colour alone is enough to mark an identifier. */
 .content :not(pre) > code {
   background: none;
   padding: 0;
+  font-size: 0.88em;
   color: var(--inline-code-color);
   white-space: nowrap;
 }
@@ -283,15 +292,15 @@ html {
 .content pre {
   background: var(--bk-code-bg) !important;
   border: 1px solid var(--bk-rule);
-  border-radius: 5px;
-  padding: 0.9rem 1.05rem;
-  margin: 1.4rem 0;
+  border-radius: 6px;
+  padding: 1.6rem 1.8rem;
+  margin: 2.2rem 0;
   line-height: 1.55;
   overflow-x: auto;
 }
 
 .content pre code {
-  font-size: 0.83em;
+  font-size: 1.5rem;         /* 15px — legible without crowding the measure */
   white-space: pre;
   background: none !important;
   padding: 0;
@@ -304,9 +313,9 @@ html {
 
 .content table {
   font-family: var(--bk-sans);
-  font-size: 0.87em;
+  font-size: 1.55rem;
   border-collapse: collapse;
-  margin: 1.6rem 0;
+  margin: 2.4rem 0;
   width: 100%;
   display: block;
   overflow-x: auto;
@@ -320,7 +329,7 @@ html {
 
 .content table td,
 .content table th {
-  padding: 0.5rem 0.75rem;
+  padding: 0.8rem 1.2rem;
   border: none;
   border-bottom: 1px solid var(--bk-rule);
 }
@@ -335,11 +344,11 @@ html {
 
 .content ul,
 .content ol {
-  padding-left: 1.35rem;
+  padding-left: 2.2rem;
 }
 
 .content li {
-  margin-bottom: 0.45em;
+  margin-bottom: 0.5em;
 }
 
 .content li > p {
@@ -353,14 +362,7 @@ html {
 .content hr {
   border: none;
   border-top: 1px solid var(--bk-rule);
-  margin: 2.6rem 0;
-}
-
-/* A markdown rule followed by a section heading would draw two lines. */
-.content hr + h2 {
-  border-top: none;
-  margin-top: 0;
-  padding-top: 0;
+  margin: 3.6rem 0;
 }
 
 /* --------------------------------------------------------------------------
@@ -368,7 +370,7 @@ html {
    -------------------------------------------------------------------------- */
 
 .content figure {
-  margin: 2rem 0;
+  margin: 3rem 0;
   text-align: center;
 }
 
@@ -379,9 +381,9 @@ html {
 
 .content figcaption {
   font-family: var(--bk-sans);
-  font-size: 0.8em;
+  font-size: 1.45rem;
   color: var(--bk-muted);
-  margin-top: 0.8rem;
+  margin-top: 1.2rem;
   text-align: center;
   line-height: 1.5;
 }
@@ -455,26 +457,26 @@ html {
 
 .sidebar {
   font-family: var(--bk-sans);
-  font-size: 0.845rem;
+  font-size: 1.45rem;
 }
 
 .sidebar .sidebar-scrollbox {
-  padding: 1.2rem 1rem;
+  padding: 1.8rem 1.6rem;
 }
 
 .chapter li.chapter-item {
-  line-height: 1.42;
-  margin: 0.45rem 0;
+  line-height: 1.45;
+  margin: 0.7rem 0;
 }
 
 .chapter li.part-title {
   font-family: var(--bk-sans);
-  font-size: 0.72rem;
+  font-size: 1.2rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.09em;
   color: var(--bk-muted);
-  margin: 1.8rem 0 0.55rem;
+  margin: 2.6rem 0 0.9rem;
 }
 
 .chapter li.chapter-item a.active {
@@ -488,18 +490,19 @@ html {
 .menu-title {
   font-family: var(--bk-sans);
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 1.6rem;
   letter-spacing: -0.01em;
 }
 
-.nav-chapters {
-  font-family: var(--bk-sans);
-}
-
+.nav-chapters,
 #searchbar,
 .searchresults-header,
 .searchresult {
   font-family: var(--bk-sans);
+}
+
+#searchresults {
+  font-size: 1.5rem;
 }
 
 /* --------------------------------------------------------------------------
@@ -517,14 +520,29 @@ html {
 
 /* --------------------------------------------------------------------------
    Narrow screens
+
+   Below the sidebar breakpoint the column is the viewport, so the measure is
+   set by padding rather than max-width, and the type steps down a little.
    -------------------------------------------------------------------------- */
 
 @media only screen and (max-width: 1080px) {
   :root {
-    --bk-body-size: 1rem;
+    --bk-body-size: 1.8rem;
   }
   .content main {
-    padding-left: 1.1rem;
-    padding-right: 1.1rem;
+    padding-left: 1.8rem;
+    padding-right: 1.8rem;
+  }
+}
+
+@media only screen and (max-width: 700px) {
+  :root {
+    --bk-body-size: 1.72rem;
+  }
+  .content pre {
+    padding: 1.2rem 1.3rem;
+  }
+  .content pre code {
+    font-size: 1.35rem;
   }
 }
