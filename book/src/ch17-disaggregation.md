@@ -9,12 +9,6 @@ conflict without removing it.
 
 This chapter is about giving up on the negotiation.
 
-Look at what each phase actually wants and every row conflicts: prefill is compute-bound and
-wants large batches; decode is bandwidth-bound and wants many concurrent sequences and a
-huge cache. Prefill is measured on time-to-first-token, decode on the gap between tokens.
-They even want different parallelism layouts. On one machine you must pick a middle setting
-for each and be mediocre at both.
-
 Disaggregation refuses the compromise: separate fleets of prefill and decode instances, each
 configured for its own job, with the KV cache shipped between them over the network. The
 cost is that the shipping is now on the critical path — a 4,000-token prefill produces over

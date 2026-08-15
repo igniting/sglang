@@ -112,6 +112,14 @@ irregular control flow into an index table, trading memory for compute, hiding o
 resource's latency behind another's work. When you notice a repeat, that is the book
 working.
 
+**The theory comes before the code, not instead of it.** Most chapters open by deriving the
+algorithm the code implements — the roofline model, online softmax, the rejection-sampling
+proof, Megatron's column-then-row split — from the papers that introduced them, and then
+show what that derivation looks like as a Python file. The intent is that you can tell the
+difference between a design decision and an implementation detail, which is the difference
+between reading a codebase and understanding one. Appendix F lists every source, chapter by
+chapter.
+
 ## A note on what is not here
 
 Code references are pinned to one commit of SGLang, `7562e74` (August 2026). The project

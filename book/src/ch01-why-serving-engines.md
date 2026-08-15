@@ -116,6 +116,40 @@ in the direction you would expect — an FP8 weight halves *s* but roughly doubl
 Hopper, so `B*` lands in the same neighbourhood — and it moves with the hardware, which is
 why the engine measures rather than assumes.
 
+<figure>
+<svg viewBox="0 0 700 348" role="img" aria-label="A log-log roofline plot showing decode far to the left of the ridge point and prefill at the compute ceiling">
+<title>The roofline, and where decode sits on it</title>
+<text class="dgm-label" x="376" y="22" text-anchor="middle" font-weight="600" style="font-size:12.5px">H100 SXM, BF16 — attainable performance vs arithmetic intensity</text>
+<path class="dgm-line" d="M96 44 L96 244 L664 244"/>
+<text class="dgm-small" x="88" y="248" text-anchor="end" style="font-size:10.5px">1</text>
+<text class="dgm-small" x="88" y="184.0" text-anchor="end" style="font-size:10.5px">10</text>
+<text class="dgm-small" x="88" y="120.0" text-anchor="end" style="font-size:10.5px">100</text>
+<text class="dgm-small" x="88" y="56.0" text-anchor="end" style="font-size:10.5px">1000</text>
+<text class="dgm-small" x="38" y="150" text-anchor="middle" style="font-size:11px">TFLOP/s</text>
+<text class="dgm-small" x="96" y="264" text-anchor="middle" style="font-size:10.5px">1</text>
+<text class="dgm-small" x="236.0" y="264" text-anchor="middle" style="font-size:10.5px">10</text>
+<text class="dgm-small" x="376.0" y="264" text-anchor="middle" style="font-size:10.5px">100</text>
+<text class="dgm-small" x="516.0" y="264" text-anchor="middle" style="font-size:10.5px">1000</text>
+<text class="dgm-small" x="656" y="264" text-anchor="middle" style="font-size:10.5px">10⁴</text>
+<text class="dgm-small" x="376.0" y="284" text-anchor="middle" style="font-size:11px">arithmetic intensity — FLOP per byte</text>
+<path class="dgm-line-accent" d="M96.0 210.4 L441.9 52.3 L656.0 52.3"/>
+<text class="dgm-small" x="124.6" y="224.7" text-anchor="start" style="font-size:11px">memory-bound</text>
+<text class="dgm-small" x="124.6" y="233.7" text-anchor="start" style="font-size:11px">slope = 3.35 TB/s</text>
+<text class="dgm-small" x="536.5" y="40.3" text-anchor="middle" style="font-size:11px">compute-bound — 990 TFLOP/s</text>
+<path class="dgm-dash" d="M441.9 244 L441.9 52.3"/>
+<text class="dgm-small" x="450.9" y="236" text-anchor="start" font-weight="600" style="font-size:11px">I* = 296</text>
+<circle class="dgm-fill-accent" cx="138.1" cy="191.1" r="4.5"/>
+<text class="dgm-small" x="148.1" y="195.1" text-anchor="start" style="font-size:11px">decode, batch 1</text>
+<circle class="dgm-fill-accent" cx="348.9" cy="94.8" r="4.5"/>
+<text class="dgm-small" x="358.9" y="98.8" text-anchor="start" style="font-size:11px">decode, batch 64</text>
+<circle class="dgm-fill-accent" cx="558.1" cy="52.3" r="4.5"/>
+<text class="dgm-small" x="558.1" y="70.3" text-anchor="middle" style="font-size:11px">prefill</text>
+<text class="dgm-small" x="350.0" y="318" text-anchor="middle" style="font-size:11.5px">Batching moves a workload right along the slope. The whole point is to reach the corner.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
+</svg>
+<figcaption>Arithmetic intensity for a weight-bound GEMM is <code>2B/s</code> — batch size over element width, and nothing else. Everything the scheduler does is an attempt to move right.</figcaption>
+</figure>
+
 So "batch more" has a target: **a few hundred token rows per forward pass**. Below it the
 GPU is a very expensive memory controller. That target is the reason chunked prefill
 (Chapter 5) mixes prefill chunks with decode rows rather than running them separately, the

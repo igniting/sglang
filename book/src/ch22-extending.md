@@ -24,11 +24,6 @@ architecture description.
 
 ---
 
-Every chapter has pointed at a place where something plugs in. This chapter collects them,
-in rough order of how often people need them.
-
----
-
 ## Adding a model
 
 The most common contribution, and the shortest checklist — because Chapter 12 established
@@ -172,15 +167,100 @@ different accelerator model. **TPU** went a different route entirely, as a separ
 
 ---
 
+## The same pattern, five times
+
+Reading those four checklists in a row, a shape emerges that is worth naming, because once
+you see it the fifth extension point is predictable rather than novel.
+
+Every one of them is the same construction:
+
+1. **An abstract base declaring a contract** — `AttentionBackend`, `QuantizeMethodBase`,
+   `BaseGrammarBackend`, `KVCache`, `BaseTokenToKVPoolAllocator`, `BaseTpWorker`.
+2. **A registry mapping a name to an implementation** —
+   `python/sglang/srt/layers/attention/attention_registry.py`,
+   `python/sglang/kernels/registry.py`, the model registry, the platform registry.
+3. **A selector that picks one at construction time**, from configuration plus a hardware
+   probe — `select_kernel`, `_platform`, `--attention-backend`.
+4. **Capability predicates rather than identity checks** at every call site — Chapter 18's
+   `has_draft_kv` and `supports_ragged_verify` are the clearest case, but Chapter 13's
+   `init_forward_metadata_in_graph` default-no-op and Chapter 8's pool interface do the same
+   job.
+
+The fourth point is the one that carries the weight, and it is the difference between a
+codebase with plugins and a codebase that is *actually* extensible. If a call site asks
+"is this the FlashInfer backend?" then adding a backend means finding and editing every such
+site. If it asks "does this backend support graph capture?" then a new backend answers the
+question for itself and no existing code changes. Chapter 18's `SpeculativeAlgorithm` is the
+purest specimen — an enum whose members are almost never compared against, wrapped in a dozen
+predicates that are.
+
+The pattern has a cost, which the codebase pays visibly. Indirection makes control flow
+harder to follow: finding what actually runs means resolving a registry lookup at runtime
+rather than reading a call. This is why so much of this book is *addresses* — the seams are
+where the code stops being readable top-to-bottom, and a book is a reasonable place to keep
+the map.
+
+The pattern also tells you when *not* to use an extension point. If your change would need a
+new predicate on the base class, and every existing implementation would have to answer it,
+the seam is in the wrong place. That is the signal to widen the contract deliberately rather
+than to add a special case behind it.
+
+---
+
 ## How the project keeps this safe
 
 An inference engine has an unusual testing problem: the most important property — "the model
 produces correct output" — cannot be checked by unit tests. A model with a subtly wrong
 rotary embedding still produces fluent text.
 
-So the test pyramid is inverted relative to normal software. **Accuracy evaluations are the
-real safety net.** `test/lm_eval_configs/` holds the evaluation configs, and a change that
-does not move an eval score is far more trustworthy than one that passes unit tests.
+### Why "correct" is hard to define here
+
+The difficulty is not laziness about testing. It is that the usual oracle does not exist.
+
+For most software, correctness is exact: the function returns the right value or it does not.
+Here, the reference implementation is a *different* floating-point program computing the same
+mathematical function, and floating-point addition is not associative, so a correct
+reimplementation does not produce bit-identical output. It produces output that differs in the
+last few bits — and those differences amplify.
+
+They amplify in two specific ways, and knowing which one you are looking at is most of
+debugging.
+
+**Through depth.** An error introduced at layer 3 is transformed by 77 more layers. A
+relative difference of 1e-7 at the input to a layer can be 1e-3 at the output of the model,
+purely through accumulation, with nothing wrong anywhere. So a fixed tolerance on the final
+logits is nearly useless — too tight and every correct implementation fails, too loose and
+real bugs pass.
+
+**Through argmax.** Generation is a discrete decision on top of continuous values. Two tokens
+with logits differing by 1e-6 will be ordered differently by two correct implementations,
+after which the sequences diverge completely and every subsequent comparison is meaningless.
+One flipped tie makes a passing test and a failing test look identical.
+
+The three practical responses, in the order they are worth reaching for:
+
+**Compare early, not late.** `python/sglang/srt/debug_utils/comparator/` dumps activations
+layer by layer, because the *first* divergence is the only informative one. Comparing final
+output tells you that something is wrong; comparing layer 4 tells you what.
+
+**Compare distributions, not tokens.** KL divergence between the reference distribution and
+the implementation's is continuous where argmax is not — it degrades smoothly with numerical
+error instead of flipping. That is what `.claude/skills/kl-consistency-test/SKILL.md`
+measures, and its real contribution is separating the two independent conditions Chapter 7
+described: whether the operators are batch-invariant, and whether the two paths compute the
+same function at all. A non-zero KL can be either, and a test that cannot distinguish them is
+a threshold somebody tunes until it passes.
+
+**Measure the property you actually care about.** Nobody deploys a model to match a reference
+implementation bit for bit; they deploy it to answer questions correctly. An accuracy
+evaluation is immune to every problem above — it does not care about the last bits, it cares
+about the answer — at the cost of being slow, noisy at small sample sizes, and unable to
+localize a bug.
+
+Which is why the pyramid is upside down here. **Accuracy evaluations are the real safety
+net**, not the slow layer on top of a broad base of fast ones. `test/lm_eval_configs/` holds
+the evaluation configs, and a change that does not move an eval score is far more trustworthy
+than one that passes unit tests.
 
 `test/run_suite.py` is the entry point, `test/README.md` the layout, and `test/registered/`
 the registration that puts a test in CI. `python/sglang/test/` provides the harness —
@@ -217,12 +297,6 @@ If you are looking for a first contribution, in increasing order of scope:
 `docs/docs/developer_guide/contribution_guide.mdx` covers process, and
 `.claude/rules/` covers the conventions Chapter 2 introduced. Read those five rule files
 before your first patch; each one will otherwise cost you a review cycle.
-
----
-
-That is the engine. Chapter 1 argued that decode is memory-bound and that memory capacity
-limits throughput; every chapter since has been a response to one or the other. The
-appendices collect the reference material.
 
 ---
 

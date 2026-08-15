@@ -173,17 +173,36 @@ def label(x, y, s, anchor="middle", size=NOTE_SIZE, bold=False, ink=False) -> st
     cls = "dgm-label" if ink else "dgm-small"
     w = ' font-weight="600"' if bold else ""
     return (
-        f'<text class="{cls}" x="{x}" y="{y}" text-anchor="{anchor}"{w} '
+        f'<text class="{cls}" x="{round(x, 1)}" y="{round(y, 1)}" '
+        f'text-anchor="{anchor}"{w} '
         f'style="font-size:{size}px">{esc(s)}</text>'
     )
 
 
+def poly(pts, accent=False, dashed=False) -> str:
+    """An open polyline with no arrowhead — for plotted curves and axes."""
+    cls = "dgm-dash" if dashed else ("dgm-line-accent" if accent else "dgm-line")
+    d = "M" + " L".join(f"{round(x, 1)} {round(y, 1)}" for x, y in pts)
+    return f'<path class="{cls}" d="{d}"/>'
+
+
+def dot(x, y, accent=True, r=4.5) -> str:
+    cls = "dgm-fill-accent" if accent else "dgm-fill-muted"
+    return f'<circle class="{cls}" cx="{round(x, 1)}" cy="{round(y, 1)}" r="{r}"/>'
+
+
 def brace(x1, x2, y, text) -> str:
-    """A span marker under a range, with a label centred beneath it."""
+    """A span marker under a range, with a label beneath it.
+
+    The label is centred on the span but slid inward if that would push it off
+    the page — a long caption under a narrow span is the normal case.
+    """
+    half = text_width(text, NOTE_SIZE) / 2
+    lx = min(max((x1 + x2) / 2, half + 16), W - half - 16)
     return (
         f'<path class="dgm-line-accent" d="M{x1} {y - 6} L{x1} {y} '
         f'L{x2} {y} L{x2} {y - 6}"/>\n'
-        + label((x1 + x2) / 2, y + 16, text)
+        + label(lx, y + 16, text)
     )
 
 
@@ -287,6 +306,74 @@ def fig_topology():
         "parallelism only rank&nbsp;0 receives from the front end; it broadcasts "
         "to its peers so every rank sees the same batch.",
     ), errs
+
+
+# ===========================================================================
+# Chapter 1 — the roofline
+# ===========================================================================
+
+
+def fig_roofline():
+    H = 348
+    # Plot area, log-log. x: arithmetic intensity 1 … 10^4. y: 1 … 10^3 TFLOP/s.
+    X0, X1, Y0, Y1 = 96, 656, 244, 52
+    PEAK = 990.0  # TFLOP/s, BF16
+    BW = 3.35  # TFLOP/s per FLOP/byte, i.e. 3.35 TB/s
+    RIDGE = PEAK / BW
+
+    def px(i):
+        import math
+        return X0 + (X1 - X0) * math.log10(i) / 4
+
+    def py(p):
+        import math
+        return Y0 + (Y1 - Y0) * math.log10(p) / 3
+
+    parts = [
+        label(376, 22, "H100 SXM, BF16 — attainable performance vs arithmetic "
+                       "intensity", size=12.5, bold=True, ink=True),
+        # axes
+        poly([(X0, Y1 - 8), (X0, Y0), (X1 + 8, Y0)]),
+        label(X0 - 8, Y0 + 4, "1", anchor="end", size=10.5),
+        label(X0 - 8, py(10) + 4, "10", anchor="end", size=10.5),
+        label(X0 - 8, py(100) + 4, "100", anchor="end", size=10.5),
+        label(X0 - 8, py(1000) + 4, "1000", anchor="end", size=10.5),
+        label(38, 150, "TFLOP/s", anchor="middle", size=11),
+        label(X0, Y0 + 20, "1", size=10.5),
+        label(px(10), Y0 + 20, "10", size=10.5),
+        label(px(100), Y0 + 20, "100", size=10.5),
+        label(px(1000), Y0 + 20, "1000", size=10.5),
+        label(X1, Y0 + 20, "10⁴", size=10.5),
+        label((X0 + X1) / 2, Y0 + 40, "arithmetic intensity — FLOP per byte", size=11),
+        # the roof itself
+        poly([(px(1), py(BW)), (px(RIDGE), py(PEAK)), (px(10000), py(PEAK))],
+             accent=True),
+        label(px(1.6), py(2.0), "memory-bound", anchor="start", size=11),
+        label(px(1.6), py(1.45), "slope = 3.35 TB/s", anchor="start", size=11),
+        label(px(1400), py(PEAK) - 12, "compute-bound — 990 TFLOP/s", size=11),
+        # ridge point
+        poly([(px(RIDGE), Y0), (px(RIDGE), py(PEAK))], dashed=True),
+        label(px(RIDGE) + 9, Y0 - 8, "I* = 296", anchor="start", size=11,
+              bold=True),
+        # workload markers
+        dot(px(2), py(2 * BW)),
+        label(px(2) + 10, py(2 * BW) + 4, "decode, batch 1", anchor="start", size=11),
+        dot(px(64), py(64 * BW)),
+        label(px(64) + 10, py(64 * BW) + 4, "decode, batch 64", anchor="start",
+              size=11),
+        dot(px(2000), py(PEAK)),
+        label(px(2000), py(PEAK) + 18, "prefill", size=11),
+        label(W / 2, 318,
+              "Batching moves a workload right along the slope. The whole point "
+              "is to reach the corner."),
+    ]
+    return figure(H, "The roofline, and where decode sits on it",
+                  "A log-log roofline plot showing decode far to the left of the "
+                  "ridge point and prefill at the compute ceiling",
+                  parts,
+                  "Arithmetic intensity for a weight-bound GEMM is <code>2B/s</code> "
+                  "— batch size over element width, and nothing else. Everything "
+                  "the scheduler does is an attempt to move right."), []
 
 
 # ===========================================================================
@@ -530,6 +617,59 @@ def fig_pagetable():
 
 
 # ===========================================================================
+# Chapter 16 — one MoE layer across four ranks
+# ===========================================================================
+
+
+def fig_dispatch():
+    H = 388
+    ranks = []
+    xs = [20, 193, 366, 539]
+    for i, x in enumerate(xs):
+        ranks.append(Box(f"tok{i}", x, 44, 150, 56, f"rank {i}",
+                         ["its share of the batch"], line_size=10.5))
+    disp = Box("disp", 20, 122, 669, 40, "",
+               ["all-to-all dispatch — every token to the ranks holding its "
+                "top-k experts"], accent=True)
+    experts = []
+    for i, x in enumerate(xs):
+        hot = i == 2
+        experts.append(Box(f"exp{i}", x, 186, 150, 62, f"experts {i*64}–{i*64+63}",
+                           ["grouped GEMM",
+                            "hot" if hot else "ordinary load"],
+                           accent=hot, line_size=10.5))
+    comb = Box("comb", 20, 272, 669, 40, "",
+               ["all-to-all combine — partial outputs returned and weighted"],
+               accent=True)
+    boxes = ranks + [disp] + experts + [comb]
+
+    parts = []
+    for r, e in zip(ranks, experts):
+        parts.append(arrow(r.cx, r.bottom, r.cx, disp.y - 5))
+        parts.append(arrow(disp.cx if False else e.cx, disp.bottom, e.cx, e.y - 5))
+        parts.append(arrow(e.cx, e.bottom, e.cx, comb.y - 5))
+    parts += [
+        label(W / 2, 34, "one MoE layer, four ranks", size=12.5, bold=True,
+              ink=True),
+        label(W / 2, 336,
+              "Two collectives per layer, sixty layers: the cost is the count of "
+              "synchronizations,"),
+        label(W / 2, 354,
+              "not the bytes. And the slowest rank sets the step — which is what "
+              "makes one hot"),
+        label(W / 2, 372,
+              "expert everyone's problem, and why EPLB moves or replicates it."),
+    ]
+    errs = validate(boxes, H, "ch16 dispatch")
+    return figure(H, "One MoE layer across four ranks",
+                  "Tokens dispatched to expert-holding ranks and combined back, "
+                  "with one rank carrying a hot expert",
+                  [b.svg() for b in boxes] + parts,
+                  "Every token crosses the network twice per MoE layer. Expert "
+                  "parallelism turns a memory problem into a communication one."), errs
+
+
+# ===========================================================================
 # Chapter 17 — a disaggregated deployment
 # ===========================================================================
 
@@ -647,11 +787,13 @@ def fig_spec():
 # ===========================================================================
 
 FIGURES = {
+    "ch01-why-serving-engines": fig_roofline,
     "ch02-shape-of-sglang": fig_topology,
     "ch04-scheduler-loop": fig_overlap,
     "ch08-kv-pools": fig_address,
     "ch09-radixattention": fig_tree,
     "ch13-attention-backends": fig_pagetable,
+    "ch16-moe": fig_dispatch,
     "ch17-disaggregation": fig_deploy,
     "ch18-speculative-decoding": fig_spec,
 }

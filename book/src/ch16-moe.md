@@ -28,23 +28,6 @@ appeared twice in this book appears again in its clearest form.
 
 ## A different cost structure
 
-A mixture-of-experts model replaces the dense MLP with *n* expert MLPs and a router that
-sends each token to the top *k* of them. DeepSeek-V3 has 256 experts and activates 8 —
-roughly 37B active parameters out of 671B total.
-
-For inference this changes the arithmetic from Chapter 1 in a specific way. **Parameter
-count grows; active parameters per token do not.** The FLOPs per token stay near a dense
-37B model's, while memory holds 671B.
-
-Two consequences follow, and the second is the one that shapes everything here.
-
-First, MoE models need more GPUs to hold their weights — but not proportionally more
-compute. Second, and less obviously: **tokens in a batch go to different experts.** In a
-dense model every token takes the same path. In an MoE model, a batch of 256 tokens
-scatters across 256 experts, and if those experts live on different GPUs, the tokens must
-be *sent there and the results brought back*. That is an all-to-all, twice per MoE layer,
-and it is the dominant cost.
-
 ### The lineage, in four steps
 
 Conditional computation is an old idea, but the version this code implements arrived through
@@ -210,6 +193,62 @@ backends there map exactly onto the deployment landscape:
 The pattern is **dispatch and combine**. Dispatch sends each token to the ranks holding its
 experts; combine brings the results back. Both are all-to-all, and both are on the critical
 path of every MoE layer.
+
+<figure>
+<svg viewBox="0 0 700 388" role="img" aria-label="Tokens dispatched to expert-holding ranks and combined back, with one rank carrying a hot expert">
+<title>One MoE layer across four ranks</title>
+<rect class="dgm-box" x="20" y="44" width="150" height="56" rx="6"/>
+<text class="dgm-label" x="95.0" y="67.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">rank 0</text>
+<text class="dgm-small" x="95.0" y="85.4" text-anchor="middle" style="font-size:10.5px">its share of the batch</text>
+<rect class="dgm-box" x="193" y="44" width="150" height="56" rx="6"/>
+<text class="dgm-label" x="268.0" y="67.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">rank 1</text>
+<text class="dgm-small" x="268.0" y="85.4" text-anchor="middle" style="font-size:10.5px">its share of the batch</text>
+<rect class="dgm-box" x="366" y="44" width="150" height="56" rx="6"/>
+<text class="dgm-label" x="441.0" y="67.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">rank 2</text>
+<text class="dgm-small" x="441.0" y="85.4" text-anchor="middle" style="font-size:10.5px">its share of the batch</text>
+<rect class="dgm-box" x="539" y="44" width="150" height="56" rx="6"/>
+<text class="dgm-label" x="614.0" y="67.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">rank 3</text>
+<text class="dgm-small" x="614.0" y="85.4" text-anchor="middle" style="font-size:10.5px">its share of the batch</text>
+<rect class="dgm-box-accent" x="20" y="122" width="669" height="40" rx="6"/>
+<text class="dgm-small" x="354.5" y="146.4" text-anchor="middle" style="font-size:11.5px">all-to-all dispatch — every token to the ranks holding its top-k experts</text>
+<rect class="dgm-box" x="20" y="186" width="150" height="62" rx="6"/>
+<text class="dgm-label" x="95.0" y="203.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">experts 0–63</text>
+<text class="dgm-small" x="95.0" y="221.4" text-anchor="middle" style="font-size:10.5px">grouped GEMM</text>
+<text class="dgm-small" x="95.0" y="239.4" text-anchor="middle" style="font-size:10.5px">ordinary load</text>
+<rect class="dgm-box" x="193" y="186" width="150" height="62" rx="6"/>
+<text class="dgm-label" x="268.0" y="203.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">experts 64–127</text>
+<text class="dgm-small" x="268.0" y="221.4" text-anchor="middle" style="font-size:10.5px">grouped GEMM</text>
+<text class="dgm-small" x="268.0" y="239.4" text-anchor="middle" style="font-size:10.5px">ordinary load</text>
+<rect class="dgm-box-accent" x="366" y="186" width="150" height="62" rx="6"/>
+<text class="dgm-label" x="441.0" y="203.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">experts 128–191</text>
+<text class="dgm-small" x="441.0" y="221.4" text-anchor="middle" style="font-size:10.5px">grouped GEMM</text>
+<text class="dgm-small" x="441.0" y="239.4" text-anchor="middle" style="font-size:10.5px">hot</text>
+<rect class="dgm-box" x="539" y="186" width="150" height="62" rx="6"/>
+<text class="dgm-label" x="614.0" y="203.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">experts 192–255</text>
+<text class="dgm-small" x="614.0" y="221.4" text-anchor="middle" style="font-size:10.5px">grouped GEMM</text>
+<text class="dgm-small" x="614.0" y="239.4" text-anchor="middle" style="font-size:10.5px">ordinary load</text>
+<rect class="dgm-box-accent" x="20" y="272" width="669" height="40" rx="6"/>
+<text class="dgm-small" x="354.5" y="296.4" text-anchor="middle" style="font-size:11.5px">all-to-all combine — partial outputs returned and weighted</text>
+<path class="dgm-line" d="M95.0 100 L95.0 117" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M95.0 162 L95.0 181" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M95.0 248 L95.0 267" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M268.0 100 L268.0 117" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M268.0 162 L268.0 181" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M268.0 248 L268.0 267" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M441.0 100 L441.0 117" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M441.0 162 L441.0 181" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M441.0 248 L441.0 267" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M614.0 100 L614.0 117" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M614.0 162 L614.0 181" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M614.0 248 L614.0 267" marker-end="url(#arrow)"/>
+<text class="dgm-label" x="350.0" y="34" text-anchor="middle" font-weight="600" style="font-size:12.5px">one MoE layer, four ranks</text>
+<text class="dgm-small" x="350.0" y="336" text-anchor="middle" style="font-size:11.5px">Two collectives per layer, sixty layers: the cost is the count of synchronizations,</text>
+<text class="dgm-small" x="350.0" y="354" text-anchor="middle" style="font-size:11.5px">not the bytes. And the slowest rank sets the step — which is what makes one hot</text>
+<text class="dgm-small" x="350.0" y="372" text-anchor="middle" style="font-size:11.5px">expert everyone's problem, and why EPLB moves or replicates it.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
+</svg>
+<figcaption>Every token crosses the network twice per MoE layer. Expert parallelism turns a memory problem into a communication one.</figcaption>
+</figure>
 
 Why latency rather than bandwidth dominates: in decode, a batch might be 256 tokens across
 8 ranks — each rank sends a few kilobytes to each other rank. That is a *small-message*

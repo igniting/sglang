@@ -218,6 +218,48 @@ the large GEMMs, but for MoE models often the all-to-all (Chapter 16).
 **Fusion opportunities.** Adjacent elementwise kernels that could be one — Chapter 14's
 compilation.
 
+### Deciding whether a kernel is worth optimizing
+
+A profile ranks kernels by time. It does not tell you which of them has room to improve, and
+that is the question you actually have. Chapter 1's roofline answers it, applied per kernel.
+
+For any kernel, count two quantities: the FLOPs it performs and the bytes it moves. Their
+ratio is its arithmetic intensity *I*. Compare achieved performance against the roofline
+ceiling `min(π, I × β)`:
+
+```
+efficiency = achieved FLOP/s  /  min(π, I × β)
+```
+
+The interesting number is not the efficiency but *which* term of the `min` was binding.
+
+**If `I × β` is the smaller term, the kernel is memory-bound.** Its ceiling is bandwidth, so
+making the arithmetic faster is worthless. What helps is moving fewer bytes — a smaller
+dtype (Chapter 14), fusing it with a neighbour so the intermediate never reaches HBM
+(Chapter 14 again), or restructuring the data so the reads coalesce. Most decode kernels are
+here, which is why most decode optimizations are about traffic rather than math.
+
+**If π is the smaller term, the kernel is compute-bound.** Now tensor-core utilization,
+tiling, and instruction mix are the levers, and shaving bytes buys nothing. Prefill GEMMs
+live here.
+
+**If achieved performance is far below both**, the kernel is neither — it is bound by
+occupancy, launch overhead, or synchronization. That is a different investigation entirely,
+and at decode's kernel sizes it is a common answer.
+
+Two adjustments make this usable in practice. Attention's arithmetic intensity depends on
+what is cached and what is recomputed, so a paged-attention kernel's *effective* byte count
+is the KV it actually reads, not the sequence length — which is why Chapter 9's hit rate
+changes the kernel's position on the roofline, not just the amount of work above it. And the
+ceiling to compare against is the *achievable* one for the dtype in use: an FP8 kernel is
+being measured against FP8 peak, not BF16 peak, and confusing the two makes a good kernel
+look terrible.
+
+The practical upshot is a triage rule. Rank kernels by time, then for each ask which side of
+the ridge it sits on. A memory-bound kernel at 85% of its bandwidth ceiling is *finished* —
+no amount of work will improve it, and the only remaining move is to not call it. That
+conclusion is worth reaching before spending a week on it.
+
 Two more tools: `python/sglang/kernel_api_logging.py` logs kernel API calls, which
 `.claude/skills/debug-cuda-crash/SKILL.md` uses to find the call that crashed; and
 `python/sglang/srt/debug_utils/comparator/` compares tensors layer-by-layer against a

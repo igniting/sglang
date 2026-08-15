@@ -180,8 +180,31 @@ The idea: for the attention part of the model, stop splitting by head and start 
 *sequence*. Each rank owns whole requests, computes their attention alone, and stores only
 their KV. No replication.
 
-But the MLP is still tensor-parallel — it is large and benefits from splitting. So each
-layer does:
+The reason this is available at all is a property of attention that the MLP does not share.
+Attention is **independent across sequences** — sequence 7's output depends on sequence 7's
+tokens and nothing else. So any partition of the batch into groups of whole sequences is a
+valid partition of the work, requiring no communication whatsoever inside the attention
+block. The MLP is the opposite: it is independent across *rows*, but each row must be
+multiplied by the whole weight matrix, which is exactly what does not fit on one GPU.
+
+So the two halves of a transformer layer want to be split along different axes, and the
+choice is not aesthetic:
+
+| | Attention | MLP |
+| --- | --- | --- |
+| Parameters | small (projections only) | large |
+| Per-request state | the KV cache — large | none |
+| Natural split | by sequence | by hidden dimension |
+| Cost of splitting the other way | KV replicated per rank | activations all-reduced per row |
+
+Tensor parallelism picks one axis for both and pays for it in whichever half is wrong. Under
+MHA or GQA that cost is tolerable, because splitting attention by head also splits the KV
+cache. Under MLA there are no heads to split, so TP replicates the cache in full and the cost
+becomes the dominant one.
+
+Data-parallel attention refuses the compromise the same way Chapter 17 does at the
+deployment level: **split each half along its own best axis, and pay a transition between
+them.** Each layer therefore does:
 
 ```
   attention:  rank r handles its own sequences        (no communication)

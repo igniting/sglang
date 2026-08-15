@@ -26,14 +26,6 @@ KV stores that let a whole cluster behave like one cache.
 
 ## The arbitrage
 
-Chapter 9's radix tree lives entirely in GPU memory, which means it is bounded by the same
-scarce resource everything else competes for. A server with 50 GB of KV pool holds perhaps
-150,000 cached tokens. A busy deployment with long system prompts blows through that in
-minutes, and then every eviction is future work re-created.
-
-Meanwhile the machine has 1–2 TB of host DRAM sitting nearly idle, and possibly an NVMe
-array or an object store behind that.
-
 The question is not whether more capacity is available — it obviously is — but whether
 using it beats simply recomputing. That is an arithmetic question:
 

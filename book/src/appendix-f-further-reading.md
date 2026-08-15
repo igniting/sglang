@@ -2,38 +2,117 @@
 
 ---
 
-## The ideas, in their original form
+## The papers this book is built on
 
-**RadixAttention and the SGLang frontend** — *SGLang: Efficient Execution of Structured
-Language Model Programs* (Zheng et al.). The paper that introduced both the DSL of Chapter 2
-and the prefix caching of Chapter 9, and the argument that co-designing them is what makes
-each worth more.
+Each chapter takes an idea from the literature and follows it into the code. These are the
+sources, in the order the book uses them. Where a chapter states an equation, a bound, or a
+measured number, it comes from here.
 
-**PagedAttention** — *Efficient Memory Management for Large Language Model Serving with
-PagedAttention* (Kwon et al., vLLM). The paged KV memory of Chapter 8. SGLang's
-acknowledgment section credits vLLM directly.
+### Serving systems
 
-**FlashAttention** — Dao et al., across several papers. The tiling and online-softmax
-structure Chapter 13 read in the Triton kernel: never materializing the attention matrix,
-combining partial softmaxes by log-sum-exp.
+**Orca: A Distributed Serving System for Transformer-Based Generative Models** — Yu et al.,
+OSDI '22. Iteration-level scheduling and selective batching. Chapter 5's scheduler and
+Chapter 6's ragged layout are both downstream of it.
 
-**Continuous batching** — *Orca: A Distributed Serving System for Transformer-Based
-Generative Models* (Yu et al., OSDI '22). Iteration-level scheduling, which Chapter 5
-implements as an admission-control problem.
+**Efficient Memory Management for Large Language Model Serving with PagedAttention** — Kwon
+et al., SOSP '23 (vLLM). The fragmentation taxonomy and the 20.4–38.2% utilization
+measurement that Chapter 8 quotes, and the OS-paging analogy it builds on.
 
-**Speculative decoding** — Leviathan et al. and Chen et al. for the acceptance rule that
-preserves the target distribution; the EAGLE papers for the hidden-state drafting of
-Chapter 18.
+**SGLang: Efficient Execution of Structured Language Model Programs** — Zheng et al.,
+NeurIPS '24. RadixAttention, the LRU-leaf-first eviction of Chapter 9, and the theorem that
+depth-first traversal order is cache-optimal, which Chapter 5 uses to justify LPM.
 
-**Tensor and pipeline parallelism** — the Megatron-LM papers. The column-then-row pattern of
-Chapter 15 is theirs.
+**SARATHI / Sarathi-Serve: Efficient LLM Inference by Piggybacked Decodes with Chunked
+Prefills** — Agrawal et al., 2023 and OSDI '24. Chunked prefill and stall-free batching in
+Chapter 5.
 
-**MLA and DeepSeek architecture** — the DeepSeek-V2 and V3 technical reports. Chapter 8's
-compressed cache, Chapter 16's grouped top-k routing, and much of what forced Chapter 15's
-DP attention.
+**DistServe: Disaggregating Prefill and Decoding for Goodput-optimized LLM Serving** — Zhong
+et al., OSDI '24. Chapter 17's interference argument, its goodput framing, and its
+disagreement with Sarathi.
 
-**Mixture of experts** — the Switch Transformer and GShard papers for the routing
-formulation Chapter 16 builds on.
+**Roofline: An Insightful Visual Performance Model** — Williams, Waterman, and Patterson,
+CACM 2009. The ridge point and critical batch size of Chapter 1, and the per-kernel triage
+of Chapter 21.
+
+### Attention and architecture
+
+**Online normalizer calculation for softmax** — Milakov and Gimelshein, 2018. The running
+maximum and rescaling recurrence Chapter 13 derives.
+
+**FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness** — Dao et al.,
+NeurIPS '22, and its successors FlashAttention-2 and -3. The `Θ(N²d²M⁻¹)` HBM bound and the
+tiled output rescaling of Chapter 13.
+
+**Fast Transformer Decoding: One Write-Head is All You Need** — Shazeer, 2019. Multi-query
+attention, the first attack on KV cache size.
+
+**GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints** —
+Ainslie et al., EMNLP '23. Chapter 12's interpolation between MQA and MHA, with the
+uptraining recipe and the T5-XXL quality/latency numbers.
+
+**RoFormer: Enhanced Transformer with Rotary Position Embedding** — Su et al., 2021.
+Chapter 12's rotary embeddings, and the reason Chapter 13's MLA needs a decoupled variant.
+
+**Root Mean Square Layer Normalization** — Zhang and Sennrich, NeurIPS '19, and **GLU
+Variants Improve Transformer** — Shazeer, 2020. The other two components of Chapter 12's
+block.
+
+**DeepSeek-V2** and **DeepSeek-V3 Technical Report** — 2024. Multi-head latent attention with
+its absorption trick and decoupled RoPE (Chapter 13), auxiliary-loss-free load balancing and
+node-limited routing (Chapter 16), and the DualPipe overlap Chapter 16's two-batch overlap
+parallels.
+
+### Mixture of experts
+
+**GShard: Scaling Giant Models with Conditional Computation and Automatic Sharding** —
+Lepikhin et al., 2020. The routing formulation, auxiliary balance loss, and capacity factors
+Chapter 16 traces.
+
+**Switch Transformers** — Fedus et al., 2021. Top-1 routing and the scaling case.
+
+**DeepSeekMoE** — Dai et al., 2024. Fine-grained experts plus shared experts, both visible in
+Chapter 16's `TopK` constructor.
+
+### Generation techniques
+
+**Fast Inference from Transformers via Speculative Decoding** — Leviathan et al., ICML '23,
+and **Accelerating Large Language Model Decoding with Speculative Sampling** — Chen et al.,
+2023. The modified rejection-sampling rule Chapter 18 proves, and the capped-geometric
+expression for tokens per step.
+
+**EAGLE: Speculative Sampling Requires Rethinking Feature Uncertainty** — Li et al., ICML '24,
+with EAGLE-2 and EAGLE-3. Feature-level drafting, the shifted token input, and the tree
+attention mask of Chapter 18.
+
+**The Curious Case of Neural Text Degeneration** — Holtzman et al., ICLR '20. Nucleus
+sampling, and the failure modes it was introduced to fix — Chapter 7.
+
+**Efficient Guided Generation for Large Language Models** — Willard and Louf, 2023
+(Outlines). The FSM-indexed vocabulary of Chapter 19.
+
+**XGrammar: Flexible and Efficient Structured Generation Engine for Large Language Models** —
+Dong et al., 2024. The byte-level pushdown automaton, the context-independent/dependent
+token split, and the adaptive mask cache of Chapter 19.
+
+### Adaptation and scale
+
+**LoRA: Low-Rank Adaptation of Large Language Models** — Hu et al., ICLR '22. The low-rank
+hypothesis of Chapter 20, and the merged-weight advice that multi-adapter serving has to
+refuse.
+
+**Punica: Multi-Tenant LoRA Serving** and **S-LoRA: Serving Thousands of Concurrent LoRA
+Adapters** — 2023. The segmented gather primitive Chapter 20's batch arrays construct.
+
+**Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism** —
+Shoeybi et al., 2019. The column-then-row derivation and the two-collectives-per-block count
+of Chapter 15.
+
+**Visual Instruction Tuning** — Liu et al., NeurIPS '23 (LLaVA). The projector-into-the-token-
+stream architecture of Chapter 20.
+
+**Defeating Nondeterminism in LLM Inference** — Thinking Machines, 2025. Batch invariance as
+the actual cause of temperature-0 nondeterminism, and which kernels have to be constrained —
+Chapters 7 and 21.
 
 ---
 

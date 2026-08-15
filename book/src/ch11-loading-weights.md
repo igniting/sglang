@@ -269,9 +269,44 @@ one per source:
 | `:1421` `update_weights_from_tensor` | tensors in the caller's process | in-process trainer |
 | `:1464` `update_weights_from_ipc` | CUDA IPC handles | trainer on the same node, zero-copy |
 
-They are ordered by decreasing overhead. The IPC path is the interesting one — same
-mechanism as Chapter 3's multimodal transport, applied to model weights: the trainer hands
-over a handle, and the engine maps the memory without copying anything.
+They are ordered by decreasing overhead, and the ordering is worth understanding as a cost
+model rather than a menu, because it is the same one that governs every large transfer in
+this book.
+
+Count the copies each path makes of a 140 GB set of weights:
+
+| Path | Copies | Where the bytes go |
+| --- | --- | --- |
+| Disk | 3 | trainer HBM → host → filesystem → host → engine HBM |
+| Distributed | 1 | trainer HBM → engine HBM, over NCCL |
+| Tensor | 1–2 | trainer HBM → engine HBM, via the caller's process |
+| IPC | **0** | the engine maps the trainer's memory directly |
+
+At 140 GB, each avoided copy is tens of seconds. On a training loop that updates every few
+minutes, the difference between the disk path and the IPC path is the difference between
+spending a meaningful fraction of the run on weight movement and spending essentially none.
+
+The IPC path works because of a CUDA facility with no CPU analogue: `cudaIpcGetMemHandle`
+returns an opaque handle to a device allocation that a *different process on the same node*
+can open with `cudaIpcOpenMemHandle`, receiving a pointer into the same physical memory. No
+bytes move. It is `mmap` for GPU memory, and it is the same mechanism Chapter 3 uses to keep
+image tensors out of the ZeroMQ socket.
+
+Its limits are exactly the limits of shared memory. Same node only — a handle is meaningless
+across machines. Same device, or a peer-accessible one. And the lifetime is the *exporter's*:
+if the trainer frees the allocation while the engine still holds a pointer into it, the
+result is a use-after-free on the GPU, which surfaces as corrupted weights rather than a
+crash. That is why this path is exposed as an explicit method with a handshake rather than as
+an optimization the engine applies automatically.
+
+The distributed path is the one to use when the trainer is not co-resident, and it is worth
+noting what it is *not*: it is not a broadcast of the whole model to every rank. Chapter 11's
+sharding rule still applies, so each engine rank receives only the slice it owns, and the
+transfer is `total_bytes / tp_size` per rank rather than `total_bytes`. This is why
+`python/sglang/srt/weight_sync/tensor_bucket.py` exists — with sharding, a 70B model becomes
+thousands of small per-rank tensors, and thousands of small NCCL calls cost far more in
+latency than the bytes cost in bandwidth. Bucketing them into a few large transfers is the
+same small-message problem Chapter 16 hits with all-to-all, solved the same way.
 
 `:1365` `init_weights_update_group` and `:1387` `destroy_weights_update_group` manage the
 process group for the distributed path.

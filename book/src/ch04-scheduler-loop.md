@@ -437,7 +437,7 @@ Two decode steps of the overlap loop, with time running down:
 <path class="dgm-dash" d="M206.0 264 L206.0 326"/>
 <path class="dgm-dash" d="M462.0 264 L462.0 326"/>
 <path class="dgm-line-accent" d="M488.0 342 L488.0 348 L604.0 348 L604.0 342"/>
-<text class="dgm-small" x="546.0" y="364" text-anchor="middle" style="font-size:11.5px">stalled GPU — one gap per step, for every step of every request</text>
+<text class="dgm-small" x="484.8" y="364" text-anchor="middle" style="font-size:11.5px">stalled GPU — one gap per step, for every step of every request</text>
 <text class="dgm-small" x="350.0" y="392" text-anchor="middle" style="font-size:11.5px">Overlap does not make the forward faster. It makes everything else free.</text>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
 </svg>

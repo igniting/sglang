@@ -48,10 +48,11 @@ edition of the Ch. 2 figure) an arrow routed straight through another node. Figu
 declared as boxes plus connections, and the geometry is checked before anything is written:
 text fits its box, boxes do not overlap, everything is inside the viewBox.
 
-Seven figures: process topology (Ch. 2), the overlap timeline (Ch. 4), address translation
-(Ch. 8), the radix tree evolving (Ch. 9), what a paged attention kernel receives (Ch. 13),
-a disaggregated deployment (Ch. 17), the draft tree (Ch. 18). To add one, write a builder,
-register it in `FIGURES`, and drop `<!-- FIGURE -->` where it belongs in the chapter.
+Nine figures: the roofline (Ch. 1), process topology (Ch. 2), the overlap timeline (Ch. 4),
+address translation (Ch. 8), the radix tree evolving (Ch. 9), what a paged attention kernel
+receives (Ch. 13), one MoE layer across four ranks (Ch. 16), a disaggregated deployment
+(Ch. 17), the draft tree (Ch. 18). To add one, write a builder, register it in `FIGURES`,
+and drop `<!-- FIGURE -->` where it belongs in the chapter.
 
 Two conventions make the checks mean something:
 
@@ -95,7 +96,17 @@ mdbook build book        # static site into book/output/ (gitignored)
 python3 book/scripts/verify_anchors.py
 ```
 
+## Depth
+
+Each chapter derives the algorithm it is about from the paper that introduced it, then maps
+that derivation onto the code. Appendix F is the source list, grouped by the part of the book
+that uses it — keep the two in sync when a chapter gains a new argument.
+
+The bar: if a chapter states a bound, an equation, or a measured number, it comes from a
+named source, and the source is in Appendix F.
+
 ## Open threads
 
-- **More diagrams.** Chapter 16 would carry one (expert dispatch across ranks).
 - **Re-pin cadence.** Fixed for this edition. Chapters 13, 14, and 18 age fastest.
+- **Chapter 9** is the longest at ~4,500 words and could split into the tree and the
+  scheduling interaction.

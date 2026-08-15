@@ -80,9 +80,6 @@ what the arrays below construct.
 `python/sglang/srt/lora/lora_manager.py:59` `LoRAManager` orchestrates it, and `:428`
 `prepare_lora_batch` is where the batch is assembled:
 
-`python/sglang/srt/lora/lora_manager.py:59` `LoRAManager` orchestrates it, and `:428`
-`prepare_lora_batch` is where the batch is assembled:
-
 ```python
     def prepare_lora_batch(self, forward_batch: ForwardBatch):
         # set up batch info shared by all lora modules
@@ -183,6 +180,47 @@ Now the other half.
 A vision-language model runs images through an encoder into embeddings, then feeds those
 embeddings to the decoder *in place of* text token embeddings. The prompt contains
 placeholder tokens; the pipeline replaces their embeddings with encoder output.
+
+### Why that specific architecture won
+
+The design above is not the only way to build a multimodal model, and the alternatives lost
+for reasons that matter to a serving engine.
+
+The transformer takes a sequence of `d`-dimensional vectors. It has no opinion about where
+they came from. So *any* modality that can be turned into a sequence of `d`-dimensional
+vectors can be fed to a language model — the question is only how, and what has to be
+retrained.
+
+**Cross-attention** was the first widely used answer: keep the two streams separate and let
+the decoder attend to the encoder's output through added cross-attention layers, as Flamingo
+did. It works, but it changes the decoder's architecture, so the language model must be
+modified and retrained.
+
+**Projection into the token stream** is what almost everything since LLaVA does instead.
+Encode the image with a vision transformer, pass its patch embeddings through a small learned
+projector — often a two-layer MLP — into the language model's embedding dimension, and splice
+the results into the sequence as if they were tokens. The decoder is *unmodified*. Only the
+projector is trained, on a comparatively small dataset.
+
+Three consequences follow, and all three are visible in the code below.
+
+**The image becomes tokens, with a token's costs.** A 336×336 image at patch size 14 is 576
+patches, so 576 positions of context, 576 rows of KV cache, and 576 tokens of Chapter 5's
+budget. High-resolution schemes that tile an image into sub-images multiply that — a single
+photograph can cost more context than a page of text. Every accounting question in this book
+applies to it unchanged, which is exactly why the engine treats image embeddings as tokens
+rather than as a special case.
+
+**The splice must happen after tokenization and before the decoder.** The prompt is
+tokenized with *placeholders* — real token ids that stand in for image positions — and the
+placeholders' embeddings are overwritten with projector output. Hence
+`build_padded_input_ids` below, and hence the care about placeholder ids not colliding with
+real ones.
+
+**The encoder is a separate model with separate economics.** It runs once per image, is
+compute-bound, and its output depends only on the image. That combination is the definition
+of something worth caching, and — in Chapter 17's terms — worth running somewhere else
+entirely.
 
 `python/sglang/srt/multimodal/processors/` holds 53 processors — one per model family,
 because each has its own preprocessing, patch layout, and placeholder convention — over a

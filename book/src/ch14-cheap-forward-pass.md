@@ -27,16 +27,6 @@ into a procedure.
 
 ---
 
-Chapter 1 established that decode is memory-bound: the GPU spends its time moving weights,
-not multiplying them. Three techniques attack that from different directions, and they
-compose because they attack different things.
-
-- **Quantization** — fewer bytes per weight, so each read is cheaper.
-- **CUDA graphs** — fewer CPU launches, so the GPU is not waiting on Python.
-- **Compilation** — fewer kernels, so less is moved between them.
-
----
-
 ## Three independent targets
 
 Quantization applies to three things, and the choices are independent:
