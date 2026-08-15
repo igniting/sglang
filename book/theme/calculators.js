@@ -13,6 +13,115 @@
 (function () {
   "use strict";
 
+  // Presentation lives here rather than in custom.css so that the markup and the
+  // styling for it are one artifact. Split across two files they are cached
+  // independently, and a browser holding a stale stylesheet against fresh HTML
+  // renders the whole thing unstyled — which is exactly what happened once.
+  // Palette tokens carry fallbacks so a cold custom.css still looks deliberate.
+  var STYLE = [
+    ".content .bk-calc {",
+    "  margin: 3rem 0;",
+    "  padding: 1.8rem 2rem 1.6rem;",
+    "  border: 1px solid var(--bk-rule, #ddd);",
+    "  border-radius: 8px;",
+    "  background: var(--bk-callout-bg, rgba(127,127,127,0.06));",
+    "  font-family: var(--bk-sans, system-ui, -apple-system, sans-serif);",
+    "}",
+    ".content .bk-calc:empty { display: none; }",
+    ".content .bk-calc-title {",
+    "  font-weight: 600;",
+    "  font-size: 1.55rem;",
+    "  letter-spacing: 0.01em;",
+    "  margin-bottom: 1.4rem;",
+    "  color: var(--fg, inherit);",
+    "}",
+    ".content .bk-calc-inputs {",
+    "  display: grid;",
+    "  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));",
+    "  gap: 1.2rem 1.6rem;",
+    "  margin-bottom: 1.6rem;",
+    "}",
+    // Inputs align on their bottom edge whether the label wraps to one line or two.
+    ".content .bk-calc-field {",
+    "  display: flex;",
+    "  flex-direction: column;",
+    "  justify-content: flex-end;",
+    "  gap: 0.3rem;",
+    "  margin: 0;",
+    "}",
+    ".content .bk-calc-label {",
+    "  font-size: 1.4rem;",
+    "  line-height: 1.3;",
+    "  color: var(--bk-muted, #666);",
+    "}",
+    ".content .bk-calc-input {",
+    "  font-family: var(--bk-mono, ui-monospace, monospace);",
+    "  font-size: 1.4rem;",
+    "  width: 100%;",
+    "  box-sizing: border-box;",
+    "  padding: 0.35rem 0.6rem;",
+    "  color: var(--fg, inherit);",
+    "  background: var(--bg, transparent);",
+    "  border: 1px solid var(--bk-rule, #ddd);",
+    "  border-radius: 4px;",
+    "}",
+    ".content .bk-calc-input:focus {",
+    "  outline: 2px solid var(--links, #06c);",
+    "  outline-offset: 1px;",
+    "}",
+    ".content .bk-calc-table {",
+    "  width: 100%;",
+    "  margin: 0;",
+    "  border-collapse: collapse;",
+    "  font-size: 1.45rem;",
+    "  font-family: inherit;",
+    "}",
+    ".content .bk-calc-table th,",
+    ".content .bk-calc-table td {",
+    "  border: none;",
+    "  border-top: 1px solid var(--bk-rule, #ddd);",
+    "  padding: 0.6rem 0;",
+    "  text-align: left;",
+    "  vertical-align: baseline;",
+    "  background: none;",
+    "}",
+    ".content .bk-calc-table th {",
+    "  font-weight: 400;",
+    "  color: var(--fg, inherit);",
+    "  width: 40%;",
+    "}",
+    ".content .bk-calc-table tr { background: none; }",
+    ".content .bk-calc-table td.bk-calc-value {",
+    "  font-family: var(--bk-mono, ui-monospace, monospace);",
+    "  font-weight: 600;",
+    "  color: var(--links, #06c);",
+    "  white-space: nowrap;",
+    "  padding-right: 1.6rem;",
+    "}",
+    ".content .bk-calc-note {",
+    "  color: var(--bk-muted, #666);",
+    "  font-size: 1.35rem;",
+    "}",
+    ".content .bk-calc-verdict {",
+    "  margin: 1.4rem 0 0;",
+    "  font-size: 1.45rem;",
+    "  line-height: 1.55;",
+    "  color: var(--fg, inherit);",
+    "}",
+    "@media only screen and (max-width: 700px) {",
+    "  .content .bk-calc-table th { width: auto; }",
+    "  .content .bk-calc-note { display: none; }",
+    "}",
+  ].join("\n");
+
+  function injectStyle() {
+    if (document.getElementById("bk-calc-style")) return;
+    var el = document.createElement("style");
+    el.id = "bk-calc-style";
+    el.textContent = STYLE;
+    document.head.appendChild(el);
+  }
+
   var GB = 1024 * 1024 * 1024;
 
   function fmt(x, digits) {
@@ -196,6 +305,8 @@
 
   function init() {
     var nodes = document.querySelectorAll(".bk-calc");
+    if (!nodes.length) return;
+    injectStyle();
     for (var i = 0; i < nodes.length; i++) build(nodes[i]);
   }
 
