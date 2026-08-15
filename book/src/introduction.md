@@ -15,9 +15,11 @@ is next.
 This book is about that machine. Specifically it is about **SGLang**, an open-source
 serving engine that runs on more than 400,000 GPUs and moves trillions of tokens a day.
 
-It is not a manual. It will not teach you to deploy a server, and it is not organized
-around the tasks you might want to accomplish. It is a book about *how the thing works* —
-the kind of book you read to understand a system rather than to operate one.
+It is not a manual. It is not organized around the tasks you might want to accomplish, and
+where it does reach operations — cold starts, autoscaling, capacity — it does so from the
+inside out, because the engine's internals are what decide those outcomes. It is a book about
+*how the thing works*, of the kind you read to understand a system rather than to look
+something up in it.
 
 The central claim is that a serving engine is not a collection of clever tricks. It is a
 single sustained argument, and the argument goes like this:
@@ -43,16 +45,19 @@ You do **not** need to have worked on inference systems, and you do not need a G
 it. Some chapters go down to CUDA and Triton kernels; you are expected to read those at a
 glance, never to write them.
 
-Three kinds of reader, and what each will find:
+Three kinds of reader, and a route for each.
 
-**The curious engineer** who uses LLM APIs and wants to know what is behind them. Parts I
-and II are written for you, and they stand alone — you can stop after Chapter 8 with a
+**The curious engineer** who uses LLM APIs and wants to know what is behind them.
+Chapters 1 → 3 → Part II. That is the cost model, the shape of the machine, and one request
+from an HTTP socket to a streamed token. It stands alone: you can stop after Chapter 8 with a
 complete picture of a request's life and be glad you did.
 
-**The practitioner** running SGLang in production. Parts III through V explain what your
-configuration flags actually do, and Chapter 22 turns that into a tuning procedure. Chapter
-1 is worth reading first anyway, because most tuning mistakes come from optimizing a
-constraint that was not binding.
+**The practitioner** running SGLang in production.
+Chapters 1 → 2 → 9 → 10 → 6 → 16 → 22 → 24. Why the constraint is memory, what your hardware
+can do about it, where the memory goes, how the cache changes the arithmetic, what the
+scheduler does with the budget, how parallelism changes it again, and then the two
+operational chapters. Chapter 1's calculators are the ones you will come back to; most tuning
+mistakes are an optimization aimed at a constraint that was not binding.
 
 **The contributor** about to change something. Read straight through. Chapter 23 collects
 the extension points, but the chapters before it are what make those seams make sense.
@@ -89,8 +94,9 @@ assumptions the earlier parts relied on — guessing tokens before the model pro
 forcing output to match a schema, and serving requests that need different weights or carry
 images.
 
-**Part VII — Living with it.** Two chapters: how the engine reports on itself, and how you
-change it.
+**Part VII — Living with it.** Three chapters: how the engine reports on itself, how you
+change it, and what it takes to run it — cold starts, autoscaling signals, and the way a
+wedged rank announces itself.
 
 Then six appendices: a flag reference, the environment-variable system, a glossary, a map
 of the repository, an annotated startup log, and further reading.

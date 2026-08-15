@@ -34,6 +34,7 @@
 - [Part VII — Living With It](./part7.md)
   - [22. Observability and Tuning](./ch22-observability.md)
   - [23. Extending SGLang](./ch23-extending.md)
+  - [24. Running It](./ch24-running-it.md)
 
 ---
 

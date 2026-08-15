@@ -1,6 +1,6 @@
 # Part VII — Living With It
 
-Two chapters, both about the gap between understanding a system and working with one.
+Three chapters, all about the gap between understanding a system and working with one.
 
 **Chapter 22** is about seeing inside a running engine. Every metric it emits exists because
 someone needed it to answer a question — and by this point in the book, you have already
@@ -12,8 +12,12 @@ tuning procedure ordered by which constraint each knob relieves.
 walking them is the last check that the earlier chapters landed: adding a model, adding a
 kernel, adding an attention backend, porting to new hardware. Each is short to describe
 precisely because the preceding chapters did the work of explaining what the interface is
-protecting.
+protecting. It ends with the project's own answer to a hard problem: how do you test an
+inference engine when the property that matters most, *the model produces correct output*,
+cannot be checked by unit tests?
 
-The chapter — and the book — ends with the project's own answer to a hard problem: how do
-you test an inference engine when the property that matters most, *the model produces correct
-output*, cannot be checked by unit tests?
+**Chapter 24** is about running it. Every chapter until now has described a steady state — a
+process already up, with traffic already arriving. Production is mostly the other states, and
+this chapter covers the ones the engine's own internals decide: where a cold start's seconds
+go, what the health endpoint actually proves, why the obvious autoscaling signal is the wrong
+one, and how a wedged rank announces itself.

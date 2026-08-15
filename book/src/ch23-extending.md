@@ -300,15 +300,6 @@ before your first patch; each one will otherwise cost you a review cycle.
 
 ---
 
-That is the engine.
-
-Chapter 1 made a claim: that generating text is memory-bound, and that memory capacity —
-not arithmetic — decides how many people a GPU can serve. Every chapter since has been a
-response to one half of that sentence or the other. Paged pools and prefix trees and
-hierarchical caching are about the memory. Batching, graphs, quantization, speculation, and
-expert parallelism are about wasting less of the compute that the memory wall leaves idle.
-Disaggregation is about refusing to compromise between them.
-
-None of it is arbitrary, and none of it is finished. The appendices that follow are
-reference material; the code is still moving; and the argument, once you can see it, is the
-part that will still be true when the implementations have changed.
+That is how you change the engine. Chapter 24 is about the part nobody can change: it has to
+start, scale, and fail somewhere, and the last chapter is about where the internals you now
+know decide an operational outcome.

@@ -87,6 +87,9 @@ of magnitude — roughly 150 to 600 FLOP per byte. **Nobody is fixing the memory
 Bandwidth and arithmetic have grown together, so the batch size at which a GEMM stops being
 bandwidth-starved is a few hundred rows on essentially every accelerator in production.
 
+Chapter 1's critical-batch-size calculator takes the middle two columns of that table as its
+inputs, so any row of it can be run through the formula directly.
+
 That is the fact that makes this book's structure stable. If the ridge point were falling,
 batching would matter less each generation and half the engine could be deleted. It is not,
 so it does not.

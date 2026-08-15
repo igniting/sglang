@@ -6,7 +6,7 @@ Working notes for *SGLang Internals*. Not published — the book itself is `src/
 
 | Question | Decision |
 | --- | --- |
-| Shape | 22 chapters in 7 parts, each part opening with a page that frames its question. |
+| Shape | 24 chapters in 7 parts, each part opening with a page that frames its question. |
 | Concepts vs code | Fused. Each chapter is a narrative; ideas are grounded in the code that implements them, not preceded by it. |
 | Chapter openings | Every chapter opens by placing the reader in the journey — what came before, what this one answers, why it follows. |
 | Exercises / labs | None. |
@@ -95,6 +95,22 @@ mdbook build book        # static site into book/output/ (gitignored)
 
 python3 book/scripts/verify_anchors.py
 ```
+
+## Calculators
+
+`theme/calculators.js`, wired in through `additional-js`. The book derives `B* = sπ/2β` and
+the KV-bytes-per-token formula and works one example of each; the calculators let a reader
+run the same formula on their own hardware, which is the difference between a fact about
+someone else's machine and a tool.
+
+Declarative markup — `<div class="bk-calc" data-calc="roofline"></div>` — with the inputs and
+a compute function declared in `CALCS`. Self-contained, theme-aware, no dependencies. If
+scripting is off the div collapses and the prose still carries the worked example, which is
+the rule for adding another: **the argument must survive without it.**
+
+Building the capacity one caught a real arithmetic error in Chapter 1. Treat that as the
+point rather than a coincidence — a formula the reader can run is a formula the author has
+to get right.
 
 ## Depth
 
