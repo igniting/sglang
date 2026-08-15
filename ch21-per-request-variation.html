@@ -1,0 +1,488 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>21. Per-Request Variation: LoRA and Multimodal - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item expanded "><a href="ch21-per-request-variation.html" class="active">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch21-per-request-variation.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="21-per-request-variation-lora-and-multimodal"><a class="header" href="#21-per-request-variation-lora-and-multimodal">21. Per-Request Variation: LoRA and Multimodal</a></h1>
+<blockquote>
+<p><em>Both features break the assumption that every request in a batch needs the same weights
+and the same kind of input — and both are solved by extending the batch, not splitting it.</em></p>
+</blockquote>
+<p>Every chapter so far has assumed a batch is homogeneous — same weights, same kind of input,
+one kernel over all of it. That assumption is precisely what makes batching profitable, and
+Chapter 1 established that batching is everything.</p>
+<p>Two features break it.</p>
+<p>Some requests want <strong>different weights</strong>: one is using a summarization adapter, another a
+code adapter, a third the base model. Some requests carry <strong>different input types</strong>: text,
+or three images, or audio.</p>
+<p>The obvious response in both cases is to split the batch — group by adapter, group by
+modality, run them separately. That would destroy the thing being protected. With twenty
+adapters you get twenty tiny batches instead of one large one, and the GPU goes back to
+being idle.</p>
+<p>So both are solved the same way instead: keep one batch, and turn the per-request variation
+into a tensor the kernel indexes into. If that sounds familiar, it should — it is the same
+move as the page table in Chapter 9, the sorted expert order in Chapter 17, and the page
+directory passed to the attention kernel in Chapter 14. This chapter is where the pattern
+becomes impossible to miss.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 10 min</span></p><ul><li>Explain why multi-adapter serving cannot use LoRA's merged-weight trick</li><li>Describe the segmented gather that replaces it</li><li>Say what an image costs once it becomes tokens</li><li>Explain why position arithmetic for multimodal input moved into the scheduler</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="batching-across-adapters"><a class="header" href="#batching-across-adapters">Batching across adapters</a></h2>
+<h3 id="the-low-rank-hypothesis"><a class="header" href="#the-low-rank-hypothesis">The low-rank hypothesis</a></h3>
+<p>LoRA (Hu et al., 2021) starts from an empirical claim about fine-tuning: the <em>change</em> a
+fine-tune makes to a weight matrix has far lower rank than the matrix itself. If that is
+true, the update can be factored:</p>
+<pre><code>W = W₀ + ΔW = W₀ + (α/r) · B A
+</code></pre>
+<p>with <em>A</em> ∈ R^(<em>r</em>×<em>k</em>), <em>B</em> ∈ R^(<em>d</em>×<em>r</em>), and <em>r</em> ≪ min(<em>d</em>, <em>k</em>). <em>W</em>₀ is frozen; only <em>A</em>
+and <em>B</em> train. The α/<em>r</em> scaling exists so that changing <em>r</em> does not force you to re-tune the
+learning rate.</p>
+<p>The evidence is that it works at absurd ratios. For GPT-3 175B the paper reports a
+<strong>10,000×</strong> reduction in trainable parameters and 3× less optimizer memory, at quality
+matching full fine-tuning — and finds that on some tasks <em>r</em> = 1 suffices against a full rank
+of 12,288. They adapt only <code>W_q</code> and <code>W_v</code>, leaving the MLP untouched.</p>
+<p>For training, the win is memory. For <em>serving</em>, the win is a different one, and it is the
+reason this chapter exists.</p>
+<p>An adapter is a few megabytes against a base model of a hundred gigabytes. So a single loaded
+base model can serve dozens of fine-tunes at once, if — and this is the whole engineering
+problem — you can apply <em>different</em> adapters to <em>different rows of the same batch</em>.</p>
+<p>The paper's own deployment advice points the wrong way for this. It observes there is no
+inference latency penalty because you can fold the update in: compute <em>W</em>₀ + <em>BA</em> once and use
+it as an ordinary weight matrix. That is right for one adapter and useless for many, since a
+merged weight serves exactly one fine-tune and re-merging per request would cost more than
+the forward pass.</p>
+<p>So a multi-adapter server must keep the factors separate and compute</p>
+<pre><code>y = x W₀  +  (α/r) (x A) B
+</code></pre>
+<p>where <em>W</em>₀ is shared by the whole batch and <em>A</em>, <em>B</em> vary per row. The base GEMM runs once,
+exactly as before. The correction is a pair of very thin matrix multiplies — rank 16 against
+a 4,096-dimensional weight is well under 1% of the work — but it is a <em>ragged</em> one, because
+each row wants a different <em>A</em> and <em>B</em>, and possibly a different <em>r</em>.</p>
+<p>That is the same shape as Chapter 17's grouped GEMM and Chapter 9's page table: irregularity
+expressed as an index tensor rather than as control flow. Punica and S-LoRA named the
+resulting primitive <strong>segmented gather matrix-vector multiply</strong> — group the batch's rows by
+adapter, and have the kernel look up each row's factors from a shared pool. That is precisely
+what the arrays below construct.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/lora/lora_manager.py#L59"><code>python/sglang/srt/lora/lora_manager.py:59</code></a> <code>LoRAManager</code> orchestrates it, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/lora/lora_manager.py#L428"><code>:428</code></a>
+<code>prepare_lora_batch</code> is where the batch is assembled:</p>
+<pre><code class="language-python">    def prepare_lora_batch(self, forward_batch: ForwardBatch):
+        # set up batch info shared by all lora modules
+        bs = forward_batch.batch_size
+        ...
+        weight_indices = [0] * len(forward_batch.lora_ids)
+        lora_ranks = [0] * self.max_loras_per_batch
+        scalings = [0] * self.max_loras_per_batch
+        for i, uid in enumerate(forward_batch.lora_ids):
+            if uid not in self.memory_pool.uid_to_buffer_id:
+                continue
+            weight_indices[i] = self.memory_pool.get_buffer_id(uid)
+            if uid is not None:
+                lora = self.loras[uid]
+                lora_ranks[weight_indices[i]] = lora.config.r
+                scalings[weight_indices[i]] = lora.scaling
+</code></pre>
+<p>Three parallel arrays, and they are the segmented-gather primitive in concrete form.
+<code>weight_indices</code> says which adapter buffer each <em>request</em> uses; <code>lora_ranks</code> and <code>scalings</code>
+carry per-adapter <em>r</em> and α/<em>r</em>. These go to the kernel, which looks up each row's adapter and
+applies the right correction. <strong>One kernel launch, many adapters.</strong></p>
+<p>Note <code>lora_ranks</code> is sized <code>max_loras_per_batch</code>, not batch size: it is indexed by <em>buffer
+slot</em>, not by request. Several requests sharing an adapter share a slot.</p>
+<p>The CUDA-graph interaction shows in the same method:</p>
+<pre><code class="language-python">        use_cuda_graph = (
+            hasattr(self, "max_bs_in_cuda_graph")
+            and bs &lt;= self.max_bs_in_cuda_graph
+            and forward_batch.forward_mode.is_cuda_graph()
+        )
+        # Eligible extend batches refresh the static prefill batch info in
+        # place so captured kernels read current values at replay.
+        use_prefill_cuda_graph = not use_cuda_graph and self.can_use_prefill_cuda_graph(
+            forward_batch
+        )
+</code></pre>
+<p>Chapter 15's graphs need static buffers, so the index arrays must live at fixed addresses
+and be <em>updated in place</em> rather than reallocated. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/lora/lora_manager.py#L121"><code>:121</code></a> <code>init_cuda_graph_batch_info</code> and
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/lora/lora_manager.py#L146"><code>:146</code></a> <code>init_prefill_cuda_graph_batch_info</code> allocate them once.</p>
+<p><code>python/sglang/srt/lora/backend/</code> holds the kernels — grouped GEMMs of the punica family,
+which compute many small rank-<em>r</em> products in one launch.
+<code>python/sglang/srt/lora/layers.py</code> wraps the Chapter 13 layers,
+<code>python/sglang/srt/lora/lora_moe_runners.py</code> handles MoE layers (Chapter 17), and
+<code>python/sglang/srt/lora/deepseek_mla_correction.py</code> handles MLA, where the compressed KV
+representation means the correction cannot be applied the usual way.</p>
+<hr />
+<h2 id="adapters-as-a-memory-pool"><a class="header" href="#adapters-as-a-memory-pool">Adapters as a memory pool</a></h2>
+<p>Adapters live in a fixed pool of buffer slots, exactly as KV does in Chapter 9.
+<code>python/sglang/srt/lora/mem_pool.py</code> manages it, <code>max_loras_per_batch</code> caps how many can be
+active at once, and <code>python/sglang/srt/lora/eviction_policy.py</code> decides what leaves when a
+new one arrives.</p>
+<p>Loading is a runtime operation: <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/lora/lora_manager.py#L221"><code>:221</code></a> <code>load_lora_adapter</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/lora/lora_manager.py#L315"><code>:315</code></a> <code>unload_lora_adapter</code>,
+reachable through <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L1523"><code>python/sglang/srt/entrypoints/engine.py:1523</code></a> <code>load_lora_adapter</code> and
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L1536"><code>:1536</code></a> <code>unload_lora_adapter</code>. <code>python/sglang/srt/lora/lora_registry.py</code> tracks what exists,
+<code>python/sglang/srt/lora/lora_drainer.py</code> waits for in-flight requests before an unload, and
+<code>python/sglang/srt/lora/lora_overlap_loader.py</code> overlaps loading with compute.</p>
+<p>Admission gains a constraint. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L3450"><code>python/sglang/srt/managers/scheduler.py:3450</code></a>
+<code>_can_schedule_lora_req</code> is consulted during Chapter 6's prefill admission: a request whose
+adapter is not resident, in a batch already using all slots, cannot be scheduled — a
+<em>non-memory</em> reason to reject a request, which the token budget alone would never catch.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/lora/lora_manager.py#L361"><code>python/sglang/srt/lora/lora_manager.py:361</code></a> <code>validate_lora_batch</code> enforces it.</p>
+<h3 id="adapters-must-not-share-a-prefix-cache"><a class="header" href="#adapters-must-not-share-a-prefix-cache">Adapters must not share a prefix cache</a></h3>
+<p>Here is the correctness trap.</p>
+<p>Two requests with identical token sequences but different adapters produce <strong>different KV
+entries</strong>, because the adapter changes the projections that compute K and V. If Chapter 10's
+radix cache matched them by tokens alone, the second request would receive the first
+adapter's activations. No error, no crash — just a model producing subtly wrong output.</p>
+<p>Chapter 10's <code>RadixKey</code> extra key
+(<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L64"><code>python/sglang/srt/mem_cache/radix_cache.py:64</code></a>) is the guard. Setting <code>extra_key</code> to the
+adapter id makes the namespaces disjoint, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L169"><code>:169</code></a> <code>_check_compatible</code> raises rather than
+silently comparing across namespaces.</p>
+<p>The cost is that adapters do not share cache with each other or with the base model — <em>n</em>
+adapters serving the same system prompt cache it <em>n</em> times. That is unavoidable: the entries
+genuinely differ.</p>
+<hr />
+<h2 id="non-text-input-spliced-into-text"><a class="header" href="#non-text-input-spliced-into-text">Non-text input, spliced into text</a></h2>
+<p>Now the other half.</p>
+<p>A vision-language model runs images through an encoder into embeddings, then feeds those
+embeddings to the decoder <em>in place of</em> text token embeddings. The prompt contains
+placeholder tokens; the pipeline replaces their embeddings with encoder output.</p>
+<h3 id="why-that-specific-architecture-won"><a class="header" href="#why-that-specific-architecture-won">Why that specific architecture won</a></h3>
+<p>The design above is not the only way to build a multimodal model, and the alternatives lost
+for reasons that matter to a serving engine.</p>
+<p>The transformer takes a sequence of <code>d</code>-dimensional vectors. It has no opinion about where
+they came from. So <em>any</em> modality that can be turned into a sequence of <code>d</code>-dimensional
+vectors can be fed to a language model — the question is only how, and what has to be
+retrained.</p>
+<p><strong>Cross-attention</strong> was the first widely used answer: keep the two streams separate and let
+the decoder attend to the encoder's output through added cross-attention layers, as Flamingo
+did. It works, but it changes the decoder's architecture, so the language model must be
+modified and retrained.</p>
+<p><strong>Projection into the token stream</strong> is what almost everything since LLaVA does instead.
+Encode the image with a vision transformer, pass its patch embeddings through a small learned
+projector — often a two-layer MLP — into the language model's embedding dimension, and splice
+the results into the sequence as if they were tokens. The decoder is <em>unmodified</em>. Only the
+projector is trained, on a comparatively small dataset.</p>
+<p>Three consequences follow, and all three are visible in the code below.</p>
+<p><strong>The image becomes tokens, with a token's costs.</strong> A 336×336 image at patch size 14 is 576
+patches, so 576 positions of context, 576 rows of KV cache, and 576 tokens of Chapter 6's
+budget. High-resolution schemes that tile an image into sub-images multiply that — a single
+photograph can cost more context than a page of text. Every accounting question in this book
+applies to it unchanged, which is exactly why the engine treats image embeddings as tokens
+rather than as a special case.</p>
+<p><strong>The splice must happen after tokenization and before the decoder.</strong> The prompt is
+tokenized with <em>placeholders</em> — real token ids that stand in for image positions — and the
+placeholders' embeddings are overwritten with projector output. Hence
+<code>build_padded_input_ids</code> below, and hence the care about placeholder ids not colliding with
+real ones.</p>
+<p><strong>The encoder is a separate model with separate economics.</strong> It runs once per image, is
+compute-bound, and its output depends only on the image. That combination is the definition
+of something worth caching, and — in Chapter 18's terms — worth running somewhere else
+entirely.</p>
+<p><code>python/sglang/srt/multimodal/processors/</code> holds 53 processors — one per model family,
+because each has its own preprocessing, patch layout, and placeholder convention — over a
+shared <code>python/sglang/srt/multimodal/processors/base_processor.py</code>.
+<code>python/sglang/srt/managers/multimodal_processor.py</code> and
+<code>python/sglang/srt/managers/mm_utils.py</code> are the runtime glue.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L318"><code>python/sglang/srt/managers/schedule_batch.py:318</code></a> <code>MultimodalDataItem</code> is one piece of
+non-text input and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L590"><code>:590</code></a> <code>MultimodalInputs</code> the per-request collection.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L569"><code>:569</code></a> <code>build_padded_input_ids</code> does the splicing:</p>
+<pre><code class="language-python">    def build_padded_input_ids(input_ids, mm_items: List[MultimodalDataItem]):
+</code></pre>
+<p>with <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L374"><code>:374</code></a> <code>set_pad_value</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L218"><code>:218</code></a> <code>_compute_pad_value</code> deriving placeholder values from
+a hash. Hashing matters for two reasons: the placeholder must not collide with a real token
+id (hence <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L194"><code>:194</code></a> <code>sanity_check_mm_pad_shift_value</code>), and the hash identifies the item for
+caching. <code>python/sglang/srt/mem_cache/multimodal_cache.py</code> caches encoder outputs, so the
+same image in a follow-up turn is not re-encoded — Chapter 10's idea applied to a different
+resource.</p>
+<hr />
+<h2 id="position-arithmetic-moves-into-the-scheduler"><a class="header" href="#position-arithmetic-moves-into-the-scheduler">Position arithmetic moves into the scheduler</a></h2>
+<p>Text positions are <code>0, 1, 2, …</code>. Images are two-dimensional, and models like Qwen-VL use
+<strong>mrope</strong> — multi-dimensional rotary embeddings — where a token's position is a
+(temporal, height, width) triple.</p>
+<p>Those positions cannot be computed by the model alone, because they depend on the image
+grid, the placeholder layout, and where the request is in its generation. So the computation
+moves up the stack: <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L2308"><code>python/sglang/srt/managers/scheduler.py:2308</code></a>
+<code>_maybe_compute_mrope_positions</code> in the scheduler, and
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/forward_batch_info.py#L1163"><code>python/sglang/srt/model_executor/forward_batch_info.py:1163</code></a> <code>_compute_mrope_positions</code> in
+the forward batch, with separate decode and extend paths (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/forward_batch_info.py#L1181"><code>:1181</code></a>
+<code>_compute_mrope_positions_decode</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/forward_batch_info.py#L1247"><code>:1247</code></a> <code>_compute_mrope_positions_extend</code>) and a
+speculative variant (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/forward_batch_info.py#L1104"><code>:1104</code></a> <code>compute_spec_mrope_positions</code>) for Chapter 19.</p>
+<p>This is a genuine abstraction leak — position computation belongs to the model — and it is
+accepted because the scheduler is the only component that knows the batch layout.</p>
+<hr />
+<h2 id="not-sending-pixels-through-a-socket"><a class="header" href="#not-sending-pixels-through-a-socket">Not sending pixels through a socket</a></h2>
+<p>Chapter 4 introduced the problem: images are megabytes, and serializing them through ZeroMQ
+per request would dwarf the forward pass.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L2209"><code>python/sglang/srt/managers/scheduler.py:2209</code></a> <code>_process_and_broadcast_mm_inputs</code> is the
+receiving side, and the CUDA IPC path avoids the copy entirely:
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L430"><code>python/sglang/srt/managers/schedule_batch.py:430</code></a> <code>has_cuda_ipc_proxy</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L440"><code>:440</code></a>
+<code>reconstruct</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L465"><code>:465</code></a> <code>can_defer_cuda_ipc_feature_reconstruction</code>, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L486"><code>:486</code></a>
+<code>acknowledge_deferred_cuda_ipc_feature</code>.</p>
+<p>The deferred reconstruction is worth noting: under tensor parallelism several ranks need the
+same tensor, so the handle is mapped by each and released only once all have acknowledged —
+a reference count across processes.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L624"><code>:624</code></a> <code>release_features</code> frees encoder output once it is spliced, because embeddings for a
+high-resolution image are large and holding them for the request's lifetime would be
+expensive.</p>
+<hr />
+<h2 id="where-the-encoder-runs"><a class="header" href="#where-the-encoder-runs">Where the encoder runs</a></h2>
+<p>The encoder is a third workload with a third profile — compute-heavy, bursty, no KV cache.
+There are three placements:</p>
+<p><strong>In-process.</strong> Simplest; the encoder competes with the decoder for the same GPU.</p>
+<p><strong>Data-parallel.</strong> Several encoder replicas feeding one decoder, for image-heavy workloads.
+<code>docs/docs/advanced_features/dp_for_multi_modal_encoder.mdx</code>.</p>
+<p><strong>Separate service.</strong> Chapter 18's EPD disaggregation —
+<code>python/sglang/srt/disaggregation/encode_server.py</code>.</p>
+<p><code>python/sglang/srt/managers/mm_schedule.py</code> handles the scheduling interaction, and
+<code>docs/docs/advanced_features/cuda_graph_for_multi_modal_encoder.mdx</code> covers capturing the
+encoder under Chapter 15's graphs, which is harder than for the decoder because image sizes
+vary more than batch sizes do.</p>
+<hr />
+<h2 id="the-shared-shape"><a class="header" href="#the-shared-shape">The shared shape</a></h2>
+<p>Strip away the specifics and both features have the same structure:</p>
+<div class="table-wrapper"><table><thead><tr><th></th><th>LoRA</th><th>Multimodal</th></tr></thead><tbody>
+<tr><td>Varies per request</td><td>weights</td><td>input type</td></tr>
+<tr><td>Naive fix</td><td>separate batch per adapter</td><td>separate batch per modality</td></tr>
+<tr><td>Actual fix</td><td>per-request index into a buffer pool</td><td>splice encoder output into the token stream</td></tr>
+<tr><td>Pool</td><td>adapter slots (<code>python/sglang/srt/lora/mem_pool.py</code>)</td><td>encoder cache (<code>python/sglang/srt/mem_cache/multimodal_cache.py</code>)</td></tr>
+<tr><td>Admission constraint</td><td>adapter must be resident</td><td>encoder capacity</td></tr>
+<tr><td>Cache interaction</td><td>namespaced by <code>extra_key</code></td><td>hashed and cached separately</td></tr>
+</tbody></table>
+</div>
+<p>Both convert what looks like control flow into a data structure the kernel indexes. That is
+the same move as Chapter 9's page table, Chapter 14's <code>kv_indptr</code>, and Chapter 17's
+expert-major sort — probably the single most repeated idea in this codebase.</p>
+<p>Part VI ends here. You now have the whole engine. Part VII is about living with it: seeing
+what it is doing, and changing what it does.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 21 in one page</p><ol class="bk-card-arg"><li>Both features break the assumption that a batch is homogeneous, and both are solved by extending the batch rather than splitting it.</li><li>A LoRA update is low-rank, so the base GEMM runs once and only a thin correction is per-request.</li><li>That correction is ragged — different rows want different factors — so it becomes an index tensor, not control flow.</li><li>A vision encoder's output is spliced into the token stream, so an image is tokens and carries every cost a token carries.</li><li>This is the same move as the page table and the sorted expert order: irregularity expressed as data.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>A 336×336 image at patch size 14</th><td>576 tokens</td></tr><tr><th scope='row'>LoRA trainable-parameter reduction, GPT-3</th><td>10,000×</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Adapters</th><td><code>python/sglang/srt/lora/lora_manager.py</code></td></tr><tr><th scope='row'>Multimodal</th><td><code>python/sglang/srt/managers/mm_utils.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch20-shaping-output.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="part7.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch20-shaping-output.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="part7.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

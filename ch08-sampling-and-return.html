@@ -1,0 +1,565 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>8. Sampling and the Return Path - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item expanded "><a href="ch08-sampling-and-return.html" class="active">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch08-sampling-and-return.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="8-sampling-and-the-return-path"><a class="header" href="#8-sampling-and-the-return-path">8. Sampling and the Return Path</a></h1>
+<blockquote>
+<p><em>Turning hidden states into user-visible text is three separate hard problems that happen
+to sit next to each other.</em></p>
+</blockquote>
+<p>The model has produced logits. That is not a token, and a token is not text, and text on a
+GPU is not text in front of a reader.</p>
+<p>This chapter closes the loop of Part II by covering the three stages that remain. They sit
+next to each other in the pipeline and are often described together, but they are genuinely
+separate problems, each hard in its own way.</p>
+<p>Turning hidden states into logits is a <em>cost</em> problem: running the vocabulary projection on
+every position of a 2,000-token prompt would cost more than several transformer layers, so
+the engine has to know which positions matter — and the answer changes depending on features
+introduced in later chapters.</p>
+<p>Sampling is a <em>batching</em> problem: every request in the batch asked for different
+temperature, different top-p, different penalties, and they all have to be applied in one
+pass.</p>
+<p>Detokenization is a <em>correctness</em> problem, and the least appreciated of the three. You
+cannot simply decode the newest token and append it, and the reasons why involve both how
+tokenizers work and how UTF-8 works.</p>
+<p>Along the way we take a detour into a question that surprises people: why the same prompt
+with temperature zero can produce different output on different runs, and what it costs to
+make that stop.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 10 min</span></p><ul><li>Say what temperature, top-k, top-p, and min-p each do and why their order matters</li><li>Explain why the same prompt at temperature 0 can give different output</li><li>Describe why incremental detokenization cannot decode one token at a time</li><li>Follow a token from a logit to a streamed chunk of text</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<p>Chapter 7 ended with <code>ModelRunnerOutput</code> carrying logits. Getting from there to a token
+streamed to a client crosses three subsystems and two process boundaries, and each stage
+has a difficulty that is not obvious from its name.</p>
+<hr />
+<h2 id="not-every-position-matters-except-when-it-does"><a class="header" href="#not-every-position-matters-except-when-it-does">Not every position matters, except when it does</a></h2>
+<p>The model produces a hidden state for <em>every</em> position it processed. For a decode step that
+is one state per sequence, and all of them matter. For a prefill of a 2,000-token prompt it
+is 2,000 states per sequence, of which — usually — exactly one matters: the last, which
+predicts the next token.</p>
+<p>Running the LM head on all 2,000 would be waste on a large scale. The LM head is a
+<code>[hidden_size, vocab_size]</code> matrix; with a 128k vocabulary it is one of the largest
+operations in the model. Multiplying 2,000 positions against it to discard 1,999 results
+would cost more than several transformer layers.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/logits_processor.py#L427"><code>python/sglang/srt/layers/logits_processor.py:427</code></a> <code>_get_pruned_states</code> is the pruning step,
+and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/logits_processor.py#L282"><code>:282</code></a> <code>LogitsProcessor</code> is the module. Its <code>forward</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/logits_processor.py#L332"><code>:332</code></a>) opens by converting its
+input:</p>
+<pre><code class="language-python">        # Extract MIS indices before ForwardBatch → LogitsMetadata conversion
+        multi_item_delimiter_indices = None
+        if isinstance(logits_metadata, ForwardBatch):
+            multi_item_delimiter_indices = logits_metadata.multi_item_delimiter_indices
+            logits_metadata = LogitsMetadata.from_forward_batch(logits_metadata)
+</code></pre>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/logits_processor.py#L149"><code>:149</code></a> <code>LogitsMetadata</code> (built by <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/logits_processor.py#L192"><code>:192</code></a> <code>from_forward_batch</code>) is a narrowed view of the
+<code>ForwardBatch</code> — only what this stage needs. Its fields encode <em>which</em> positions matter:
+which produce sampled tokens, which produce input logprobs, and how positions map back to
+sequences.</p>
+<p>Then a chain of special cases before the common path:</p>
+<pre><code class="language-python">        # Autotune dummy run discards this output. `is False` not `not`: None
+        # means no autotune pass, which must not skip. Placed before the MIS /
+        # DLLM / common dispatch so all three LM-head paths are skipped.
+        if _autotune_run_lm_head is False:
+            return LogitsProcessorOutput(next_token_logits=None)
+</code></pre>
+<p>The comment earns its place: <code>is False</code> rather than <code>not</code> because <code>None</code> is a third state
+meaning "no autotune pass in progress," and <code>not None</code> would wrongly skip the head.</p>
+<p>The cases where more than the last position matters are worth naming, because they are the
+reason the pruning logic is not a one-liner:</p>
+<ul>
+<li><strong>Input logprobs</strong> — the client asked for the likelihood of its own prompt tokens.</li>
+<li><strong>Speculative decoding</strong> — Chapter 19 verifies <em>k</em> draft tokens, so <em>k</em> positions produce
+logits.</li>
+<li><strong>Hidden state capture</strong> — EAGLE needs intermediate hidden states, not just logits.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/logits_processor.py#L593"><code>python/sglang/srt/layers/logits_processor.py:593</code></a> <code>_get_hidden_states_to_store</code> handles it, driven by
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/forward_batch_info.py#L200"><code>python/sglang/srt/model_executor/forward_batch_info.py:200</code></a> <code>CaptureHiddenMode</code>.</li>
+<li><strong>Multi-item scoring</strong> — <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/logits_processor.py#L847"><code>python/sglang/srt/layers/logits_processor.py:847</code></a>
+<code>compute_logprobs_for_multi_item_scoring</code>, for reranking
+and scoring endpoints where every delimiter position matters.</li>
+</ul>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/logits_processor.py#L646"><code>python/sglang/srt/layers/logits_processor.py:646</code></a> <code>_get_logits</code> is where the head actually runs, and it is dense with parallelism
+concerns:</p>
+<pre><code class="language-python">        hidden_states, local_hidden_states = self._gather_dp_attn_hidden_states(
+            hidden_states, logits_metadata
+        )
+
+        logits = self._compute_lm_head(hidden_states, lm_head, embedding_bias)
+
+        if self.logit_scale is not None:
+            logits.mul_(self.logit_scale)
+
+        if self.do_tensor_parallel_all_gather:
+            if self.use_attn_tp_group:
+                logits = self._gather_attn_tp_logits(logits)
+            else:
+                logits = self._logits_gatherer(logits)
+
+        logits = self._scatter_dp_attn_logits(
+            logits, local_hidden_states, logits_metadata
+        )
+</code></pre>
+<p>Gather across data-parallel ranks, compute, all-gather across tensor-parallel ranks (the
+vocabulary is sharded, so each rank holds a slice of the logits), then scatter back. Three
+collectives around one matrix multiply. Chapter 16 explains why the vocabulary is sharded
+and what <code>use_attn_tp_group</code> distinguishes.</p>
+<hr />
+<h2 id="sampling-as-batched-tensor-work"><a class="header" href="#sampling-as-batched-tensor-work">Sampling as batched tensor work</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/sampler.py#L70"><code>python/sglang/srt/layers/sampler.py:70</code></a> <code>Sampler</code> faces a problem that single-request
+inference does not have: <strong>every request in the batch asked for different sampling
+parameters.</strong> One wants greedy, another temperature 0.8 with top-p 0.95, a third top-k 50
+with a repetition penalty.</p>
+<p><code>python/sglang/srt/sampling/sampling_batch_info.py</code> is the answer — per-request parameters
+packed into tensors, so operations apply to the whole batch at once with per-row values.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/sampler.py#L97"><code>:97</code></a> <code>forward</code> starts with cleanup and then takes the fast path if it can:</p>
+<pre><code class="language-python">        logits = logits_output.next_token_logits
+
+        # Preprocess logits (custom processors and NaN handling)
+        logits = self._preprocess_logits(logits, sampling_info)
+        return_sampling_mask = any(sampling_info.return_sampling_masks or [])
+
+        if sampling_info.is_all_greedy:
+            if _use_aiter and not _disable_aiter_greedy_sample:
+                batch_next_token_ids = torch.empty(
+                    logits.shape[0], device=logits.device, dtype=torch.int32
+                )
+                _aiter_greedy_sample(batch_next_token_ids, logits)
+            else:
+                batch_next_token_ids = torch.argmax(logits, -1)
+</code></pre>
+<p><code>is_all_greedy</code> is a batch-level property: if <em>every</em> request wants greedy sampling, the
+whole thing is one <code>argmax</code> and the entire probability pipeline is skipped. A single
+non-greedy request in the batch costs everyone the general path — a small example of how
+batching couples requests that have nothing to do with each other.</p>
+<p>The general path is <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/sampler.py#L246"><code>python/sglang/srt/layers/sampler.py:246</code></a> <code>_sample_from_probs</code>, with
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/sampler.py#L563"><code>python/sglang/srt/layers/sampler.py:563</code></a> <code>top_k_top_p_min_p_sampling_from_probs_torch</code> as the reference implementation.
+Reading it shows how the three truncation methods compose: sort, cumulative-sum, mask
+below the thresholds, renormalize, sample. Penalties live in
+<code>python/sglang/srt/sampling/penaltylib/</code> and are applied to logits before this point.</p>
+<h3 id="what-the-knobs-actually-do"><a class="header" href="#what-the-knobs-actually-do">What the knobs actually do</a></h3>
+<p>The parameter names in an OpenAI-compatible request describe four different operations on a
+distribution, applied in a fixed order, and the order matters more than any single one of
+them.</p>
+<p>Start from the model's output: a vector of <strong>logits</strong> <em>z</em> ∈ R^<em>V</em>, one real number per
+vocabulary entry, which softmax turns into probabilities:</p>
+<pre><code>p_i = exp(z_i) / Σ_j exp(z_j)
+</code></pre>
+<p><strong>Temperature</strong> divides the logits before the softmax: <em>p_i</em> ∝ exp(<em>z_i</em> / <em>T</em>). It is a
+sharpening control, and the limits are the useful way to hold it. As <em>T</em> → 0 the largest
+logit dominates completely and sampling degenerates to <code>argmax</code> — which is why temperature 0
+is implemented as greedy rather than as a division by zero. As <em>T</em> → ∞ every exponent goes
+to zero and the distribution becomes uniform over the whole vocabulary. <em>T</em> = 1 leaves the
+model's own distribution alone.</p>
+<p><strong>Top-k</strong> keeps the <em>k</em> highest-probability tokens and zeros the rest, then renormalizes. It
+is the bluntest of the truncations and has a known failure mode: <em>k</em> is a fixed count applied
+to a distribution whose useful width varies enormously by position. After <code>"The capital of France is"</code> the model is nearly certain and <em>k</em> = 50 admits 49 wrong answers; mid-sentence in
+open prose, 50 may be far too few.</p>
+<p><strong>Top-p</strong>, or nucleus sampling (Holtzman et al., 2020), fixes exactly that. Sort by
+descending probability and keep the shortest prefix whose cumulative mass reaches <em>p</em>:</p>
+<pre><code>keep the smallest set S with  Σ_{i ∈ S} p_i ≥ p
+</code></pre>
+<p>The size of the kept set now adapts to the model's own confidence — one token where the model
+is sure, hundreds where it is not. Nucleus sampling was introduced to fix the specific
+pathology that greedy and beam search produce degenerate, repetitive text while unrestricted
+sampling produces incoherent text; truncating the unreliable tail was the middle path.</p>
+<p><strong>Min-p</strong> is the newest and takes a third view: keep tokens whose probability is at least a
+fraction of the <em>top</em> token's, <em>p_i</em> ≥ min_p × max_j <em>p_j</em>. Where top-p thresholds on
+cumulative mass, min-p thresholds relative to the peak, which behaves better at high
+temperature — the scaling that flattens the distribution also lowers the peak, so the
+threshold moves with it.</p>
+<p>The order of operations is where implementations disagree and where bugs live. SGLang's is:
+penalties on logits → temperature → softmax → top-k → top-p → min-p → renormalize → sample.
+Applying temperature <em>before</em> the truncations is the consequential choice: temperature
+changes the probabilities, so it changes which tokens survive a top-p cut. The reverse order
+would give a different distribution from the same request parameters.</p>
+<p><code>top_k_top_p_min_p_sampling_from_probs_torch</code> implements all three in the one sorted pass
+they share — a sort, a cumulative sum, three mask conditions, a renormalize — because sorting
+a vocabulary-sized tensor per row is the expensive part and there is no reason to do it three
+times.</p>
+<p>The penalties are a different kind of operation, applied to logits rather than probabilities
+and dependent on the tokens generated so far rather than on the distribution: presence and
+frequency penalties subtract from the logits of tokens already seen, and the repetition
+penalty divides or multiplies them depending on sign. They live in
+<code>python/sglang/srt/sampling/penaltylib/</code> precisely because they need per-request generation
+history, which the rest of the sampler does not.</p>
+<p>Two extension points sit here. <code>python/sglang/srt/sampling/custom_logit_processor.py</code> lets a
+client ship a processor with its request — applied in <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/sampler.py#L761"><code>python/sglang/srt/layers/sampler.py:761</code></a> <code>apply_custom_logit_processor</code>
+— and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/sampler.py#L527"><code>python/sglang/srt/layers/sampler.py:527</code></a> <code>register_sampler_backend</code> lets a hardware backend replace the whole sampler,
+which is how the Ascend path at <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/sampler.py#L467"><code>python/sglang/srt/layers/sampler.py:467</code></a> <code>_forward_ascend_backend</code> plugs in.</p>
+<hr />
+<h2 id="reproducibility-and-why-it-is-hard"><a class="header" href="#reproducibility-and-why-it-is-hard">Reproducibility, and why it is hard</a></h2>
+<p>Send the same prompt twice with temperature 0 and you may get different outputs. This
+surprises people, and the reason is not in the sampler.</p>
+<p>Floating-point addition is not associative. A reduction — a sum across the hidden
+dimension, a softmax denominator — gives a different last-bit result depending on the order
+it accumulates. GPU kernels choose their reduction order based on shape: how many elements,
+how many thread blocks, whether split-K is worth it. <strong>Change the batch size and the kernel
+changes its reduction order, and the logits change in the last bits.</strong> Usually invisible;
+occasionally enough to flip an <code>argmax</code> between two near-tied tokens.</p>
+<p>So determinism requires <em>batch-invariant</em> operators — kernels that reduce in the same order
+regardless of batch shape. <code>python/sglang/srt/batch_invariant_ops/</code> provides them, and
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L764"><code>python/sglang/srt/model_executor/model_runner.py:764</code></a> <code>maybe_enable_batch_invariant_mode</code>
+switches them in. They are slower; you turn them on when you need reproducibility more than
+throughput.</p>
+<p>Per-request determinism is separate and cheaper: <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/sampler.py#L684"><code>python/sglang/srt/layers/sampler.py:684</code></a> <code>multinomial_with_seed</code> derives a
+seed from the request's seed and the token position, so a given request samples the same
+sequence regardless of what else is in the batch.</p>
+<p><code>.claude/skills/kl-consistency-test/SKILL.md</code> frames the whole problem precisely. Testing
+that prefill logprobs match decode logprobs requires <strong>two independent conditions</strong>: every
+operator must be batch-invariant, <em>and</em> the two paths must be computing the same function.
+A non-zero KL divergence could be either, and the skill's contribution is a helper that
+separates them — which is the difference between a debuggable failure and a number someone
+tunes a threshold around.</p>
+<hr />
+<h2 id="incremental-detokenization-is-genuinely-hard"><a class="header" href="#incremental-detokenization-is-genuinely-hard">Incremental detokenization is genuinely hard</a></h2>
+<p>Tokens go back to <code>DetokenizerManager</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/detokenizer_manager.py#L91"><code>python/sglang/srt/managers/detokenizer_manager.py:91</code></a>),
+whose loop is refreshingly small:</p>
+<pre><code class="language-python">    def event_loop(self):
+        """The event loop that handles requests"""
+        while True:
+            with self.soft_watchdog.disable():
+                recv_obj = sock_recv(self.recv_from_scheduler)
+            output = self._request_dispatcher(recv_obj)
+            if output is not None:
+                sock_send(self.send_to_tokenizer, output)
+            self.soft_watchdog.feed()
+</code></pre>
+<p>Receive, dispatch, forward. Note the watchdog is <em>disabled</em> around the blocking receive —
+waiting for work is not a hang — and fed after each message. That distinction matters:
+without it, an idle server would look wedged.</p>
+<p>The hard part is <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/detokenizer_manager.py#L290"><code>python/sglang/srt/managers/detokenizer_manager.py:290</code></a> <code>_decode_batch_token_id_output</code>. You cannot simply decode the newest
+token and append it, for two reasons:</p>
+<p><strong>BPE merges are contextual.</strong> A tokenizer may render token <em>n</em> differently depending on
+token <em>n−1</em> — leading-space handling in particular. Decoding tokens independently and
+concatenating produces text that differs from decoding the sequence.</p>
+<p><strong>UTF-8 is multi-byte.</strong> A single emoji or CJK character can span several tokens. Decoding
+a partial token yields a replacement character, and once emitted it cannot be taken back
+from a stream.</p>
+<p>The mechanism is a per-request <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/detokenizer_manager.py#L64"><code>python/sglang/srt/managers/detokenizer_manager.py:64</code></a> <code>DecodeStatus</code> holding surrogate state — how much text
+has been emitted and where the decode boundary sits — with
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L1425"><code>python/sglang/srt/managers/schedule_batch.py:1425</code></a> <code>init_incremental_detokenize</code> on the
+scheduler side. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/detokenizer_manager.py#L226"><code>python/sglang/srt/managers/detokenizer_manager.py:226</code></a> <code>_grouped_batch_decode</code> batches the tokenizer calls, since the
+detokenizer handles a whole batch per message.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/detokenizer_manager.py#L213"><code>python/sglang/srt/managers/detokenizer_manager.py:213</code></a> <code>_clamp_decode_ids</code> is a small piece of defensive engineering with a comment
+explaining itself: out-of-range ids are mapped to 0 so the tokenizer can decode them rather
+than raising, because a crash here would take down detokenization for every concurrent
+request.</p>
+<hr />
+<h2 id="stopping-and-un-emitting"><a class="header" href="#stopping-and-un-emitting">Stopping, and un-emitting</a></h2>
+<p>Stop conditions divide by difficulty.</p>
+<p><strong>Stop tokens</strong> are easy: compare the sampled id against a set.</p>
+<p><strong>Stop strings</strong> are not. The string may span several tokens, and you cannot know a stop
+string is complete until you have generated past it — by which time, in streaming mode, you
+may have already sent part of it to the client.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/detokenizer_manager.py#L176"><code>python/sglang/srt/managers/detokenizer_manager.py:176</code></a> <code>trim_matched_stop</code> is the retraction:</p>
+<pre><code class="language-python">        # Trim stop str.
+        if isinstance(matched, str) and isinstance(output, str):
+            pos = output.find(matched)
+            if pos == -1:
+                return output
+            end = pos + len(matched)
+            return output[:end] if no_stop_trim else output[:pos]
+
+        # Trim stop token.
+        if isinstance(matched, int) and isinstance(output, list):
+            if no_stop_trim:
+                return output
+            # 200012 &lt;|call|&gt; is the tool call token and one of eos tokens for gpt-oss model
+            if output[-1] == 200012 and self.is_tool_call_parser_gpt_oss:
+                return output
+            assert len(output) &gt; 0
+            # NOTE: We can always assume the last token is the matched stop token
+            return output[:-1]
+        return output
+</code></pre>
+<p>This is why Chapter 5's finish reasons are a <em>class hierarchy</em> rather than an enum:
+<code>FINISH_MATCHED_STR</code> carries the matched string so the trimmer knows how much to remove;
+<code>FINISH_MATCHED_TOKEN</code> carries the token id. The reason needs a payload.</p>
+<p><code>no_stop_trim</code> is the client's choice about whether the stop sequence appears in the
+output. And the hardcoded <code>200012</code> is honest special-casing: for gpt-oss the tool-call token
+is <em>also</em> an EOS token, and trimming it would destroy the tool call Chapter 20 is about to
+parse. A comment and a constant beat a plausible-looking abstraction here.</p>
+<p>On the scheduler side, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L1445"><code>python/sglang/srt/managers/schedule_batch.py:1445</code></a>
+<code>_stop_match_tail_len</code> computes how much tail to keep buffered so a stop string spanning a
+token boundary can still be detected — the lookback that makes any of this possible.</p>
+<hr />
+<h2 id="streaming-out"><a class="header" href="#streaming-out">Streaming out</a></h2>
+<p>The last hop is back to <code>TokenizerManager</code>, where Chapter 4's <code>ReqState</code> machinery resolves
+the client's awaiting coroutine.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L1641"><code>python/sglang/srt/managers/tokenizer_manager.py:1641</code></a> <code>_coalesce_streaming_chunks</code> handles
+a rate mismatch: the scheduler produces a token every few milliseconds, but sending an SSE
+frame per token means a syscall and a network write per token. When several chunks are
+queued, they are merged.</p>
+<p>The subtlety is that with incremental streaming each chunk is a <em>delta</em>, so coalescing must
+concatenate rather than take the last — dropping intermediate chunks would silently drop
+tokens. The comment at <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L1734"><code>python/sglang/srt/managers/tokenizer_manager.py:1734</code></a> in <code>_wait_one_response</code> flags the same hazard from the
+consumer side.</p>
+<p><code>python/sglang/srt/entrypoints/openai/sse_utils.py</code> does SSE framing, and
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L2508"><code>python/sglang/srt/managers/tokenizer_manager.py:2508</code></a> <code>add_logprob_to_meta_info</code>,
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L2649"><code>python/sglang/srt/managers/tokenizer_manager.py:2649</code></a> <code>convert_logprob_style</code>, and
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L2726"><code>python/sglang/srt/managers/tokenizer_manager.py:2726</code></a> <code>detokenize_logprob_tokens</code> assemble the logprob payload — which requires
+detokenizing the <em>alternatives</em>, not just the chosen token, and is why requesting top-20
+logprobs is not free.</p>
+<hr />
+<h2 id="the-path-end-to-end"><a class="header" href="#the-path-end-to-end">The path, end to end</a></h2>
+<pre><code>hidden_states                        [num_tokens, hidden_size]        GPU
+  │  LogitsProcessor.forward
+  │    _get_pruned_states            drop positions nothing needs
+  │    _get_logits                   DP gather → lm_head → TP all-gather → scatter
+  ▼
+LogitsProcessorOutput                [num_seqs, vocab_size]
+  │  Sampler.forward
+  │    _preprocess_logits            custom processors, NaN handling
+  │    grammar mask (Ch. 20)         if constrained
+  │    penalties, top-k/p/min-p
+  ▼
+next_token_ids                       [num_seqs]                        GPU → CPU
+  │  Scheduler.process_batch_result  append, check stop, free KV
+  ▼  ZMQ
+DetokenizerManager                   incremental decode + trim_matched_stop
+  │  ZMQ
+  ▼
+TokenizerManager._handle_batch_output → ReqState.event.set()
+  ▼
+client
+</code></pre>
+<p>Two process hops for one token. The overlap loop of Chapter 5 hides the CPU cost of all of
+it behind the next forward pass — which is the whole reason that loop is shaped the way it
+is.</p>
+<hr />
+<p>Part II ends here. Part III goes underneath it, into the memory system every chapter so far
+has been spending.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 8 in one page</p><ol class="bk-card-arg"><li>Sampling is batched tensor work because every request in the batch asked for different parameters.</li><li>Truncation methods differ in what they threshold on: a fixed count, cumulative mass, or a fraction of the peak.</li><li>Order matters — temperature is applied before the truncations, so it changes which tokens survive them.</li><li>Nondeterminism at temperature 0 is not the sampler; it is batch-size-dependent reduction order in the kernels.</li><li>Detokenization is incremental and stateful because tokens are byte sequences that can split a character.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Batch-invariant kernels' cost</th><td>~1.6–2× slower</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Sampler</th><td><code>python/sglang/srt/layers/sampler.py</code></td></tr><tr><th scope='row'>Per-request parameters</th><td><code>python/sglang/srt/sampling/sampling_batch_info.py</code></td></tr><tr><th scope='row'>Detokenizer</th><td><code>python/sglang/srt/managers/detokenizer_manager.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch07-executing-a-batch.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="part3.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch07-executing-a-batch.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="part3.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

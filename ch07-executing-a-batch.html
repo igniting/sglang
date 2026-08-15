@@ -1,0 +1,538 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>7. Executing a Batch - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item expanded "><a href="ch07-executing-a-batch.html" class="active">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch07-executing-a-batch.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="7-executing-a-batch"><a class="header" href="#7-executing-a-batch">7. Executing a Batch</a></h1>
+<blockquote>
+<p><em>The handoff from Python scheduling objects to GPU tensors is where the mode of the batch
+starts determining everything downstream.</em></p>
+</blockquote>
+<p>A batch has been chosen. Now it has to run.</p>
+<p>This chapter covers the handoff from the scheduler's world — Python objects, lists of
+requests, CPU-side bookkeeping — to the GPU's world of tensors and kernels. It is a short
+chapter about a boundary, but the boundary matters more than its size suggests, because
+this is where a single enum starts determining almost everything downstream.</p>
+<p>That enum is <code>ForwardMode</code>, and it has nine values. Whether the batch is a prefill or a
+decode, whether it is verifying speculative tokens, whether it is a placeholder for a rank
+with no work — every one of those changes which attention kernel runs, whether a CUDA graph
+can be replayed, and how memory is accounted. When you find yourself lost in unfamiliar code
+later in this book, the first useful question is almost always <em>which modes reach this line</em>.</p>
+<p>We will also meet <code>ModelRunner</code>, the object that owns the GPU, and read its initialization
+as what it actually is: a dependency chain that explains most of the ways startup can fail.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 8 min</span></p><ul><li>List the forward modes and say what each one changes downstream</li><li>Explain the ragged batch layout and which operators read its offsets</li><li>Describe the purity rule on `ForwardBatch.init_new` and why overlap requires it</li><li>Follow the handoff from scheduler objects to GPU tensors</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="mode-determines-the-world"><a class="header" href="#mode-determines-the-world">Mode determines the world</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/forward_batch_info.py#L98"><code>python/sglang/srt/model_executor/forward_batch_info.py:98</code></a> <code>ForwardMode</code> is a nine-value
+enum, and it is the most consequential nine values in the runtime. Almost every branch in
+the execution path keys off it:</p>
+<pre><code class="language-python">class ForwardMode(IntEnum):
+    # Extend a sequence. The KV cache of the beginning part of the sequence is already computed (e.g., system prompt).
+    # It is also called "prefill" in common terminology.
+    EXTEND = auto()
+    # Decode one token.
+    DECODE = auto()
+    # Contains both EXTEND and DECODE when doing chunked prefill.
+    MIXED = auto()
+    # No sequence to forward. For data parallel attention, some workers will be IDLE if no sequence are allocated.
+    IDLE = auto()
+
+    # Used in speculative decoding: verify a batch in the target model.
+    TARGET_VERIFY = auto()
+    # Used in speculative decoding: extend a batch in the draft model.
+    DRAFT_EXTEND_V2 = auto()
+
+    # Used in disaggregated decode worker
+    # Represent a batch of requests having their KV cache ready to start decoding
+    PREBUILT = auto()
+
+    # Split Prefill for PD multiplexing
+    SPLIT_PREFILL = auto()
+
+    # Used in dLLM
+    DLLM_EXTEND = auto()
+</code></pre>
+<p>The comments are a table of contents for the rest of the book. <code>EXTEND</code> and <code>DECODE</code> are
+Chapter 1's two phases. <code>MIXED</code> is Chapter 6's chunked prefill sharing a batch with decode.
+<code>IDLE</code> is Chapter 16's data-parallel attention, where a rank with no work must still
+participate in collectives. <code>TARGET_VERIFY</code> and <code>DRAFT_EXTEND_V2</code> are Chapter 19.
+<code>PREBUILT</code> is Chapter 18's disaggregated decode, receiving KV computed elsewhere.</p>
+<p>What makes the enum interesting is that it is queried through <em>predicates</em>, not equality —
+and the predicates do not partition cleanly:</p>
+<pre><code class="language-python">    def is_extend(self, include_draft_extend_v2: bool = False):
+        return (
+            self == ForwardMode.EXTEND
+            or self == ForwardMode.MIXED
+            or (include_draft_extend_v2 and self == ForwardMode.DRAFT_EXTEND_V2)
+            or self == ForwardMode.TARGET_VERIFY
+            or self == ForwardMode.SPLIT_PREFILL
+            or self == ForwardMode.DLLM_EXTEND
+        )
+</code></pre>
+<p>Six of nine modes count as "extend," and one of them only conditionally, depending on a
+flag the caller passes. <code>TARGET_VERIFY</code> is an extend because verifying <em>k</em> speculative
+tokens has the same shape as prefilling <em>k</em> tokens — multiple new positions per sequence —
+even though semantically it is a decode step.</p>
+<p>The other predicate worth reading is <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/forward_batch_info.py#L175"><code>:175</code></a> <code>is_cuda_graph</code>:</p>
+<pre><code class="language-python">    def is_cuda_graph(self):
+        return (
+            self == ForwardMode.DECODE
+            or self == ForwardMode.TARGET_VERIFY
+            or self == ForwardMode.IDLE
+            or self == ForwardMode.DLLM_EXTEND
+        )
+</code></pre>
+<p>This is the Chapter 15 constraint expressed as a mode property. CUDA graphs need static
+shapes; these four modes have a fixed number of tokens per sequence, so they can be
+captured. <code>EXTEND</code> has a variable prompt length per request and cannot — hence the
+piecewise and prefill-graph machinery Chapter 15 covers.</p>
+<p>When reading unfamiliar code in <code>model_executor/</code> or <code>layers/</code>, the first question is
+almost always <em>which modes reach this line</em>.</p>
+<hr />
+<h2 id="the-execution-view"><a class="header" href="#the-execution-view">The execution view</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/forward_batch_info.py#L412"><code>python/sglang/srt/model_executor/forward_batch_info.py:412</code></a> <code>ForwardBatch</code> is what the
+model actually consumes: input ids, positions, <code>out_cache_loc</code> (where this step's KV
+should be written), sequence lengths, the page table, attention metadata, multimodal
+inputs, and the speculative-decoding payload.</p>
+<p>It is built by <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/forward_batch_info.py#L739"><code>:739</code></a> <code>init_new</code> from a <code>ScheduleBatch</code>, and that construction is governed
+by a rule. <code>.claude/rules/forward-batch-init-new-purity.md</code>:</p>
+<blockquote>
+<p><code>init_new</code> (and any ForwardBatch factory) treats the input <code>ScheduleBatch</code> as read-only.
+Per-forward overrides go through the kw-only params of <code>init_new</code> /
+<code>TpModelWorker.forward_batch_generation</code>, never a ScheduleBatch field.</p>
+</blockquote>
+<p>The reason is Chapter 5's overlap loop. <code>ScheduleBatch</code> objects are snapshotted and queued;
+if constructing a <code>ForwardBatch</code> mutated the batch it read from, the queued snapshot would
+drift from what the GPU actually ran.</p>
+<p>The rule is unusual in listing its own violations:</p>
+<blockquote>
+<p>Tolerated exceptions (don't add new ones):</p>
+<ul>
+<li><code>seq_lens_sum</code> backfill — the <code>seq_lens</code> family is slated for removal (→ kv-committed lengths).</li>
+<li><code>sampling_info</code> sub-object writes (grammars, canary ids) — shared object, until the sampling forward-copy op.</li>
+<li><code>_expand_mrope_from_input</code> memoizing <code>mrope_position_delta_repeated_cache</code> — pre-existing.</li>
+</ul>
+</blockquote>
+<p>Each exception names the refactor that would remove it. This is the most honest kind of
+architecture documentation: not "the design is clean" but "here are the three places it is
+not, and why."</p>
+<p>Two <code>ForwardBatch</code> methods carry real weight. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/forward_batch_info.py#L640"><code>:640</code></a> <code>mark_forward_metadata_ready</code> and
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/forward_batch_info.py#L657"><code>:657</code></a> <code>needs_forward_metadata_init</code> manage the attention backend's two-phase contract from
+Chapter 14 — metadata is prepared once per forward, and the batch tracks whether that has
+happened. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/forward_batch_info.py#L1305"><code>:1305</code></a> <code>prepare_mlp_sync_batch</code> is Chapter 16's cross-rank agreement, and it is
+called from inside the forward path rather than the scheduler because the required padding
+depends on what every other rank is doing.</p>
+<p><code>python/sglang/srt/model_executor/forward_context.py</code> provides ambient access to the
+current forward's context. Model code deep in an attention layer needs the backend and the
+current batch, and threading them through every constructor would mean every layer in every
+one of the 218 model files takes parameters it does not use. The context is set once per
+forward and read where needed.</p>
+<h3 id="ragged-not-rectangular"><a class="header" href="#ragged-not-rectangular">Ragged, not rectangular</a></h3>
+<p>There is a shape assumption buried in almost every tutorial description of a transformer,
+and this is the point where SGLang abandons it.</p>
+<p>Textbook batching is rectangular: a <code>[batch, seq_len, hidden]</code> tensor, every sequence the
+same length, shorter ones padded and masked. It is convenient and, for serving, ruinous. A
+batch holding a 4,000-token prefill and thirty 12-token decodes would pad every row to 4,000
+and spend 99% of its arithmetic on padding.</p>
+<p>Chapter 6's admission policy makes this worse rather than better: a well-packed batch is
+<em>deliberately</em> heterogeneous — one prefill chunk plus every available decode row. Padding a
+batch that was constructed to be uneven defeats the point of constructing it.</p>
+<p>So <code>ForwardBatch</code> carries a <strong>ragged</strong> layout instead. <code>input_ids</code> is a flat 1-D tensor: all
+of sequence 0's new tokens, then all of sequence 1's, with no padding and no batch
+dimension. The structure lives beside it, in the offsets:</p>
+<pre><code class="language-python">    # For extend
+    extend_num_tokens: Optional[int] = None
+    extend_seq_lens: Optional[torch.Tensor] = None
+    extend_prefix_lens: Optional[torch.Tensor] = None
+    extend_start_loc: Optional[torch.Tensor] = None
+</code></pre>
+<p><code>extend_seq_lens[i]</code> is how many <em>new</em> tokens sequence <em>i</em> contributes; <code>extend_start_loc[i]</code>
+is where they begin in the flat buffer; <code>extend_prefix_lens[i]</code> is how many tokens the
+sequence already had cached, which is where its new positions start counting from and, in
+Chapter 10's terms, how much of it was a prefix hit.</p>
+<p>This is the same CSR-style representation used everywhere data is jagged — an offsets array
+plus a values array — and every consumer splits cleanly along Orca's line:</p>
+<ul>
+<li><strong>Linear layers</strong> ignore the offsets entirely. A <code>[total_tokens, hidden]</code> matrix times a
+weight matrix is one GEMM; the rows are independent and it does not matter which sequence
+each came from. Every <code>nn.Linear</code> in every model file operates on the flat form without
+knowing it is a batch at all.</li>
+<li><strong>Attention</strong> reads the offsets, because it must not let sequence 3 attend to sequence 4.
+The kernels of Chapter 14 take <code>extend_start_loc</code> and <code>extend_seq_lens</code> and treat each
+segment as its own attention problem, which is why their signatures carry <code>indptr</code> arrays
+rather than a batch dimension.</li>
+<li><strong>Anything positional</strong> — RoPE in Chapter 13, the sampler in Chapter 8 — reads them to
+recover per-sequence structure from the flat buffer.</li>
+</ul>
+<p>Two costs come with it. Every kernel that touches attention must be varlen-aware, which
+rules out naive PyTorch implementations and is part of why Chapter 14's backend layer exists
+at all. And the <code>_cpu</code> mirrors of these arrays — <code>extend_seq_lens_cpu</code>,
+<code>extend_prefix_lens_cpu</code> — exist because host-side logic needs the same structure without
+paying for the synchronization Chapter 5 warned about, so both copies are maintained and
+must be kept consistent.</p>
+<p>The payoff is that a batch costs exactly the tokens it contains. That is the precondition
+for Chapter 6's budget being denominated in tokens rather than requests, and for Chapter 1's
+critical batch size being reachable at all.</p>
+<hr />
+<h2 id="the-worker-boundary"><a class="header" href="#the-worker-boundary">The worker boundary</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tp_worker.py#L74"><code>python/sglang/srt/managers/tp_worker.py:74</code></a> <code>BaseTpWorker</code> is deliberately thin — mostly
+delegation to <code>ModelRunner</code> plus the weight-update and LoRA methods Chapters 12 and 21
+cover. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tp_worker.py#L299"><code>:299</code></a> <code>TpModelWorker</code> is the standard implementation.</p>
+<p>The abstraction exists because the worker is a substitution point. Chapter 19's speculative
+decoding replaces it with a worker that runs a draft model and a target model
+(<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/speculative/eagle_worker_v2.py#L1008"><code>python/sglang/srt/speculative/eagle_worker_v2.py:1008</code></a> <code>EAGLEWorkerV2</code> implements the same
+interface). The scheduler calls <code>forward_batch_generation</code> and does not know which is
+underneath.</p>
+<hr />
+<h2 id="initialization-as-an-ordered-script"><a class="header" href="#initialization-as-an-ordered-script">Initialization as an ordered script</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L284"><code>python/sglang/srt/model_executor/model_runner.py:284</code></a> <code>ModelRunner</code> owns the GPU: weights,
+memory pools, attention backend, CUDA graphs. Its <code>__init__</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L287"><code>:287</code></a>) is a dependency chain,
+and reading it in order explains most startup failures:</p>
+<pre><code>init_torch_distributed        (:1037)   process groups first — everything else may collective
+load_model                    (:1057)   weights onto the device
+configure_kv_cache_dtype      (:1322)   decide the cache dtype before sizing the pool
+alloc_memory_pool             (:807)    whatever memory is left becomes KV cache
+init_attention_backends       (:927)    backends need pool layout to build page tables
+init_cuda_graphs              (:992)    capture needs a working backend and real buffers
+</code></pre>
+<p>Memory is the through-line. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L807"><code>:807</code></a> <code>alloc_memory_pool</code> runs <em>after</em> weights are loaded
+because the pool is sized from what remains — that is what <code>--mem-fraction-static</code> means,
+and why the same flag behaves differently across models. Chapter 9 covers the arithmetic.</p>
+<p>CUDA graph capture comes last because it allocates too, and its cost is not always
+predictable up front. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L885"><code>:885</code></a> <code>post_capture_resize_kv_pool</code> exists for exactly that: after
+capture, whatever memory the graphs did not need is returned to the KV pool. The startup
+sequence over-reserves, then gives back.</p>
+<p>The class has also been decomposed.
+<code>python/sglang/srt/model_executor/model_runner_components/</code> holds extracted
+collaborators — <code>python/sglang/srt/model_executor/model_runner_components/attention_backend_setup.py</code>,
+<code>python/sglang/srt/model_executor/model_runner_components/cuda_graph_setup.py</code>,
+<code>python/sglang/srt/model_executor/model_runner_components/weight_updater.py</code> — each called from the
+corresponding <code>init_*</code>.</p>
+<hr />
+<h2 id="the-forward-call"><a class="header" href="#the-forward-call">The forward call</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L1505"><code>:1505</code></a> <code>forward</code> is the public entry, and it is mostly instrumentation:</p>
+<pre><code class="language-python">        self.forward_pass_id += 1
+
+        # Try msprob debugger
+        if self.msprobe_debugger is not None:
+            ...
+
+        # Step span
+        step_span_ctx = profile_range(build_step_span_name(forward_batch))
+</code></pre>
+<pre><code class="language-python">        with (
+            canary_ctx,
+            step_span_ctx,
+            get_global_expert_distribution_recorder().with_forward_pass(
+                self.forward_pass_id,
+                forward_batch,
+            ) as recorder_outputs,
+        ):
+            output = self._forward_raw(...)
+</code></pre>
+<p>Three context managers wrap every forward: a numerical-correctness canary, a profiling
+span (Chapter 22), and the expert-distribution recorder (Chapter 17). They are stacked
+here, at the single chokepoint every forward passes through, rather than sprinkled through
+the model.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L1649"><code>:1649</code></a> <code>_forward_raw</code> is the dispatch, and it reads as a priority list:</p>
+<pre><code class="language-python">            can_run_graph = bool(
+                mode_check()
+                and self.decode_cuda_graph_runner
+                and self.decode_cuda_graph_runner.can_run_graph(forward_batch)
+            )
+            ...
+            # Replay cuda graph if applicable
+            if can_run_graph:
+                ret = self.decode_cuda_graph_runner.execute(
+                    forward_batch,
+                    pp_proxy_tensors=pp_proxy_tensors,
+                )
+                return ModelRunnerOutput(logits_output=ret, can_run_graph=can_run_graph)
+</code></pre>
+<p>The graph path is checked first and returns immediately — it is the fast path, and taking
+it early skips everything below. Note that eligibility is two questions: does the <em>mode</em>
+allow a graph (<code>is_cuda_graph</code>), and does <em>this particular batch</em> fit a captured shape
+(<code>can_run_graph</code>)?</p>
+<p>The comment on what follows is worth quoting in full, because it explains an ordering that
+looks arbitrary:</p>
+<pre><code class="language-python">            # DP / MLP-sync padding + attn-tp normalization. Only the decode
+            # cuda-graph path above pre-pads its static buffers and returns
+            # early; split prefill, the prefill cuda graph, and the eager
+            # forward all run the live batch and need this first — it sets
+            # global_dp_buffer_len / padded token counts that graph eligibility
+            # and the collectives depend on.
+            self._prepare_eager_forward_batch(forward_batch)
+</code></pre>
+<p>The decode graph path pre-pads at capture time, so it can skip this. Everything else must
+pad now, because Chapter 16's collectives require every rank to agree on token counts
+before any of them starts communicating.</p>
+<p>Then the remaining modes are dispatched in turn — split prefill, prefill CUDA graph, eager
+extend — each with its own eligibility conditions. The layered structure is the point:
+<strong>four execution paths, tried in order of decreasing speed and increasing generality.</strong></p>
+<hr />
+<h2 id="what-comes-back"><a class="header" href="#what-comes-back">What comes back</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L258"><code>:258</code></a> <code>ModelRunnerOutput</code> carries the <code>logits_output</code> plus whether a graph was used. The
+model produced logits; it did not produce tokens.</p>
+<p>Sampling is a separate call — <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L1766"><code>:1766</code></a> <code>sample</code> — which Chapter 5 showed the overlap loop
+deliberately deferring past result processing, because sampling may depend on grammar state
+advanced by the previous step.</p>
+<p>Chapter 8 picks up there.</p>
+<hr />
+<h2 id="the-full-handoff"><a class="header" href="#the-full-handoff">The full handoff</a></h2>
+<p>Collecting the transformations a request passes through in this chapter and the last:</p>
+<pre><code>Req                    scheduler's per-request state, Python objects
+  │  ScheduleBatch.prepare_for_extend / prepare_for_decode
+  ▼
+ScheduleBatch          CPU scheduling view: list of Reqs + bookkeeping
+  │  (ModelWorkerBatch: transport subset)
+  ▼
+ForwardBatch           GPU view: tensors, positions, page table, attn metadata
+  │  ModelRunner.forward → _forward_raw → graph replay or eager
+  ▼
+LogitsProcessorOutput  logits, and optionally hidden states / logprobs
+  │  ModelRunner.sample
+  ▼
+next_token_ids         back to process_batch_result in Chapter 5's loop
+</code></pre>
+<p>Four representations for one request in one step. Each exists because its consumers need a
+different subset with different mutability rules — and the rules files in <code>.claude/rules/</code>
+exist because keeping those boundaries straight under an overlapping scheduler is where the
+bugs are.</p>
+<p>The batch has run. What comes back is logits — not tokens, and certainly not text. Chapter 8
+covers the last leg, and closes Part II.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 7 in one page</p><ol class="bk-card-arg"><li>The batch's mode determines the world: which kernel runs, which metadata is built, whether a graph can replay.</li><li>Batches are ragged, not rectangular — a flat token buffer plus offsets — because a well-packed batch is deliberately uneven.</li><li>Linear layers ignore the offsets; attention reads them. That is Orca's selective batching, inherited as a data layout.</li><li>`init_new` treats its input as read-only, because the overlap loop queues snapshots that must describe what the GPU actually ran.</li><li>The worker boundary is a substitution point — speculative decoding replaces it entirely.</li></ol><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Forward batch</th><td><code>python/sglang/srt/model_executor/forward_batch_info.py</code></td></tr><tr><th scope='row'>Worker</th><td><code>python/sglang/srt/managers/tp_worker.py</code></td></tr><tr><th scope='row'>Model runner</th><td><code>python/sglang/srt/model_executor/model_runner.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch06-deciding-what-runs.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch08-sampling-and-return.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch06-deciding-what-runs.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch08-sampling-and-return.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

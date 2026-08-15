@@ -1,0 +1,481 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>16. Tensor, Pipeline, and Data Parallelism - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item expanded "><a href="ch16-parallelism.html" class="active">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch16-parallelism.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="16-tensor-pipeline-and-data-parallelism"><a class="header" href="#16-tensor-pipeline-and-data-parallelism">16. Tensor, Pipeline, and Data Parallelism</a></h1>
+<blockquote>
+<p><em>The three classical parallelism axes differ in what they split and therefore in which
+interconnect they stress; SGLang adds a fourth because MLA broke the assumptions.</em></p>
+</blockquote>
+<p>Everything so far has quietly assumed one GPU. That assumption fails early: a 70-billion
+parameter model in half precision is 140 GB of weights, and the frontier models are several
+times larger.</p>
+<p>So the work has to be split. The interesting part is that "split" admits several different
+answers, they are not interchangeable, and choosing badly is not recoverable by tuning
+anything else.</p>
+<p>The classical three cut along different dimensions. Tensor parallelism splits <em>within</em> each
+layer, so every rank does part of every operation and they must talk twice per transformer
+block. Pipeline parallelism splits <em>between</em> layers, so communication is rare but ranks
+spend time idle. Data parallelism does not split the model at all.</p>
+<p>Which to use depends on a fact about hardware that governs this whole chapter: the network
+inside a machine is roughly an order of magnitude faster than the network between machines.</p>
+<p>Then there is a fourth axis, which SGLang added because DeepSeek's compressed cache broke
+the assumptions the classical answers were built on. That story — a memory optimization from
+Chapter 9 forcing a new form of parallelism — is the most interesting thing here.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 10 min</span></p><ul><li>Derive Megatron's column-then-row split and count the collectives it costs</li><li>Choose a parallelism axis for a given interconnect</li><li>Explain why MLA breaks tensor parallelism's assumptions</li><li>Say what data-parallel attention buys and what it demands in return</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="groups-and-collectives"><a class="header" href="#groups-and-collectives">Groups and collectives</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/distributed/parallel_state.py#L237"><code>python/sglang/srt/distributed/parallel_state.py:237</code></a> <code>GroupCoordinator</code> wraps a process
+group with the operations SGLang needs. Every parallelism axis gets one, and a rank belongs
+to several at once — a rank is simultaneously in a TP group, a PP group, and possibly a DP
+and EP group, each with different membership.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/distributed/parallel_state.py#L2193"><code>:2193</code></a> <code>init_distributed_environment</code> establishes the world; <code>initialize_model_parallel</code>
+carves the sub-groups. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L1037"><code>python/sglang/srt/model_executor/model_runner.py:1037</code></a>
+<code>init_torch_distributed</code> is the caller, and it runs first in Chapter 7's initialization
+chain because everything after it may need a collective.</p>
+<p>The collectives and their costs:</p>
+<div class="table-wrapper"><table><thead><tr><th>Operation</th><th>What it does</th><th>Cost</th></tr></thead><tbody>
+<tr><td>all-reduce</td><td>sum across ranks, all receive</td><td>2×(N−1)/N × data</td></tr>
+<tr><td>all-gather</td><td>concatenate across ranks</td><td>(N−1)/N × data</td></tr>
+<tr><td>reduce-scatter</td><td>sum, each rank keeps a slice</td><td>(N−1)/N × data</td></tr>
+<tr><td>all-to-all</td><td>every rank sends a slice to every other</td><td>the MoE bill (Chapter 17)</td></tr>
+</tbody></table>
+</div>
+<p>The numbers matter against the link. NVLink between GPUs in a node runs at hundreds of
+GB/s; InfiniBand between nodes at tens. <strong>That gap is why TP does not cross node boundaries
+cheaply</strong> — an all-reduce twice per layer over the slower link would dominate the forward
+pass. It is the single most important fact for choosing a parallelism layout.</p>
+<p><code>python/sglang/srt/distributed/device_communicators/</code> holds the implementations that beat
+the default: custom all-reduce (a hand-written kernel faster than NCCL for the small
+messages decode produces), PyNCCL, quick all-reduce, and symmetric memory. Small-message
+latency, not bandwidth, is what decode is sensitive to.</p>
+<hr />
+<h2 id="tp-is-already-written"><a class="header" href="#tp-is-already-written">TP is already written</a></h2>
+<p>Here is the pleasant surprise: after Chapter 13, there is almost nothing left to explain
+about tensor parallelism.</p>
+<p>The collectives live <em>inside</em> the layers. <code>ColumnParallelLinear</code> splits its output
+dimension, so each rank produces a slice of the output and no communication is needed.
+<code>RowParallelLinear</code> splits its input dimension, so each rank computes a partial sum, and one
+all-reduce completes it.</p>
+<p>Chain them — column then row — and the intermediate stays sharded:</p>
+<pre><code>  x ──► ColumnParallelLinear ──► [sharded activation] ──► RowParallelLinear ──► all-reduce ──► y
+</code></pre>
+<p><strong>One all-reduce per pair.</strong> That is why Chapter 13's <code>LlamaMLP</code> uses
+<code>MergedColumnParallelLinear</code> for gate/up and <code>RowParallelLinear</code> for down, and why
+<code>LlamaAttention</code> uses <code>QKVParallelLinear</code> then <code>RowParallelLinear</code>. Two collectives per
+transformer block, and a model author gets them right by picking the correct layer type.</p>
+<h3 id="why-that-specific-pairing"><a class="header" href="#why-that-specific-pairing">Why that specific pairing</a></h3>
+<p>The column-then-row order is not a convention. It is the only arrangement that gets a
+transformer block down to one collective per sublayer, and Shoeybi et al. derived it in the
+Megatron-LM paper (2019) by asking where the nonlinearity forces a synchronization.</p>
+<p>Take the MLP, <em>Y</em> = act(<em>XA</em>)<em>B</em>, and consider splitting <em>A</em> the other way first — by rows,
+<em>A</em> = [<em>A</em>₁; <em>A</em>₂], with <em>X</em> split by columns to match. Each rank computes a partial product,
+and the partials must be <em>summed before the activation</em>, because act is elementwise and
+act(<em>a</em> + <em>b</em>) ≠ act(<em>a</em>) + act(<em>b</em>). That is an all-reduce in the middle of the block.</p>
+<p>Now split <em>A</em> by columns instead, <em>A</em> = [<em>A</em>₁, <em>A</em>₂]. Each rank holds whole columns, so each
+computes a complete slice of the output:</p>
+<pre><code>[Y₁, Y₂] = [act(X A₁), act(X A₂)]
+</code></pre>
+<p>The activation is elementwise and each rank owns entire elements, so it applies locally. No
+communication.</p>
+<p>The second matrix then has to consume a column-sharded input, which means splitting it by
+rows, <em>B</em> = [<em>B</em>₁; <em>B</em>₂]. Each rank computes <em>Y_i B_i</em> — a partial sum over the full output
+shape — and one all-reduce finishes it:</p>
+<pre><code>Z = Y₁B₁ + Y₂B₂
+</code></pre>
+<p>So the pairing is forced: <strong>column-parallel to keep the nonlinearity local, row-parallel to
+collapse the result, one all-reduce at the end.</strong> Attention works out the same way for a
+different reason — heads are independent, so splitting Q, K, V by head keeps each rank's
+attention computation self-contained, and the output projection is row-parallel to gather
+them.</p>
+<p>Megatron writes the communication as a pair of conjugate operators, <code>f</code> and <code>g</code>: <code>f</code> is
+identity forward and all-reduce backward, <code>g</code> is all-reduce forward and identity backward.
+Inference only ever runs the forward half, so a block costs <strong>two all-reduces</strong> — one for
+attention, one for the MLP. Eighty layers is 160 collectives per forward pass.</p>
+<p>That count is the thing to keep in mind, because it is what sets TP's scaling limit. Each
+all-reduce moves the full activation tensor — batch × hidden elements — and its latency has
+a floor set by the interconnect that does not shrink as you add ranks. Inside a node, NVLink
+at hundreds of GB/s makes 160 collectives affordable. Across nodes, at a tenth the bandwidth
+and several times the latency, it does not. <strong>This is the reason TP is a within-node axis and
+pipeline parallelism is the between-node one</strong>: PP moves one activation tensor per stage
+boundary, a handful of transfers rather than 160.</p>
+<p><code>python/sglang/srt/layers/communicator.py</code> is the per-layer strategy object for the cases
+where the default pattern is not what you want — sequence-parallel norms, or fusing the
+all-reduce into an adjacent operation.</p>
+<p>The head-count constraints from Chapter 13 are the practical limit: TP size must divide the
+head count, and when TP exceeds the KV head count, KV heads are replicated and cache memory
+stops shrinking.</p>
+<hr />
+<h2 id="pp-splits-layers"><a class="header" href="#pp-splits-layers">PP splits layers</a></h2>
+<p>Pipeline parallelism gives each rank a contiguous range of layers.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L640"><code>python/sglang/srt/models/llama.py:640</code></a> <code>start_layer</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L644"><code>:644</code></a> <code>end_layer</code> are the bounds,
+and Chapter 12's weight filter uses them so a rank loads only its own layers.</p>
+<p>Communication is a single activation tensor per boundary — cheap enough for
+inter-node links, which makes PP the axis you extend across nodes when TP has filled one.</p>
+<p>The cost is the <strong>bubble</strong>. With four stages, rank 0 works on microbatch 1 while ranks 1–3
+idle; only after the pipeline fills are all ranks busy. Microbatching narrows the bubble
+but never closes it, and in decode — where each step is short — the fill and drain are a
+larger fraction than in training.</p>
+<p><code>python/sglang/srt/managers/scheduler_pp_mixin.py</code> implements microbatch scheduling in
+Chapter 5's loop, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L4136"><code>python/sglang/srt/managers/scheduler.py:4136</code></a>
+<code>_pp_microbatches_drained</code> is what "idle" has to mean when microbatches may still be in
+flight.</p>
+<hr />
+<h2 id="mla-breaks-tp"><a class="header" href="#mla-breaks-tp">MLA breaks TP</a></h2>
+<p>Now the interesting part.</p>
+<p>Chapter 9 introduced <code>MLATokenToKVPool</code>: DeepSeek's compressed KV cache, an order of
+magnitude smaller per token than standard MHA. Chapter 13 explained that when TP exceeds
+the KV head count, KV heads get replicated.</p>
+<p>MLA has effectively <strong>one</strong> KV head. So under 8-way TP, all eight ranks store <em>the same</em> KV
+cache. The compression that made the cache small is spent immediately on replication: eight
+copies of a cache one-eighth the size is exactly the memory you started with.</p>
+<p>That is the problem data-parallel attention exists to solve.</p>
+<hr />
+<h2 id="data-parallel-attention"><a class="header" href="#data-parallel-attention">Data-parallel attention</a></h2>
+<p>The idea: for the attention part of the model, stop splitting by head and start splitting by
+<em>sequence</em>. Each rank owns whole requests, computes their attention alone, and stores only
+their KV. No replication.</p>
+<p>The reason this is available at all is a property of attention that the MLP does not share.
+Attention is <strong>independent across sequences</strong> — sequence 7's output depends on sequence 7's
+tokens and nothing else. So any partition of the batch into groups of whole sequences is a
+valid partition of the work, requiring no communication whatsoever inside the attention
+block. The MLP is the opposite: it is independent across <em>rows</em>, but each row must be
+multiplied by the whole weight matrix, which is exactly what does not fit on one GPU.</p>
+<p>So the two halves of a transformer layer want to be split along different axes, and the
+choice is not aesthetic:</p>
+<div class="table-wrapper"><table><thead><tr><th></th><th>Attention</th><th>MLP</th></tr></thead><tbody>
+<tr><td>Parameters</td><td>small (projections only)</td><td>large</td></tr>
+<tr><td>Per-request state</td><td>the KV cache — large</td><td>none</td></tr>
+<tr><td>Natural split</td><td>by sequence</td><td>by hidden dimension</td></tr>
+<tr><td>Cost of splitting the other way</td><td>KV replicated per rank</td><td>activations all-reduced per row</td></tr>
+</tbody></table>
+</div>
+<p>Tensor parallelism picks one axis for both and pays for it in whichever half is wrong. Under
+MHA or GQA that cost is tolerable, because splitting attention by head also splits the KV
+cache. Under MLA there are no heads to split, so TP replicates the cache in full and the cost
+becomes the dominant one.</p>
+<p>Data-parallel attention refuses the compromise the same way Chapter 18 does at the
+deployment level: <strong>split each half along its own best axis, and pay a transition between
+them.</strong> Each layer therefore does:</p>
+<pre><code>  attention:  rank r handles its own sequences        (no communication)
+      │
+      ▼  all-gather: assemble the full batch
+  MLP:        tensor-parallel across all ranks
+      │
+      ▼  scatter: each rank takes its own sequences back
+  attention:  next layer
+</code></pre>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/dp_attention.py#L338"><code>python/sglang/srt/layers/dp_attention.py:338</code></a> <code>initialize_dp_attention</code> sets it up, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/dp_attention.py#L412"><code>:412</code></a>
+<code>get_dp_local_info</code> computes a rank's slice, and the gathers are <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/dp_attention.py#L450"><code>:450</code></a>
+<code>_dp_gather_via_all_reduce</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/dp_attention.py#L494"><code>:494</code></a> <code>_dp_gather_via_all_gather</code>.</p>
+<p>Two gather strategies exist because of <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/dp_attention.py#L76"><code>:76</code></a> <code>DpPaddingMode</code>:</p>
+<pre><code class="language-python">class DpPaddingMode(IntEnum):
+
+    # Padding tokens to max length and then gather tokens using `all_gather_into_tensor`
+    MAX_LEN = auto()
+    # Padding tokens to sum length and then gather tokens using `all_reduce`
+    SUM_LEN = auto()
+</code></pre>
+<p><code>MAX_LEN</code> pads every rank to the largest token count and uses all-gather — wasteful when
+ranks are unbalanced, but symmetric. <code>SUM_LEN</code> pads to the total and uses all-reduce —
+better when counts differ. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/dp_attention.py#L91"><code>:91</code></a> <code>get_dp_padding_mode</code> chooses, and its comment records a
+hard-won constraint:</p>
+<pre><code class="language-python">        # (trangdough) pplx-kernels a2a is a symmetric collective: every EP rank
+        # must dispatch the same number of tokens or the device-side handshake
+        # deadlocks (idle DP ranks with 0 tokens never signal their peers).
+        # Force MAX_LEN so all ranks are padded to equal token counts.
+</code></pre>
+<p>An MoE all-to-all kernel deadlocks if a rank contributes zero tokens, so the padding mode is
+forced. Chapter 17's communication requirements reaching back into this chapter's padding
+decision, with the failure mode being a <em>hang</em> rather than an error.</p>
+<hr />
+<h2 id="the-price-everyone-must-agree"><a class="header" href="#the-price-everyone-must-agree">The price: everyone must agree</a></h2>
+<p>DP attention's cost is synchronization. Because ranks share the MLP, they must agree on the
+batch shape <em>before</em> the layer runs — and that agreement has to happen inside the forward
+pass, since it depends on what every rank received.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/forward_batch_info.py#L1305"><code>python/sglang/srt/model_executor/forward_batch_info.py:1305</code></a> <code>prepare_mlp_sync_batch</code> is
+that agreement, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/forward_batch_info.py#L1620"><code>:1620</code></a> <code>post_forward_mlp_sync_batch</code> undoes the padding afterward.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L1416"><code>python/sglang/srt/model_executor/model_runner.py:1416</code></a> <code>_prepare_eager_forward_batch</code> is
+where it is invoked, with the comment Chapter 7 quoted about why the decode CUDA graph path
+can skip it.</p>
+<p>Now Chapter 7's <code>IDLE</code> mode makes sense:</p>
+<blockquote>
+<p>No sequence to forward. For data parallel attention, some workers will be IDLE if no
+sequence are allocated.</p>
+</blockquote>
+<p>A rank with no requests still has to run the forward pass, because the other ranks need it
+in their collectives. It contributes nothing and consumes a full step of GPU time.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/dp_attention.py#L302"><code>python/sglang/srt/layers/dp_attention.py:302</code></a> <code>set_is_extend_in_batch</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/dp_attention.py#L317"><code>:317</code></a>
+<code>is_dp_max_padding</code> propagate the shape decisions, and
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/logits_processor.py#L249"><code>python/sglang/srt/layers/logits_processor.py:249</code></a> <code>compute_dp_attention_metadata</code> carries
+them to the output stage (Chapter 8).</p>
+<p>Chapter 6's scheduling implication is real: keeping DP ranks <em>balanced</em> matters, because an
+unbalanced batch means padding, and padding is wasted compute on every rank.</p>
+<hr />
+<h2 id="the-other-dp"><a class="header" href="#the-other-dp">The other DP</a></h2>
+<p><code>python/sglang/srt/managers/data_parallel_controller.py</code> implements a completely different
+thing that shares the name: whole-replica routing. Each DP group is an independent engine
+with its own weights and its own cache; the controller routes requests between them.</p>
+<p>The two have nothing in common. DP attention splits <em>one</em> model's attention across ranks
+that cooperate every layer; the DP controller runs <em>n</em> independent models that never
+communicate. Chapter 3's <code>use_dp_controller</code> branch in <code>_launch_scheduler_processes</code> selects
+the latter.</p>
+<p>When someone says "DP size 8," ask which one they mean.</p>
+<hr />
+<h2 id="choosing-a-layout"><a class="header" href="#choosing-a-layout">Choosing a layout</a></h2>
+<p>The decision procedure, in order:</p>
+<ol>
+<li><strong>Fit the weights.</strong> TP within a node until the model fits. TP 8 on an 8-GPU node is the
+default for large models.</li>
+<li><strong>Still too large?</strong> Add PP across nodes. Inter-node links tolerate PP's rare, small
+transfers; they would not tolerate TP's.</li>
+<li><strong>MLA model?</strong> Consider DP attention instead of pure TP, to stop replicating the
+compressed cache.</li>
+<li><strong>MoE model?</strong> EP is a separate axis on top (Chapter 17).</li>
+<li><strong>Enough capacity but need throughput?</strong> DP replicas, via the controller.</li>
+</ol>
+<p><code>docs/docs/advanced_features/pipeline_parallelism.mdx</code>,
+<code>docs/docs/advanced_features/dp_dpa_smg_guide.mdx</code>, and
+<code>docs/docs/advanced_features/dcp.mdx</code> carry the project's current guidance, and
+<code>.claude/skills/debug-distributed-hang/SKILL.md</code> is what you want when a layout deadlocks —
+which, as the padding comment above shows, is the characteristic failure of this chapter.</p>
+<p>This chapter split a dense model. Chapter 17 turns to models that are sparse by
+construction, where the arithmetic barely moves but the communication bill changes shape
+entirely.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 16 in one page</p><ol class="bk-card-arg"><li>The three classical axes differ in what they split and therefore in which interconnect they stress.</li><li>Column-parallel then row-parallel is forced, not conventional: it is the only order that keeps the nonlinearity local and needs one all-reduce.</li><li>Two all-reduces per block times eighty layers is 160 collectives per forward — which is why TP stays inside a node.</li><li>MLA has effectively one KV head, so TP replicates the cache instead of splitting it, spending the compression immediately.</li><li>Data-parallel attention splits attention by sequence and the MLP by hidden dimension, paying a gather between them.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>All-reduces per forward, 80 layers</th><td>160</td></tr><tr><th scope='row'>NVLink vs InfiniBand</th><td>~20×</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Groups</th><td><code>python/sglang/srt/distributed/parallel_state.py</code></td></tr><tr><th scope='row'>DP attention</th><td><code>python/sglang/srt/layers/dp_attention.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="part5.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch17-moe.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="part5.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch17-moe.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

@@ -1,0 +1,538 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>9. KV Cache Pools and Allocators - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item expanded "><a href="ch09-kv-pools.html" class="active">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch09-kv-pools.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="9-kv-cache-pools-and-allocators"><a class="header" href="#9-kv-cache-pools-and-allocators">9. KV Cache Pools and Allocators</a></h1>
+<blockquote>
+<p><em>The engine's central data structure is a two-level indirection, and its shape explains
+both paged attention and everything Chapter 10 builds on top.</em></p>
+</blockquote>
+<p>Part II kept hitting the same wall. The scheduler could not admit requests because memory
+was full; it evicted running requests when it guessed wrong; its priorities depended on a
+cache. Chapter 1 predicted this: memory capacity, not arithmetic, is what limits how many
+people a GPU serves.</p>
+<p>This chapter is about how that memory is actually organized — and the organization is more
+interesting than "a big array," because the obvious approach fails badly.</p>
+<p>Give each request a contiguous buffer sized for its maximum length and you get two problems.
+A request that could have generated 4,000 tokens but stopped at 100 has reserved forty times
+what it used, and that reservation helps nobody. Worse, two requests with identical prompts
+cannot share anything, because each owns a private buffer.</p>
+<p>SGLang's answer is two levels of indirection, and that structure is what makes the rest of
+Part III possible. It is also where <code>--mem-fraction-static</code> — the flag people tune first and
+understand last — stops being a percentage and becomes a concrete number of tokens.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 11 min</span></p><ul><li>Follow the two-level indirection from a request to a KV tensor</li><li>Explain what paging borrows from operating systems and which wastes it removes</li><li>Say what page size trades off, and why SGLang's default is 1</li><li>Compute how much memory the pool actually gets</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="two-levels-not-one"><a class="header" href="#two-levels-not-one">Two levels, not one</a></h2>
+<p>Chapter 1 established the KV cache as the scarce resource. This chapter is how it is
+actually stored.</p>
+<p>The naive layout gives each request a contiguous buffer sized for its maximum length. It
+fails on two counts. <strong>Waste</strong>: a request that could generate 4,096 tokens but stops at 100
+has reserved 40× what it used, and that reservation cannot serve anyone else. And
+<strong>rigidity</strong>: two requests sharing a prefix cannot share storage, because each owns a
+private buffer.</p>
+<p>SGLang splits the mapping in two:</p>
+<pre><code>  request  ──►  token slots  ──►  KV storage
+           (1)               (2)
+
+  (1)  ReqToTokenPool         req_to_token[req_idx, position] = kv_index
+  (2)  KVCache + allocator    kv_index → offset into the big KV tensors
+</code></pre>
+<p>Level 1 answers "where are <em>my</em> tokens?" Level 2 answers "where does token index <em>i</em>
+live?" The indirection is what makes sharing possible: two requests can hold the same
+<code>kv_index</code> at different positions in their own rows, and the storage is written once. That
+is the mechanical precondition for Chapter 10.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L256"><code>python/sglang/srt/mem_cache/memory_pool.py:256</code></a> <code>ReqToTokenPool</code> is level one, and it is
+refreshingly plain:</p>
+<pre><code class="language-python">class ReqToTokenPool:
+    """A memory pool that maps a request to its token locations."""
+    ...
+        self.size = size
+        # +1 padding row at index 0: cuda-graph padded batches default
+        # req_pool_indices to 0, so dummy reads/writes land here harmlessly.
+        self._alloc_size = size + 1
+        self.max_context_len = max_context_len
+        self.device = device
+        with memory_saver_adapter.region(GPU_MEMORY_TYPE_KV_CACHE):
+            self.req_to_token = torch.zeros(
+                (self._alloc_size, max_context_len), dtype=torch.int32, device=device
+            )
+        self.free_slots = list(range(1, self._alloc_size))
+</code></pre>
+<p>A dense <code>[max_requests, max_context_len]</code> int32 matrix. For 4,096 requests and a 32k
+context that is 512 MB — real memory, spent on indices rather than data, and the price of
+the indirection.</p>
+<p>The padding row is a nice piece of defensive design. CUDA-graph batches (Chapter 15) are
+padded to a captured size, and padded slots default to <code>req_pool_idx = 0</code>. Rather than
+branching to skip them, row 0 is a scratch row where dummy reads and writes land
+harmlessly. Note <code>free_slots</code> starts at 1, so row 0 is never allocated.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L290"><code>python/sglang/srt/mem_cache/memory_pool.py:290</code></a> <code>alloc</code> handles a case worth flagging:</p>
+<pre><code class="language-python">        # Indices of reqs that already have a req_pool_idx and will reuse
+        # their existing slot (e.g. chunked prefill continuing across chunks).
+        reusing = [i for i, r in enumerate(reqs) if r.req_pool_idx is not None]
+</code></pre>
+<p>A chunked-prefill request (Chapter 6) spans several scheduler iterations and must keep its
+row across all of them. Allocation is therefore not "give me <em>n</em> free slots" but "give me
+slots for the requests that lack one."</p>
+<hr />
+<h2 id="what-paging-is-borrowed-from-and-what-it-fixes"><a class="header" href="#what-paging-is-borrowed-from-and-what-it-fixes">What paging is borrowed from, and what it fixes</a></h2>
+<p>Before reading the allocator, it is worth being precise about what problem paging solves,
+because the naming is a deliberate analogy and the analogy is load-bearing.</p>
+<p>The pre-2023 approach was to give each request a contiguous KV buffer sized to the maximum
+it might reach. Kwon et al.'s vLLM paper (SOSP '23) measured what that costs and split the
+waste into three kinds:</p>
+<p><strong>Internal fragmentation.</strong> A request allocated for 2,048 tokens that generates 100 wastes
+the other 1,948 slots for its entire lifetime. Nobody knows the output length in advance
+(Chapter 6's central difficulty), so the reservation is always sized for the worst case.</p>
+<p><strong>Reservation waste.</strong> Slots that the request <em>will</em> eventually use are unusable by anyone
+else <em>now</em>. Even a perfectly-sized allocation holds memory for a future that has not arrived.</p>
+<p><strong>External fragmentation.</strong> Different requests reserve different sizes, so freed regions
+leave holes that no subsequent request quite fits. Classic malloc pathology.</p>
+<p>Together these left, in their measurements, only <strong>20.4% to 38.2%</strong> of KV memory holding
+actual token state. Between three-fifths and four-fifths of the scarcest resource in the
+system, doing nothing. Since Chapter 1 established that KV capacity is the direct limiter on
+batch size and therefore on throughput, this is not a memory-efficiency footnote — it is
+most of the available performance.</p>
+<p>The fix is the one operating systems reached in the 1960s. Stop giving a process a
+contiguous physical region; give it a contiguous <em>virtual</em> address space and a page table
+mapping each virtual page to any physical frame. The correspondence is exact:</p>
+<div class="table-wrapper"><table><thead><tr><th>Operating system</th><th>KV cache</th></tr></thead><tbody>
+<tr><td>Process</td><td>Request</td></tr>
+<tr><td>Page</td><td>Block of <em>n</em> consecutive tokens' KV</td></tr>
+<tr><td>Page table</td><td><code>req_to_token</code> row</td></tr>
+<tr><td>Physical frame</td><td>Slot in the flat <code>k_buffer</code> / <code>v_buffer</code></td></tr>
+<tr><td>Page fault → allocate</td><td><code>alloc()</code> on demand as the sequence grows</td></tr>
+<tr><td><code>fork()</code> + copy-on-write</td><td>Prefix sharing, Chapter 10</td></tr>
+</tbody></table>
+</div>
+<p>Each of the three wastes disappears for the same reason it does in an OS. External
+fragmentation cannot occur, because every page is the same size and therefore
+interchangeable. Reservation waste cannot occur, because pages are allocated as the sequence
+actually grows rather than in advance. Internal fragmentation is bounded to <em>at most one
+partially-filled page per request</em> — a few tokens, not a few thousand.</p>
+<p>What it costs is indirection: every KV access now needs a table lookup, and every attention
+kernel has to be rewritten to do that lookup itself. That rewrite is what the phrase "paged
+attention" names, and it is why Chapter 14's kernels take page tables as arguments.</p>
+<p>The remaining design freedom is the page size, and it is the same tension an OS faces.
+Larger pages mean fewer table entries, fewer lookups, and better locality inside a page;
+smaller pages mean less internal fragmentation and finer-grained sharing. SGLang's default
+of one token per page — page size 1 — is the extreme end: zero internal fragmentation and
+maximally precise prefix sharing, paid for with the largest possible page table. Larger
+sizes exist for backends whose kernels want them, and <code>PAGE_SIZE</code> being a compile-time
+constant in the Triton kernels (Chapter 14) means the page arithmetic vanishes entirely when
+it is 1.</p>
+<hr />
+<h2 id="pages-and-the-allocators-job"><a class="header" href="#pages-and-the-allocators-job">Pages and the allocator's job</a></h2>
+<p>Level two is where paging lives.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/allocator/paged.py#L105"><code>python/sglang/srt/mem_cache/allocator/paged.py:105</code></a> <code>PagedTokenToKVPoolAllocator</code> states
+its own contract:</p>
+<pre><code class="language-python">class PagedTokenToKVPoolAllocator(BaseTokenToKVPoolAllocator):
+    """
+    An allocator managing the indices to kv cache data.
+
+    This class has the same interface as `TokenToKVPoolAllocator` but the output
+    of one request is always page-aligned.
+    """
+</code></pre>
+<p>The trade is the classic one. Larger pages mean less metadata and better locality, but more
+internal fragmentation — a request needing 33 tokens with a 32-token page consumes 64. This
+is the rounding Chapter 6's <code>ceil_paged_tokens</code> charges against the budget, and Chapter 10's
+<code>page_aligned</code> truncates the cache key by.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/allocator/paged.py#L149"><code>:149</code></a> <code>alloc</code> is the simple case:</p>
+<pre><code class="language-python">        num_pages = need_size // self.page_size
+        if self.need_sort and num_pages &gt; len(self.free_pages):
+            self.merge_and_sort_free()
+        if num_pages &gt; len(self.free_pages):
+            return None
+
+        out_pages = self.free_pages[:num_pages]
+        self.free_pages = self.free_pages[num_pages:]
+
+        out_indices = (
+            out_pages[:, None] * self.page_size
+            + torch.arange(self.page_size, device=self.device)
+        ).reshape(-1)
+</code></pre>
+<p>Free pages are a <em>tensor</em>, not a Python list, and expanding page ids into token indices is
+one broadcast rather than a loop. At hundreds of allocations per second across thousands of
+pages, allocator bookkeeping in Python would show up in profiles — a recurring theme in
+this part of the codebase.</p>
+<p><code>merge_and_sort_free</code> is deferred defragmentation: coalescing runs only when an allocation</p>
+<div class="bk-note bk-note-takeaway">
+<p class="bk-note-label">Takeaway — Exhaustion is a condition, not an error</p>
+<p>The allocator returns <code>None</code> when it cannot satisfy a request, because running out of KV
+memory is the expected steady state of a well-tuned server. Chapter 6 handles it by
+retracting a request; an exception would make the normal case look like a fault.</p>
+</div>
+<p>is about to fail. Returning <code>None</code> rather than raising is deliberate too — running out of
+KV memory is an <em>expected</em> condition that Chapter 6 handles by retracting, not an error.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/allocator/paged.py#L172"><code>:172</code></a> <code>alloc_extend</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/allocator/paged.py#L222"><code>:222</code></a> <code>alloc_decode</code> are the specialized paths. Extend allocates
+a variable number of tokens per request; decode allocates exactly one per sequence and can
+be a much tighter kernel. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/allocator/paged.py#L273"><code>:273</code></a> <code>free_segment</code> takes a <code>start_pos</code>, which is what lets
+Chapter 10's <code>cache_finished_req</code> free two disjoint ranges of a request's row while leaving
+the tree-owned middle alone.</p>
+<p>The most interesting comment in the file is not about allocation at all:</p>
+<pre><code class="language-python">        # Pre-warm the torch.unique HIP kernel used in free(). When a request
+        # finishes with a prompt that already exists in the radix tree (e.g.
+        # bench_serving sending the same warmup+measured prompt), the radix
+        # cache's _insert_helper frees the duplicate KV indices via
+        # token_to_kv_pool_allocator.free(value[start:prefix_len]). That call
+        # path runs `torch.unique(free_index // self.page_size)` on a
+        # ~prompt_len-sized int64 tensor. The first such call on AMD ROCm
+        # JIT-compiles rocPRIM sort/unique kernels and costs ~200ms, which
+        # shows up as a mysterious "second-request slow" (Run 1) for
+        # repeated-prompt benchmarks.
+</code></pre>
+<p>A 200 ms JIT compile, triggered on the second request, only on ROCm, only when a prompt
+repeats — surfacing as an unexplained latency spike in benchmarks. The fix is to run the
+kernel once at startup. Worth reading in full as a specimen of what performance work on
+this layer actually looks like.</p>
+<p>Sibling allocators handle the other pool shapes: <code>python/sglang/srt/mem_cache/allocator/token.py</code>
+(page size 1), <code>python/sglang/srt/mem_cache/allocator/swa.py</code> (sliding window),
+<code>python/sglang/srt/mem_cache/allocator/mamba.py</code> (recurrent state), and
+<code>python/sglang/srt/mem_cache/allocator/hisparse.py</code> (sparse).</p>
+<hr />
+<h2 id="one-abstraction-many-pools"><a class="header" href="#one-abstraction-many-pools">One abstraction, many pools</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L1624"><code>python/sglang/srt/mem_cache/memory_pool.py:1624</code></a> <code>KVCache</code> is the abstract base, and its
+<code>__init__</code> establishes what every pool shares:</p>
+<pre><code class="language-python">        self.size = size
+        self.page_size = page_size
+        self.dtype = dtype
+        self.device = device
+        if dtype in (torch.float8_e5m2, torch.float8_e4m3fn, torch.float8_e4m3fnuz):
+            # NOTE: Store as torch.uint8 because Tensor.index_put is not implemented for torch.float8_e5m2
+            self.store_dtype = torch.uint8
+        else:
+            self.store_dtype = dtype
+        self.layer_num = layer_num
+        self.start_layer = start_layer or 0
+        self.end_layer = end_layer or layer_num - 1
+</code></pre>
+<p>The <code>dtype</code> / <code>store_dtype</code> split is a PyTorch workaround made permanent: FP8 tensors do
+not support <code>index_put</code>, so the buffer is typed <code>uint8</code> and reinterpreted. Chapter 15
+returns to quantized caches; note here that the pool, not the kernel, owns the storage type.</p>
+<p><code>start_layer</code> / <code>end_layer</code> are pipeline parallelism (Chapter 16) — a rank holding layers
+20–39 allocates cache only for those.</p>
+<p>The implementations:</p>
+<p><strong><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L1755"><code>:1755</code></a> <code>MHATokenToKVPool</code></strong> — the common case. Separate K and V buffers per layer,
+indexed by token slot. Read this one first.</p>
+<p><strong><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L3932"><code>:3932</code></a> <code>MLATokenToKVPool</code></strong> — DeepSeek's multi-head latent attention. Instead of K and V
+per head, a single compressed latent vector per token, decompressed during attention. An
+order of magnitude smaller per token, which is why DeepSeek models serve long contexts on
+modest hardware — and, as Chapter 16 explains, the reason data-parallel attention exists:
+replicating a cache this small across tensor-parallel ranks wastes exactly what made it
+valuable.</p>
+<p><strong><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L3135"><code>:3135</code></a> <code>PageMajorMHATokenToKVPool</code></strong> — same data, different memory layout. Layer-major
+stores all tokens for layer 0, then layer 1; page-major groups all layers for a page
+together. Page-major makes a page contiguous, which matters when you are transferring pages
+to host memory (Chapter 11) or across machines (Chapter 18). Layout is a transfer
+optimization, not a compute one.</p>
+<p><strong><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L3577"><code>:3577</code></a> <code>HybridLinearKVPool</code></strong> and <strong><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L335"><code>:335</code></a> <code>MambaPool</code></strong> — for models where some layers
+are not attention. An SSM layer carries a fixed-size recurrent state, not a growing KV run.
+Fixed-size is a different allocation problem: it cannot be evicted incrementally, and it
+cannot be reconstructed from a prefix. Chapter 6's separate <code>rem_mamba_slots</code> gate exists
+for exactly this reason.</p>
+<p><strong><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L4348"><code>:4348</code></a> <code>DSATokenToKVPool</code></strong> and <strong><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L4671"><code>:4671</code></a> <code>MiniMaxSparseKVPool</code></strong> — sparse attention,
+where only selected tokens are attended to (Chapter 14).</p>
+<p><strong><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L2867"><code>:2867</code></a> <code>NoOpMHATokenToKVPool</code></strong> — stores nothing. For disaggregated prefill (Chapter 18),
+where KV is streamed to a decode node instead of retained.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L1668"><code>:1668</code></a> <code>_finalize_allocation_log</code> produces the <code>KV Cache is allocated. #tokens: ...</code> line
+in the startup log, which is the single most useful number for capacity planning.</p>
+<hr />
+<h2 id="from-a-percentage-to-a-number"><a class="header" href="#from-a-percentage-to-a-number">From a percentage to a number</a></h2>
+<p><code>--mem-fraction-static</code> is the flag people tune first and understand last. The chain is:</p>
+<ol>
+<li><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L1057"><code>python/sglang/srt/model_executor/model_runner.py:1057</code></a> <code>load_model</code> puts weights on the
+device.</li>
+<li><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L1322"><code>:1322</code></a> <code>configure_kv_cache_dtype</code> fixes bytes per entry (Chapter 15).</li>
+<li><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L807"><code>:807</code></a> <code>alloc_memory_pool</code> computes what remains and converts it to a token count.</li>
+<li><code>python/sglang/srt/mem_cache/kv_cache_configurator.py</code> and
+<code>python/sglang/srt/mem_cache/allocation_sizing.py</code> do the arithmetic, and
+<code>python/sglang/srt/mem_cache/kv_cache_dtype.py</code> supplies the per-token size.</li>
+</ol>
+<p>The result is <code>max_total_num_tokens</code> — the budget Chapter 6 spends. Not a request count:
+<strong>a token count, shared across all concurrent requests</strong>, which is why concurrency depends
+on context length rather than being a fixed number.</p>
+<p>The residual — the gap between the fraction and reality — is activations, workspace,
+fragmentation, and CUDA graph buffers. This is why raising <code>--mem-fraction-static</code> too far
+produces an OOM not at startup but under load, when the first large batch demands
+activation memory the pool has already taken. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L885"><code>:885</code></a> <code>post_capture_resize_kv_pool</code> recovers
+some of that slack by returning unused capture memory after graphs are built.</p>
+<hr />
+<h2 id="the-full-address-translation"><a class="header" href="#the-full-address-translation">The full address translation</a></h2>
+<p>Putting both levels together, for token <em>t</em> of request <em>r</em>:</p>
+<figure>
+<svg viewBox="0 0 700 330" role="img" aria-label="Two levels of indirection from a request to physical KV storage">
+<title>Address translation, request to KV storage</title>
+<rect class="dgm-box-accent" x="20" y="56" width="140" height="62" rx="6"/>
+<text class="dgm-label" x="90.0" y="82.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">request r</text>
+<text class="dgm-small" x="90.0" y="100.4" text-anchor="middle" style="font-size:11.5px">req_pool_idx = 7</text>
+<rect class="dgm-box" x="196" y="40" width="228" height="94" rx="6"/>
+<text class="dgm-label" x="310.0" y="64.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">ReqToTokenPool</text>
+<text class="dgm-small" x="310.0" y="82.4" text-anchor="middle" style="font-size:11.5px">req_to_token[7, t] → kv_index</text>
+<text class="dgm-small" x="310.0" y="100.4" text-anchor="middle" style="font-size:11.5px">one dense int32 row per request</text>
+<text class="dgm-small" x="310.0" y="118.4" text-anchor="middle" style="font-size:11.5px">length = max_context_len</text>
+<rect class="dgm-box" x="460" y="40" width="220" height="94" rx="6"/>
+<text class="dgm-label" x="570.0" y="64.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">allocator</text>
+<text class="dgm-small" x="570.0" y="82.4" text-anchor="middle" style="font-size:11.5px">kv_index ÷ page_size → page</text>
+<text class="dgm-small" x="570.0" y="100.4" text-anchor="middle" style="font-size:11.5px">kv_index mod page_size → slot</text>
+<text class="dgm-small" x="570.0" y="118.4" text-anchor="middle" style="font-size:11.5px">pages need not be contiguous</text>
+<rect class="dgm-box-accent" x="196" y="200" width="484" height="74" rx="6"/>
+<text class="dgm-label" x="438.0" y="223.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">KVCache</text>
+<text class="dgm-small" x="438.0" y="241.4" text-anchor="middle" style="font-size:11.5px">k_buffer[layer][kv_index]   ·   v_buffer[layer][kv_index]</text>
+<text class="dgm-small" x="438.0" y="259.4" text-anchor="middle" style="font-size:11.5px">one tensor pair per layer, shared by every request</text>
+<text class="dgm-small" x="310.0" y="28" text-anchor="middle" style="font-size:11.5px">level 1 — where are my tokens?</text>
+<text class="dgm-small" x="570.0" y="28" text-anchor="middle" style="font-size:11.5px">index → address</text>
+<text class="dgm-small" x="438.0" y="188" text-anchor="middle" style="font-size:11.5px">level 2 — where does token index i actually live?</text>
+<path class="dgm-line" d="M160 87.0 L190 87.0" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M424 87.0 L454 87.0" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M570.0 134 L570.0 194" marker-end="url(#arrow)"/>
+<text class="dgm-small" x="350.0" y="300" text-anchor="middle" style="font-size:11.5px">Two requests can hold the same kv_index at different positions in their own rows.</text>
+<text class="dgm-small" x="350.0" y="318" text-anchor="middle" style="font-size:11.5px">That is the mechanical precondition for prefix sharing.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
+</svg>
+<figcaption>Attention kernels do not walk this chain token by token: they receive the <code>req_to_token</code> row as a page table and index it inside the kernel. That is what “paged attention” names.</figcaption>
+</figure>
+<p>Two lookups per token per layer. The attention backends of Chapter 14 do not walk this
+chain per token — they receive the <code>req_to_token</code> slice as a <em>page table</em> and index it
+inside the kernel, which is what "paged attention" names.</p>
+<p>Every other chapter in this book is spending the resource this chapter allocates. Chapter 6
+budgets it, Chapter 10 shares it, Chapter 11 tiers it, Chapter 15 shrinks it, Chapter 16
+avoids replicating it, and Chapter 18 moves it between machines.</p>
+<p>This chapter built a memory system with no memory of its own. Chapter 10 gives it one.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 9 in one page</p><ol class="bk-card-arg"><li>Level one maps a request and a position to a KV index; level two maps that index to storage. Neither is contiguous per request.</li><li>Contiguous per-request allocation left 60–80% of KV memory unused, in three distinct ways.</li><li>Paging removes all three: uniform pages cannot fragment externally, on-demand allocation cannot reserve, and internal waste is bounded to one page.</li><li>The price is indirection, which every attention kernel must then perform itself — that is what 'paged attention' names.</li><li>Running out of KV memory is an expected condition, so the allocator returns `None` rather than raising.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>KV memory actually used, pre-paging</th><td>20–38%</td></tr><tr><th scope='row'>SGLang default page size</th><td>1 token</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Pools</th><td><code>python/sglang/srt/mem_cache/memory_pool.py</code></td></tr><tr><th scope='row'>Paged allocator</th><td><code>python/sglang/srt/mem_cache/allocator/paged.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="part3.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch10-radixattention.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="part3.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch10-radixattention.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

@@ -1,0 +1,547 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>15. Making the Forward Pass Cheap - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item expanded "><a href="ch15-cheap-forward-pass.html" class="active">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch15-cheap-forward-pass.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="15-making-the-forward-pass-cheap"><a class="header" href="#15-making-the-forward-pass-cheap">15. Making the Forward Pass Cheap</a></h1>
+<blockquote>
+<p><em>Quantization attacks bytes moved, CUDA graphs attack launch overhead, and compilation
+attacks kernel count — three independent taxes on the same forward pass.</em></p>
+</blockquote>
+<p>Three separate taxes are levied on every forward pass, and this chapter is about the three
+techniques that attack them.</p>
+<p>They are usually discussed together, which obscures the important fact that they are
+unrelated. <strong>Quantization</strong> attacks bytes moved from memory. <strong>CUDA graphs</strong> attack CPU time
+spent launching kernels. <strong>Compilation</strong> attacks the number of kernels there are to launch.
+Because they attack different things, they compose — and because they attack different
+things, once you have fixed the binding one, the others may buy you nothing.</p>
+<p>Chapter 1 established that decode is memory-bound: the GPU spends its time moving weights,
+not multiplying them. Quantization is the direct attack on that, and it applies independently
+to three targets — weights, activations, and the KV cache — with different costs and
+different failure modes for each.</p>
+<p>The second tax is less obvious and often larger than people expect. A 70B model runs roughly
+a thousand kernels per forward pass, and in decode each may execute for only twenty
+microseconds. At that granularity the <em>CPU</em> becomes the bottleneck, and the fix is to stop
+launching kernels one at a time.</p>
+<p>Which of the three you are paying is a question Chapter 22 turns into a procedure.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 12 min</span></p><ul><li>Say which of three taxes a given workload is paying</li><li>Explain what quantization is, and the difference between weight-only and weight-and-activation</li><li>Say what a CUDA graph removes and what it freezes</li><li>Predict which models cannot be fully captured, and what happens then</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="three-independent-targets"><a class="header" href="#three-independent-targets">Three independent targets</a></h2>
+<p>Quantization applies to three things, and the choices are independent:</p>
+<p><strong>Weights.</strong> The largest and most valuable target. A 70B model in BF16 is 140 GB; in FP8 it
+is 70 GB; in 4-bit it is 35 GB. Since decode reads every weight every step, halving weight
+bytes nearly halves decode time.</p>
+<p><strong>Activations.</strong> Only pays if the <em>kernel</em> consumes the smaller type — an FP8 GEMM with FP8
+inputs uses hardware FP8 tensor cores. Quantizing activations only to dequantize before the
+GEMM is pure loss.</p>
+<p><strong>KV cache.</strong> Attacks Chapter 9's capacity rather than speed. Halving KV bytes doubles
+concurrency at the same memory, which is a throughput win by a different route.</p>
+<p>The failure modes differ too: weight quantization degrades the model uniformly, while KV
+quantization degrades <em>long contexts specifically</em>, because error accumulates over the
+sequence.</p>
+<hr />
+<h2 id="what-quantization-actually-is"><a class="header" href="#what-quantization-actually-is">What quantization actually is</a></h2>
+<p>Quantization is a lossy encoding of a tensor into fewer bits, plus enough metadata to undo
+the encoding approximately. Every scheme in this directory is a different answer to two
+questions: what the encoding is, and how finely the metadata varies.</p>
+<p>The basic form is affine:</p>
+<pre><code>q = round(x / s) + z        encode
+x̂ = s · (q − z)             decode
+</code></pre>
+<p>with <em>s</em> the <strong>scale</strong> and <em>z</em> the <strong>zero point</strong>. Symmetric schemes fix <em>z</em> = 0 and lose the
+ability to represent an asymmetric range in exchange for dropping a term from the inner loop.
+The scale is what carries the dynamic range: an INT8 value holds 256 levels, and <em>s</em> decides
+what interval those levels span.</p>
+<p>Floating-point formats change the shape of the trade rather than the arithmetic. FP8 comes in
+two variants that split the exponent and mantissa differently — <strong>E4M3</strong> (4 exponent bits, 3
+mantissa) has better precision and a narrower range, <strong>E5M2</strong> has the reverse. Inference uses
+E4M3 for weights and activations because the range is bounded by the scale anyway, and
+precision is what is scarce.</p>
+<p>Three properties decide whether a scheme is any good.</p>
+<p><strong>Where the error goes.</strong> Rounding error is uniform in the quantized domain but not in the
+original one. A tensor with one large outlier forces a large scale, which coarsens every
+other value. Real transformer activations have exactly that structure — a handful of channels
+with magnitudes far above the rest — which is why activation quantization is much harder than
+weight quantization, and why schemes like SmoothQuant migrate difficulty from activations
+into weights by rescaling the two against each other.</p>
+<p><strong>What gets a scale.</strong> This is the axis the code below calls granularity, and it is a direct
+accuracy-versus-overhead trade:</p>
+<ul>
+<li><strong>Per-tensor</strong> — one scale for the whole matrix. One extra multiply per GEMM; least
+accurate, because one outlier anywhere coarsens everything.</li>
+<li><strong>Per-channel</strong> — one scale per output channel. The outlier's damage is confined to its own
+channel. Still applies outside the inner loop.</li>
+<li><strong>Per-block</strong> — one scale per tile, say 128×128. Most accurate, and the only one that
+requires the <em>kernel</em> to apply scales during accumulation rather than after, which is why
+it needs its own code path rather than a different constant.</li>
+</ul>
+<p><strong>Whether it is faster or only smaller.</strong> These are separate wins and it is easy to conflate
+them. <em>Weight-only</em> quantization (AWQ, GPTQ) stores 4-bit weights and dequantizes them to
+BF16 inside the kernel before a normal BF16 GEMM. The arithmetic is unchanged; the win is
+entirely the 4× reduction in weight traffic — which, by Chapter 1's argument, is exactly the
+win that matters during decode. <em>Weight-and-activation</em> quantization (FP8, INT8) keeps both
+operands narrow and uses the hardware's low-precision tensor cores, so it wins on arithmetic
+too — which matters during prefill, where the roofline is on the compute side.</p>
+<p>That distinction explains the shape of the table at the end of this chapter, and it explains
+why a deployment might reasonably run FP8 for a compute-bound prefill pool and 4-bit weights
+for a bandwidth-bound decode pool (Chapter 18).</p>
+<hr />
+<h2 id="the-quantization-architecture"><a class="header" href="#the-quantization-architecture">The quantization architecture</a></h2>
+<p><code>python/sglang/srt/layers/quantization/base_config.py</code> defines a three-level structure.</p>
+<p><code>:126</code> <code>QuantizationConfig</code> describes a scheme — what formats it supports, which layers to
+skip, what the minimum GPU capability is. It is what <code>--quantization</code> selects and what
+Chapter 13's layers receive as <code>quant_config</code>.</p>
+<p><code>:20</code> <code>QuantizeMethodBase</code> is the per-layer strategy:</p>
+<pre><code class="language-python">class QuantizeMethodBase(ABC):
+
+    def create_weights(
+        self, layer: torch.nn.Module, *weight_args, **extra_weight_attrs
+    ):
+        ...
+
+    @abstractmethod
+    def apply(self, layer: torch.nn.Module, *args, **kwargs) -&gt; torch.Tensor:
+</code></pre>
+<p>Two methods carry the design. <code>create_weights</code> runs at construction and creates parameters
+<em>of the quantized shapes</em> — a 4-bit scheme allocates packed int32 storage plus scale
+tensors, not a float matrix. <code>apply</code> runs at inference and dispatches to the right kernel.</p>
+<p><code>:46</code> <code>LinearMethodBase</code> specializes it for linear layers, which is what
+<code>ColumnParallelLinear</code> and friends hold.</p>
+<p>The consequence is worth stating plainly: <strong>quantization is not a transformation applied to
+a model — it is a different implementation of every layer, chosen at construction.</strong> That is
+why <code>quant_config</code> threads through every constructor in Chapter 13, and why a layer that
+forgets to pass it silently runs unquantized.</p>
+<p>A third method appears in the implementations:
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/quantization/fp8.py#L845"><code>python/sglang/srt/layers/quantization/fp8.py:845</code></a> <code>process_weights_after_loading</code>. Weights
+arrive from the checkpoint in whatever layout the exporter chose; the kernel wants a
+specific one. Rather than transposing per forward, the layout is fixed once after loading.
+This is also where online quantization happens — loading a BF16 checkpoint and quantizing
+at startup, via <code>python/sglang/srt/layers/quantization/online_quantization.py</code>.</p>
+<h3 id="fp8-in-full"><a class="header" href="#fp8-in-full">FP8 in full</a></h3>
+<p><code>python/sglang/srt/layers/quantization/fp8.py</code> is the most-used path and worth reading end
+to end. Its structure:</p>
+<ul>
+<li><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/quantization/fp8.py#L225"><code>:225</code></a> <code>Fp8Config</code> — the scheme.</li>
+<li><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/quantization/fp8.py#L432"><code>:432</code></a> <code>Fp8LinearMethod</code> — linear layers, with <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/quantization/fp8.py#L628"><code>:628</code></a> <code>create_weights</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/quantization/fp8.py#L845"><code>:845</code></a>
+<code>process_weights_after_loading</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/quantization/fp8.py#L957"><code>:957</code></a> <code>apply</code>.</li>
+<li><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/quantization/fp8.py#L1064"><code>:1064</code></a> <code>Fp8MoEMethod</code> — mixture-of-experts (Chapter 17), which needs its own everything.</li>
+<li><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/quantization/fp8.py#L2710"><code>:2710</code></a> <code>Fp8KVCacheMethod</code> — quantized KV, closing the loop with Chapter 9.</li>
+</ul>
+<p>Note <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/quantization/fp8.py#L655"><code>:655</code></a> <code>process_weights_after_loading_block_quant</code> as a separate path from the
+per-tensor one. <strong>Scale granularity</strong> is the central design axis of any quantization scheme:</p>
+<ul>
+<li><strong>Per-tensor</strong> — one scale for a whole matrix. Cheapest, least accurate.</li>
+<li><strong>Per-channel</strong> — one per output channel. A good default.</li>
+<li><strong>Per-block</strong> — one per tile (say 128×128). Most accurate, and needs the <em>kernel</em> to apply
+scales during accumulation, which is why it has its own code path rather than a different
+constant.</li>
+</ul>
+<p>The other schemes follow the same shape: <code>python/sglang/srt/layers/quantization/modelopt_quant.py</code>
+(NVIDIA ModelOpt, FP8 and NVFP4), <code>python/sglang/srt/layers/quantization/mxfp4.py</code> (microscaling
+FP4), <code>python/sglang/srt/layers/quantization/w4afp8.py</code> (4-bit weights, FP8 activations), and the
+directories <code>python/sglang/srt/layers/quantization/compressed_tensors/</code>, <code>python/sglang/srt/layers/quantization/awq/</code>,
+<code>python/sglang/srt/layers/quantization/gptq/</code>, <code>python/sglang/srt/layers/quantization/quark/</code> (AMD).</p>
+<p><code>python/sglang/srt/layers/parameter.py</code> is the piece that makes it all composable: parameter
+wrappers that know both their <em>shard</em> geometry (Chapter 13) and their <em>scale</em> geometry, so
+that loading a sharded quantized checkpoint slices the weights and the scales consistently.
+Getting that wrong yields a model that loads cleanly and produces nonsense.</p>
+<hr />
+<h2 id="down-to-the-kernel"><a class="header" href="#down-to-the-kernel">Down to the kernel</a></h2>
+<p><code>python/sglang/kernels/ops/quantization/</code> holds the Triton side —
+<code>python/sglang/kernels/ops/quantization/fp8_kernel.py</code>, <code>python/sglang/kernels/ops/quantization/fp8_quantize.py</code>,
+<code>python/sglang/kernels/ops/quantization/per_token_group_quant.py</code>,
+<code>python/sglang/kernels/ops/quantization/per_tensor_quant_fp8.py</code>,
+<code>python/sglang/kernels/ops/quantization/int8_kernel.py</code>, <code>python/sglang/kernels/ops/quantization/awq_triton.py</code>,
+<code>python/sglang/kernels/ops/quantization/gptq_marlin.py</code> — and reading
+<code>python/sglang/kernels/ops/quantization/per_token_group_quant.py</code> alongside
+<code>python/sglang/kernels/ops/quantization/per_tensor_quant_fp8.py</code> shows the granularity axis above as two
+concrete kernels.</p>
+<p>The heavier machinery is AOT C++/CUDA under <code>python/sglang/kernels/aot/csrc/</code>, with
+<code>python/sglang/kernels/aot/csrc/gemm/</code> for quantized GEMMs. The essential trick in all of
+them is the <strong>fused epilogue</strong>: a quantized GEMM accumulates in higher precision and applies
+scales as it writes out, rather than producing an intermediate tensor and scaling it in a
+second pass. A separate scaling kernel would re-read the entire output from memory —
+precisely the cost quantization exists to avoid.</p>
+<p>This is also where per-block scaling earns its complexity: the kernel must fetch the right
+scale for each accumulation tile mid-loop, which is a change to the inner loop rather than
+to the epilogue.</p>
+<hr />
+<h2 id="quantized-kv"><a class="header" href="#quantized-kv">Quantized KV</a></h2>
+<p><code>python/sglang/srt/layers/quantization/kv_cache.py</code> connects to Chapter 9. Recall that
+<code>KVCache.__init__</code> sets <code>store_dtype = torch.uint8</code> for FP8 types because <code>index_put</code> is not
+implemented for FP8 — the pool holds bytes and reinterprets them.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L888"><code>python/sglang/srt/models/llama.py:888</code></a> <code>load_kv_cache_scales</code> loads calibrated scales from
+a checkpoint. Static scales need calibration; dynamic scales cost a pass over the tensor.</p>
+<p>The accuracy story is specific: KV quantization error compounds along the sequence, because
+early tokens' quantized keys are attended to by every later query. A model that looks fine
+at 2k context can degrade visibly at 100k.
+<code>docs/docs/advanced_features/quantized_kv_cache.mdx</code> covers the current guidance.</p>
+<hr />
+<h2 id="decode-is-launch-bound"><a class="header" href="#decode-is-launch-bound">Decode is launch-bound</a></h2>
+<p>Now the second tax.</p>
+<p>A 70B model has 80 layers, each running perhaps a dozen kernels — attention, several GEMMs,
+norms, activations. That is roughly a thousand kernel launches per forward pass. Each costs
+5–10 µs of CPU time to prepare and submit.</p>
+<p>In prefill, kernels run for milliseconds and launch overhead vanishes. In decode, a kernel
+may run for 20 µs — so a thousand launches at 5 µs each is 5 ms of CPU time against maybe
+20 ms of GPU work. <strong>The CPU cannot keep the GPU fed.</strong></p>
+<p>Chapter 5's overlap scheduler removed the <em>scheduling</em> gap. This is the <em>launch</em> gap, one
+level down, and CUDA graphs are the fix: record the entire sequence of kernels once, then
+replay it with a single call.</p>
+<h3 id="what-a-graph-actually-removes"><a class="header" href="#what-a-graph-actually-removes">What a graph actually removes</a></h3>
+<p>It is worth being precise about which cost disappears, because "CUDA graphs make it faster"
+hides three different savings and one of them is much larger than the others.</p>
+<p>A kernel launch is not one operation. It is: PyTorch dispatch (resolve the operator, check
+dtypes and devices, allocate an output tensor); the CUDA runtime's argument marshalling and
+validation; a write into the driver's command buffer; and eventually the GPU's own work
+scheduling. The first two are pure host CPU time and account for most of the 5–10 µs.</p>
+<p>Capture runs the sequence once in a special mode where kernels are <em>recorded into a graph</em>
+rather than executed. What is recorded is a DAG of nodes: each kernel, its arguments, its
+grid dimensions, and its dependencies on other nodes. Replay hands that whole DAG to the
+driver in one call.</p>
+<p>So three things are saved, in descending order of value:</p>
+<ol>
+<li><strong>Host-side launch cost</strong>, per kernel, gone — a thousand launches become one. This is the
+dominant term and the reason the technique exists.</li>
+<li><strong>Driver-side validation</strong>, done once at capture rather than every replay.</li>
+<li><strong>Scheduling latency between kernels.</strong> The driver knows the entire dependency graph up
+front, so it can begin a node the instant its predecessors retire rather than waiting for
+the host to submit it. This closes the small gaps <em>between</em> kernels, which at 20 µs per
+kernel is not nothing.</li>
+</ol>
+<p>And the price is exactly the information the graph froze. A recorded node holds the <em>pointer</em>
+its argument had at capture time, not a reference to a Python variable — so every buffer must
+live at a fixed address for the lifetime of the graph, and replay must write inputs into
+those exact buffers rather than passing new tensors. The grid dimensions are recorded too, so
+shapes are fixed. And nothing in the recorded region may have depended on a value the host
+read from the device, because there was no host in the loop when the decision was made.</p>
+<p>That is the whole constraint list, and everything below is a consequence of it: static
+buffers, bucketed shapes, padding to a bucket, the ban on <code>.item()</code>, and the partial-capture
+machinery for models whose forward genuinely cannot be made shape-static.</p>
+<hr />
+<h2 id="capture-and-replay"><a class="header" href="#capture-and-replay">Capture and replay</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py#L102"><code>python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py:102</code></a>
+<code>BaseCudaGraphRunner</code> documents the split:</p>
+<pre><code class="language-python">class BaseCudaGraphRunner(BaseRunner):
+    """
+    A subclass (DecodeCudaGraphRunner / PrefillCudaGraphRunner) owns one
+    ...
+      - buffers and backend are populated by the subclass before
+    """
+</code></pre>
+<p>with <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py#L151"><code>:151</code></a> <code>capture_prepare</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py#L154"><code>:154</code></a> <code>capture</code>, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py#L157"><code>:157</code></a> <code>capture_one_shape</code> as the
+template methods. <code>python/sglang/srt/model_executor/runner/decode_cuda_graph_runner.py</code> and
+<code>python/sglang/srt/model_executor/runner/prefill_cuda_graph_runner.py</code> are the two subclasses.</p>
+<p><strong>Bucketing</strong> is how fixed shapes meet variable batch sizes.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py#L61"><code>python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py:61</code></a> <code>get_batch_sizes_to_capture</code> chooses which sizes to record —
+typically 1, 2, 4, 8, 16, 24, 32, … up to <code>--cuda-graph-max-bs</code> — and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py#L134"><code>python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py:134</code></a> <code>_pad_to_bucket</code>
+rounds a real batch up to the nearest one. A batch of 37 replays the 40-graph with three
+padded slots, which is where Chapter 9's row-0 padding trick earns its place: padded
+requests point at the scratch row and their work is harmlessly discarded.</p>
+<p>The cost is memory. Each captured graph holds its own static input and output buffers, and
+capturing forty shapes is forty sets. <code>python/sglang/srt/model_executor/cuda_graph_config.py</code>
+(<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/cuda_graph_config.py#L123"><code>python/sglang/srt/model_executor/cuda_graph_config.py:123</code></a> <code>CudaGraphConfig</code>,
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/cuda_graph_config.py#L88"><code>python/sglang/srt/model_executor/cuda_graph_config.py:88</code></a> <code>PhaseConfig</code>) is the configuration surface, and
+<code>python/sglang/srt/model_executor/graph_memory_usage.py</code> reports what it actually cost.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L885"><code>python/sglang/srt/model_executor/model_runner.py:885</code></a> <code>post_capture_resize_kv_pool</code> returns
+the slack to the KV pool afterwards.</p>
+<p><code>python/sglang/srt/model_executor/cuda_graph_buffer_registry.py</code> tracks the static buffers,
+which is what the attention backends' <code>init_cuda_graph_state</code> (Chapter 14) populates.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py#L43"><code>python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py:43</code></a> <code>freeze_gc</code> is a small, telling detail: Python garbage
+collection during capture can free a tensor whose address the graph has already recorded.</p>
+<hr />
+<h2 id="when-part-of-the-model-cannot-be-captured"><a class="header" href="#when-part-of-the-model-cannot-be-captured">When part of the model cannot be captured</a></h2>
+<p>Full capture requires the <em>whole</em> forward to be graph-safe. One host synchronization, one
+data-dependent branch, one dynamically-shaped allocation, and capture fails.</p>
+<p>That happens often enough to need an answer. Chapter 14's <code>.item()</code> prohibition is one
+example; MoE routing (Chapter 17) is another, since expert dispatch is inherently
+data-dependent.</p>
+<p><code>python/sglang/srt/model_executor/runner_backend/</code> holds the graduated responses:</p>
+<ul>
+<li><code>python/sglang/srt/model_executor/runner_backend/full_cuda_graph_backend.py</code> — capture everything.
+Fastest when possible.</li>
+<li><code>python/sglang/srt/model_executor/runner_backend/breakable_cuda_graph_backend.py</code> — capture around an
+eager "break" region. Chapter 13's
+<code>RadixAttention</code> cooperates via <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/radix_attention.py#L47"><code>python/sglang/srt/layers/radix_attention.py:47</code></a>
+<code>force_eager_attention</code>, whose comment describes a caller wrapping norm + attention +
+short-conv in one eager region.</li>
+<li><code>python/sglang/srt/model_executor/runner_backend/tc_piecewise_cuda_graph_backend.py</code> — many small
+graphs with eager gaps, the torch.compile-integrated form.</li>
+<li><code>python/sglang/srt/model_executor/runner_backend/cuda_graph_dedup_mixin.py</code> — deduplicating identical
+captured regions to reclaim memory.</li>
+</ul>
+<p><code>docs/docs/advanced_features/piecewise_cuda_graph.mdx</code> and
+<code>docs/docs/advanced_features/breakable_cuda_graph.mdx</code> carry the operational guidance.</p>
+<hr />
+<h2 id="compilation"><a class="header" href="#compilation">Compilation</a></h2>
+<p>The third tax is kernel <em>count</em>. A norm followed by an activation followed by a scale is
+three kernels, each reading and writing the full activation tensor. Fusing them into one
+reads and writes once.</p>
+<p><code>python/sglang/srt/compilation/</code> integrates <code>torch.compile</code>:</p>
+<ul>
+<li><code>python/sglang/srt/compilation/backend.py</code> and <code>python/sglang/srt/compilation/compiler_interface.py</code> —
+the Inductor integration.</li>
+<li><code>python/sglang/srt/compilation/cuda_piecewise_backend.py</code> (with NPU and XPU variants) —
+splitting the graph at points that cannot be compiled, the same problem as above from
+the compiler's side.</li>
+<li><code>python/sglang/srt/compilation/pass_manager.py</code>, <code>python/sglang/srt/compilation/inductor_pass.py</code>,
+<code>python/sglang/srt/compilation/fix_functionalization.py</code> — custom passes.
+<code>fix_functionalization</code> deals with PyTorch's functionalization pass introducing copies
+around in-place operations, which for a memory-bound workload is exactly wrong.</li>
+<li><code>python/sglang/srt/compilation/compilation_config.py</code> with <code>register_split_op</code>, which Chapter 13's <code>RadixAttention</code>
+calls to mark itself as a split point.</li>
+</ul>
+<p>Compilation and CUDA graphs compose: compile to fuse, then capture the compiled result.
+<code>python/sglang/srt/compilation/torch_compile_decoration.py</code> marks compilable regions, and
+<code>docs/docs/references/torch_compile_cache.mdx</code> covers caching compiled artifacts, since
+compilation is slow and paying it on every server start is not viable.</p>
+<hr />
+<h2 id="what-each-one-buys"><a class="header" href="#what-each-one-buys">What each one buys</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Technique</th><th>Attacks</th><th>Typical gain</th><th>Cost</th></tr></thead><tbody>
+<tr><td>Weight quantization (FP8)</td><td>bytes read per step</td><td>~1.5–2× decode</td><td>small accuracy loss</td></tr>
+<tr><td>KV quantization</td><td>cache capacity</td><td>~2× concurrency</td><td>long-context accuracy</td></tr>
+<tr><td>CUDA graphs</td><td>CPU launch overhead</td><td>large at small batch</td><td>memory; shape rigidity</td></tr>
+<tr><td>torch.compile</td><td>kernel count</td><td>modest, model-dependent</td><td>compile time</td></tr>
+</tbody></table>
+</div>
+<p>The gains are not additive, because they attack different bottlenecks: once graphs remove
+the launch gap, further launch reduction buys nothing. The right order is to find which tax
+you are actually paying — Chapter 22's profiling — before spending effort on the others.</p>
+<p>Part IV assumed throughout that the model fits on one GPU. Part V is what happens when it
+does not.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 15 in one page</p><ol class="bk-card-arg"><li>Quantization attacks bytes moved, CUDA graphs attack launch overhead, and compilation attacks kernel count. They compose because they attack different things.</li><li>Quantization is not a transformation applied to a model — it is a different implementation of every layer, chosen at construction.</li><li>Scale granularity is the central axis: per-tensor, per-channel, or per-block, trading accuracy against where the scale can be applied.</li><li>Weight-only quantization wins on decode, weight-and-activation also wins on prefill — different halves of the roofline.</li><li>A graph records pointers and grid dimensions, so everything that follows — static buffers, bucketing, the ban on `.item()` — is a consequence of that.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Typical gain per precision step</th><td>30–50%</td></tr><tr><th scope='row'>Kernel time in decode</th><td>~20 µs, against 5–10 µs to launch</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Quantization base</th><td><code>python/sglang/srt/layers/quantization/base_config.py</code></td></tr><tr><th scope='row'>FP8 end to end</th><td><code>python/sglang/srt/layers/quantization/fp8.py</code></td></tr><tr><th scope='row'>Graph runner</th><td><code>python/sglang/srt/model_executor/runner/base_cuda_graph_runner.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch14-attention-backends.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="part5.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch14-attention-backends.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="part5.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

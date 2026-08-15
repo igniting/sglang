@@ -1,0 +1,475 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>23. Extending SGLang - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item expanded "><a href="ch23-extending.html" class="active">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch23-extending.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="23-extending-sglang"><a class="header" href="#23-extending-sglang">23. Extending SGLang</a></h1>
+<blockquote>
+<p><em>The extension points are the architecture's seams, and walking them is the final check
+that the reader has understood where the boundaries are.</em></p>
+</blockquote>
+<p>Every chapter in this book has pointed at a place where something plugs in. This one
+collects them.</p>
+<p>That is the last useful test of whether the preceding chapters landed. The extension points
+are the architecture's seams, and a seam only makes sense once you know what is on both
+sides of it. Adding an attention backend is a short checklist — but only because Chapter 14
+explained what the two-phase contract is protecting. Adding a model is bounded work — but
+only because Chapter 13 showed how little of the work is actually in the model file.</p>
+<p>The chapter is ordered by how often people need each one: adding a model, adding a kernel,
+adding an attention backend, porting to new hardware. Each gets the checklist and, more
+usefully, the part that catches people the first time.</p>
+<p>It closes on a problem specific to this kind of software. An inference engine's most
+important property — <em>the model produces correct output</em> — cannot be checked by unit tests.
+A model with a subtly wrong rotary embedding still produces fluent, plausible text. What the
+project does about that says more about engineering an inference engine than any amount of
+architecture description.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 10 min</span></p><ul><li>Add a model, a kernel, or an attention backend, and know what will bite</li><li>Recognize the registry-plus-capability pattern the codebase uses everywhere</li><li>Explain why an inference engine's test pyramid is upside down</li><li>Localize a wrong-output bug to a layer</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="adding-a-model"><a class="header" href="#adding-a-model">Adding a model</a></h2>
+<p>The most common contribution, and the shortest checklist — because Chapter 13 established
+that a model is a <code>forward</code> and a <code>load_weights</code> over a shared layer vocabulary.</p>
+<p><strong>1. Config.</strong> A class in <code>python/sglang/srt/configs/</code> if the HF config needs translation,
+consumed by <code>python/sglang/srt/configs/model_config.py</code>.</p>
+<p><strong>2. Model.</strong> A file in <code>python/sglang/srt/models/</code>, built from Chapter 13's layers.
+<code>python/sglang/srt/models/llama.py</code> is the template. Copy the closest existing architecture
+rather than starting from HF code — the parallel layers, <code>RadixAttention</code> wiring, and
+<code>quant_config</code> threading are the parts that must be right, and they are identical across
+models.</p>
+<p><strong>3. Registry.</strong> So <code>--model-path</code> resolves the architecture string.</p>
+<p><strong>4. Weight mapping.</strong> <code>load_weights</code>, and the piece most likely to be wrong.</p>
+<p><strong>5. Chat template.</strong> <code>docs/docs/references/custom_chat_template.mdx</code>.</p>
+<p><strong>6. Tests and docs.</strong> <code>docs/docs/supported-models/support_new_models.mdx</code> is the official
+guide.</p>
+<h3 id="when-the-output-is-wrong"><a class="header" href="#when-the-output-is-wrong">When the output is wrong</a></h3>
+<p>A model that loads and produces fluent nonsense is the characteristic failure, and it is
+almost always the weight mapping — a transposed matrix, a QKV fusion split the wrong way, a
+sharded parameter sliced along the wrong axis. Chapter 12's <code>stacked_params_mapping</code> is the
+usual suspect.</p>
+<p><code>python/sglang/srt/debug_utils/comparator/</code> is the tool: run the HF reference and the SGLang
+implementation on the same input, dump activations layer by layer, and find the first layer
+that diverges. The first divergence localizes the bug; everything after it is downstream
+noise.</p>
+<p>Order of suspicion, from experience: weight mapping, then rotary embedding configuration
+(Chapter 13 showed how many config keys govern it), then normalization placement, then
+attention mask.</p>
+<p><code>python/sglang/srt/model_loader/ci_weight_validation.py</code> catches a class of these in CI, and
+<code>.claude/skills/kl-consistency-test/SKILL.md</code> is the systematic version — the prefill/decode
+logprob test that Chapter 8 described.</p>
+<hr />
+<h2 id="adding-a-kernel"><a class="header" href="#adding-a-kernel">Adding a kernel</a></h2>
+<p>Two paths, and the choice is about compile time.</p>
+<p><strong>JIT</strong> (<code>python/sglang/kernels/jit/</code>, with <code>python/sglang/kernels/jit/csrc/</code>) compiles at
+first use. Fast to iterate on, no build step for users, a first-call cost at runtime. Right
+for kernels that are specialized per shape or dtype.
+<code>.claude/skills/add-jit-kernel/SKILL.md</code> is the tutorial.</p>
+<p><strong>AOT</strong> (<code>python/sglang/kernels/aot/</code>, formerly the top-level <code>sgl-kernel</code>) compiles at
+build time into a shipped extension. No runtime cost, a real build. Right for kernels used
+on every forward. <code>.claude/skills/add-sgl-kernel/SKILL.md</code> is the tutorial, and
+<code>python/sglang/kernels/aot/tests/</code> and <code>python/sglang/kernels/aot/benchmark/</code> show the
+expected deliverables.</p>
+<p>Both register through the same dispatch layer:</p>
+<pre><code>python/sglang/kernels/spec.py       KernelSpec — what a kernel declares about itself
+python/sglang/kernels/registry.py   :17 KernelRegistry, :76 register_kernel
+python/sglang/kernels/selector.py   :38 select_kernel, :92 get_kernel
+python/sglang/kernels/fused_op.py   fused operation base
+</code></pre>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/kernels/selector.py#L34"><code>python/sglang/kernels/selector.py:34</code></a> <code>_platform</code> is where hardware detection happens, so
+one operation can have several implementations and the right one is chosen at runtime —
+Chapter 14's backend registry, generalized to every operation.</p>
+<p><strong>Tests and benchmarks are part of the contribution, not follow-up.</strong> A kernel without a
+correctness test against a reference implementation cannot be safely modified by anyone
+else, and a kernel without a benchmark cannot be defended when someone proposes replacing
+it.</p>
+<hr />
+<h2 id="adding-an-attention-backend"><a class="header" href="#adding-an-attention-backend">Adding an attention backend</a></h2>
+<p>Chapter 14's contract, restated as a checklist:</p>
+<ol>
+<li>Subclass <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/base_attn_backend.py#L33"><code>python/sglang/srt/layers/attention/base_attn_backend.py:33</code></a> <code>AttentionBackend</code>.</li>
+<li>Implement <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/base_attn_backend.py#L62"><code>:62</code></a> <code>init_forward_metadata</code> — or, for graph support, the out-of-graph and
+in-graph split.</li>
+<li>Implement <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/base_attn_backend.py#L261"><code>:261</code></a> <code>forward_decode</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/base_attn_backend.py#L274"><code>:274</code></a> <code>forward_extend</code>.</li>
+<li>Implement <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/base_attn_backend.py#L160"><code>:160</code></a> <code>init_cuda_graph_state</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/base_attn_backend.py#L187"><code>:187</code></a>
+<code>get_cuda_graph_seq_len_fill_value</code>.</li>
+<li>Register in <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/attention_registry.py#L34"><code>python/sglang/srt/layers/attention/attention_registry.py:34</code></a>.</li>
+</ol>
+<p>Step 4 is what catches every first attempt. The lint contract in
+<code>init_forward_metadata_in_graph</code>'s docstring — no <code>.item()</code>, no <code>.cpu()</code>, no dynamic-shape
+<code>torch.empty()</code> — is not advisory. Violating it produces a graph that captures successfully
+and then replays stale values, which is a wrong answer rather than an error.</p>
+<p>Test across every forward mode Chapter 7 lists that your backend claims to support.
+<code>ForwardMode</code> combinations are where backends break: a backend correct for <code>DECODE</code> and
+<code>EXTEND</code> may be wrong for <code>MIXED</code>, and <code>TARGET_VERIFY</code> (Chapter 19) has its own mask
+requirements.</p>
+<p><code>python/sglang/srt/layers/attention/triton_backend.py</code> is the reference to read first.</p>
+<hr />
+<h2 id="porting-to-new-hardware"><a class="header" href="#porting-to-new-hardware">Porting to new hardware</a></h2>
+<p>The largest undertaking, and the one that most tests whether the abstractions hold.</p>
+<p><code>python/sglang/srt/platforms/</code> holds the platform abstraction,
+<code>python/sglang/srt/hardware_backend/</code> the per-vendor code, and
+<code>python/sglang/srt/plugins/</code> the plugin loading mechanism (called from
+<code>python/sglang/launch_server.py</code>, so out-of-tree backends can register before anything
+else runs).</p>
+<p>What a new accelerator actually needs:</p>
+<p><strong>Device communicators</strong> (Chapter 16) — <code>python/sglang/srt/distributed/device_communicators/</code>.
+Without working collectives nothing beyond one device runs.</p>
+<p><strong>An attention backend</strong> (Chapter 14) — the largest piece.</p>
+<p><strong>Memory pool support</strong> (Chapter 9) — usually the least work, since the pools are mostly
+device-agnostic tensor allocation.</p>
+<p><strong>Graph capture</strong> (Chapter 15) — or an honest admission that it is unsupported, which costs
+decode performance but does not block correctness.</p>
+<p><strong>Kernels</strong> for quantization, MoE, and sampling, or fallbacks to portable implementations.</p>
+<p>The case studies show how far the abstraction stretches. <strong>ROCm/AITER</strong> is closest to
+NVIDIA and reuses most of the stack. <strong>Ascend NPU</strong> has its own everything — note the
+sampler backend registration Chapter 8 mentioned (<code>_forward_ascend_backend</code>), which exists
+because even sampling needed a vendor path. <strong>Intel XPU and AMX</strong> target CPUs and a
+different accelerator model. <strong>TPU</strong> went a different route entirely, as a separate
+<code>sglang-jax</code> project — evidence that the abstraction has limits.</p>
+<p><code>docs/docs/hardware-platforms/</code> covers each, and
+<code>docs/docs/hardware-platforms/plugin.mdx</code> covers the plugin mechanism.</p>
+<hr />
+<h2 id="the-same-pattern-five-times"><a class="header" href="#the-same-pattern-five-times">The same pattern, five times</a></h2>
+<p>Reading those four checklists in a row, a shape emerges that is worth naming, because once
+you see it the fifth extension point is predictable rather than novel.</p>
+<p>Every one of them is the same construction:</p>
+<ol>
+<li><strong>An abstract base declaring a contract</strong> — <code>AttentionBackend</code>, <code>QuantizeMethodBase</code>,
+<code>BaseGrammarBackend</code>, <code>KVCache</code>, <code>BaseTokenToKVPoolAllocator</code>, <code>BaseTpWorker</code>.</li>
+<li><strong>A registry mapping a name to an implementation</strong> —
+<code>python/sglang/srt/layers/attention/attention_registry.py</code>,
+<code>python/sglang/kernels/registry.py</code>, the model registry, the platform registry.</li>
+<li><strong>A selector that picks one at construction time</strong>, from configuration plus a hardware
+probe — <code>select_kernel</code>, <code>_platform</code>, <code>--attention-backend</code>.</li>
+<li><strong>Capability predicates rather than identity checks</strong> at every call site — Chapter 19's
+<code>has_draft_kv</code> and <code>supports_ragged_verify</code> are the clearest case, but Chapter 14's
+<code>init_forward_metadata_in_graph</code> default-no-op and Chapter 9's pool interface do the same
+job.</li>
+</ol>
+<p>The fourth point is the one that carries the weight, and it is the difference between a
+codebase with plugins and a codebase that is <em>actually</em> extensible. If a call site asks
+"is this the FlashInfer backend?" then adding a backend means finding and editing every such
+site. If it asks "does this backend support graph capture?" then a new backend answers the
+question for itself and no existing code changes. Chapter 19's <code>SpeculativeAlgorithm</code> is the
+purest specimen — an enum whose members are almost never compared against, wrapped in a dozen
+predicates that are.</p>
+<p>The pattern has a cost, which the codebase pays visibly. Indirection makes control flow
+harder to follow: finding what actually runs means resolving a registry lookup at runtime
+rather than reading a call. This is why so much of this book is <em>addresses</em> — the seams are
+where the code stops being readable top-to-bottom, and a book is a reasonable place to keep
+the map.</p>
+<p>The pattern also tells you when <em>not</em> to use an extension point. If your change would need a
+new predicate on the base class, and every existing implementation would have to answer it,
+the seam is in the wrong place. That is the signal to widen the contract deliberately rather
+than to add a special case behind it.</p>
+<hr />
+<h2 id="how-the-project-keeps-this-safe"><a class="header" href="#how-the-project-keeps-this-safe">How the project keeps this safe</a></h2>
+<p>An inference engine has an unusual testing problem: the most important property — "the model
+produces correct output" — cannot be checked by unit tests. A model with a subtly wrong
+rotary embedding still produces fluent text.</p>
+<h3 id="why-correct-is-hard-to-define-here"><a class="header" href="#why-correct-is-hard-to-define-here">Why "correct" is hard to define here</a></h3>
+<p>The difficulty is not laziness about testing. It is that the usual oracle does not exist.</p>
+<p>For most software, correctness is exact: the function returns the right value or it does not.
+Here, the reference implementation is a <em>different</em> floating-point program computing the same
+mathematical function, and floating-point addition is not associative, so a correct
+reimplementation does not produce bit-identical output. It produces output that differs in the
+last few bits — and those differences amplify.</p>
+<p>They amplify in two specific ways, and knowing which one you are looking at is most of
+debugging.</p>
+<p><strong>Through depth.</strong> An error introduced at layer 3 is transformed by 77 more layers. A
+relative difference of 1e-7 at the input to a layer can be 1e-3 at the output of the model,
+purely through accumulation, with nothing wrong anywhere. So a fixed tolerance on the final
+logits is nearly useless — too tight and every correct implementation fails, too loose and
+real bugs pass.</p>
+<p><strong>Through argmax.</strong> Generation is a discrete decision on top of continuous values. Two tokens
+with logits differing by 1e-6 will be ordered differently by two correct implementations,
+after which the sequences diverge completely and every subsequent comparison is meaningless.
+One flipped tie makes a passing test and a failing test look identical.</p>
+<p>The three practical responses, in the order they are worth reaching for:</p>
+<p><strong>Compare early, not late.</strong> <code>python/sglang/srt/debug_utils/comparator/</code> dumps activations
+layer by layer, because the <em>first</em> divergence is the only informative one. Comparing final
+output tells you that something is wrong; comparing layer 4 tells you what.</p>
+<p><strong>Compare distributions, not tokens.</strong> KL divergence between the reference distribution and
+the implementation's is continuous where argmax is not — it degrades smoothly with numerical
+error instead of flipping. That is what <code>.claude/skills/kl-consistency-test/SKILL.md</code>
+measures, and its real contribution is separating the two independent conditions Chapter 8
+described: whether the operators are batch-invariant, and whether the two paths compute the
+same function at all. A non-zero KL can be either, and a test that cannot distinguish them is
+a threshold somebody tunes until it passes.</p>
+<p><strong>Measure the property you actually care about.</strong> Nobody deploys a model to match a reference
+implementation bit for bit; they deploy it to answer questions correctly. An accuracy
+evaluation is immune to every problem above — it does not care about the last bits, it cares
+about the answer — at the cost of being slow, noisy at small sample sizes, and unable to
+localize a bug.</p>
+<p>Which is why the pyramid is upside down here. <strong>Accuracy evaluations are the real safety
+net</strong>, not the slow layer on top of a broad base of fast ones. <code>test/lm_eval_configs/</code> holds
+the evaluation configs, and a change that does not move an eval score is far more trustworthy
+than one that passes unit tests.</p>
+<p><code>test/run_suite.py</code> is the entry point, <code>test/README.md</code> the layout, and <code>test/registered/</code>
+the registration that puts a test in CI. <code>python/sglang/test/</code> provides the harness —
+<code>CustomTestCase</code>, server fixtures, and <code>python/sglang/test/kits/</code> for common patterns.
+<code>.claude/skills/write-sglang-test/SKILL.md</code> is the guide, and
+<code>.claude/rules/unit-test-admission.md</code> states what qualifies as a unit test at all — the
+project is deliberately restrictive, because a suite of tests that pass while the model is
+broken is worse than no suite.</p>
+<p>CI orchestration is in <code>.github/workflows/</code>, with
+<code>.claude/skills/ci-workflow-guide/SKILL.md</code> explaining stage ordering, fast-fail, gating,
+and partitioning across runners. Multi-GPU tests need multi-GPU runners, which are scarce,
+so gating decides what runs on every PR versus nightly.</p>
+<p>When something fails only in CI, <code>.claude/skills/sglang-bisect-ci-regression/SKILL.md</code> is
+the procedure: extract the signature, bisect the commit window, check runner specificity.</p>
+<hr />
+<h2 id="where-to-start"><a class="header" href="#where-to-start">Where to start</a></h2>
+<p>If you are looking for a first contribution, in increasing order of scope:</p>
+<ol>
+<li><strong>Documentation</strong> for something this book found unclear. The gap between what the code
+does and what is written down is real, and you have just read enough to see it.</li>
+<li><strong>A model</strong> whose architecture closely matches an existing one. Bounded, well-guided, and
+immediately useful.</li>
+<li><strong>A kernel</strong> for an operation with a slow fallback. Self-contained, with a clear
+correctness oracle.</li>
+<li><strong>A quantization scheme</strong> or <strong>attention backend</strong>. Larger, but the interfaces are
+well-defined and Chapters 14 and 15 mapped them.</li>
+<li><strong>A hardware backend.</strong> Months of work, and a real contribution.</li>
+</ol>
+<p><code>docs/docs/developer_guide/contribution_guide.mdx</code> covers process, and
+<code>.claude/rules/</code> covers the conventions Chapter 3 introduced. Read those five rule files
+before your first patch; each one will otherwise cost you a review cycle.</p>
+<hr />
+<p>That is how you change the engine. Chapter 24 is about the part nobody can change: it has to
+start, scale, and fail somewhere, and the last chapter is about where the internals you now
+know decide an operational outcome.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 23 in one page</p><ol class="bk-card-arg"><li>Every extension point is the same construction: an abstract contract, a registry, a selector, and capability predicates at the call sites.</li><li>Predicates rather than identity checks are what make a new implementation addable without editing existing code.</li><li>Correctness here has no exact oracle — a correct reimplementation differs in the last bits, and those bits amplify through depth and through argmax.</li><li>So compare early rather than late, compare distributions rather than tokens, and trust accuracy evaluations over unit tests.</li><li>A model that loads and produces fluent nonsense is almost always the weight mapping.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Model files in the tree</th><td>218</td></tr><tr><th scope='row'>The one test that catches a wrong model</th><td>an accuracy eval, not a unit test</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Attention registry</th><td><code>python/sglang/srt/layers/attention/attention_registry.py</code></td></tr><tr><th scope='row'>Kernel registry</th><td><code>python/sglang/kernels/registry.py</code></td></tr><tr><th scope='row'>Divergence tool</th><td><code>python/sglang/srt/debug_utils/comparator/</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch22-observability.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch24-running-it.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch22-observability.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch24-running-it.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

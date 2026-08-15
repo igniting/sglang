@@ -1,0 +1,836 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>10. RadixAttention - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item expanded "><a href="ch10-radixattention.html" class="active">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch10-radixattention.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="10-radixattention"><a class="header" href="#10-radixattention">10. RadixAttention</a></h1>
+<blockquote>
+<p><em>Real workloads share long prefixes, and a radix tree over token sequences turns that
+redundancy into the engine's largest single win. This is SGLang's signature idea.</em></p>
+</blockquote>
+<p>Chapter 9 built a memory system that can hand out KV cache a page at a time and take it
+back. It has no memory of its own: two identical prompts arriving a second apart are
+computed twice, stored twice, and freed twice.</p>
+<p>That is a strange thing to accept once you look at real traffic. Production requests are not
+independent — they overlap, usually heavily. A chat turn re-sends the entire conversation. A
+system prompt of several thousand tokens is identical across every request an application
+makes. An agent loop re-sends its whole trajectory on each step, appending one observation.
+In all of these the shared part is a <em>prefix</em>, and a prefix is exactly the thing a language
+model computes left to right.</p>
+<p>If the first 4,000 tokens of two requests agree, their first 4,000 KV entries are identical,
+bit for bit. Computing them twice is not an approximation being refined. It is arithmetic
+being repeated.</p>
+<p>RadixAttention is the mechanism that stops the repetition, and the name describes the whole
+design: attention that reads its cache out of a radix tree keyed by token sequence. This
+chapter builds that tree from the key up, then shows the invariant that keeps it safe while
+hundreds of requests read and write it concurrently.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 18 min</span></p><ul><li>Explain what a radix tree over token sequences buys, and why the key is token ids</li><li>Walk a match, a split, and an insert</li><li>Explain reference counting and why eviction goes leaf-first</li><li>Say what makes prefix sharing sound rather than merely fast</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="the-key"><a class="header" href="#the-key">The key</a></h2>
+<p>The obvious key for "a cached prefix" is a list of token ids. SGLang's key is a little
+more than that, and each addition is load-bearing.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L59"><code>python/sglang/srt/mem_cache/radix_cache.py:59</code></a> <code>RadixKey</code>:</p>
+<pre><code class="language-python">class RadixKey:
+    __slots__ = ("token_ids", "extra_key", "cache_salt", "is_bigram", "limit")
+
+    def __init__(
+        self,
+        token_ids: array[int],
+        extra_key: Optional[str] = None,
+        is_bigram: bool = False,
+        limit: Optional[int] = None,
+        cache_salt: Optional[str] = None,
+    ):
+</code></pre>
+<p>The <code>__slots__</code> declaration is the first tell. <code>RadixKey</code> is constructed on every match,
+every insert, and every slice taken during a tree walk — this is the hottest allocation
+site in the cache — so it refuses a per-instance <code>__dict__</code>.</p>
+<p><strong><code>token_ids</code></strong> is the sequence itself, held as a Python <code>array</code>, not a list. An <code>array</code>
+of machine integers compares with a single C-level <code>memcmp</code> rather than a per-element
+Python loop, which the matcher below depends on.</p>
+<p><strong><code>extra_key</code></strong> is the namespace. Two requests whose token ids agree do <em>not</em> share cache
+if their <code>extra_key</code> differs. The docstring on <code>match_prefix</code>
+(<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L376"><code>python/sglang/srt/mem_cache/radix_cache.py:376</code></a>) names the cases:</p>
+<blockquote>
+<ul>
+<li>Isolate KV cache lines for different LoRA / adapter IDs.</li>
+<li>Separate requests that intentionally should not share state (e.g., different sampling
+salt, cache version, or retrieval augmentation context) by supplying a distinct
+<code>extra_key</code>.</li>
+</ul>
+</blockquote>
+<p>This is a correctness boundary, not a tuning knob. Two requests using different LoRA
+adapters produce genuinely different KV entries for the same tokens, because the adapter
+changes the projections that produce K and V. Sharing them would silently return another
+adapter's activations. Chapter 21 returns to this from the LoRA side.</p>
+<p><strong><code>cache_salt</code></strong> is deliberately a separate field rather than a convention on <code>extra_key</code>,
+so that a caller-supplied salt cannot collide with an internally-assigned namespace. The
+comment states the scope precisely: it namespaces the in-process tree and the external KV
+events, while remote storage keys stay token-only.</p>
+<p><strong><code>is_bigram</code></strong> exists for EAGLE speculative decoding, where the cached unit is a pair of
+adjacent tokens rather than a single one. Rather than materializing a list of tuples,
+<code>maybe_to_bigram_view</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L156"><code>:156</code></a>) flips a flag:</p>
+<pre><code class="language-python">    def maybe_to_bigram_view(
+        self,
+        is_eagle: bool,
+        value: Optional[torch.Tensor] = None,
+    ) -&gt; Tuple[RadixKey, Optional[torch.Tensor]]:
+        # O(1): flip the bigram flag instead of materializing a tuple list.
+        if is_eagle and not self.is_bigram:
+            self.is_bigram = True
+            if value is not None:
+                value = value[: len(self)]
+        return self, value
+</code></pre>
+<p><code>__len__</code>, <code>__iter__</code>, and <code>__getitem__</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L99"><code>:99</code></a>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L106"><code>:106</code></a>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L118"><code>:118</code></a>) then interpret
+<code>token_ids</code> through that flag. A bigram key of <em>n</em> raw tokens has <em>n−1</em> logical units, and
+slicing one keeps the boundary token that the next bigram needs — the comment at <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L131"><code>:131</code></a>
+spells out the off-by-one, which is exactly the kind of thing that would otherwise be
+rediscovered by a debugger.</p>
+<p><strong><code>limit</code></strong> caps the key without copying. <code>_raw_len</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L87"><code>:87</code></a>) returns <code>min(limit, len)</code>, and
+every other method is written against <code>_raw_len</code> rather than <code>len(token_ids)</code>. The comment
+says why: "behave as if token_ids were sliced to <code>token_ids[:limit]</code>, without the O(n)
+copy."</p>
+<h3 id="matching-two-keys"><a class="header" href="#matching-two-keys">Matching two keys</a></h3>
+<p><code>RadixKey.match</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L181"><code>:181</code></a>) answers "how long a prefix do these two share?" It is called
+once per node on every tree walk, so its cost matters more than its length suggests:</p>
+<pre><code class="language-python">        matched_tokens = n
+        lo = 0
+        step = 1
+        while lo &lt; n:
+            hi = lo + step if lo + step &lt; n else n
+            if t0[lo:hi] != t1[lo:hi]:
+                while hi - lo &gt; 1:
+                    mid = (lo + hi) // 2
+                    if t0[lo:mid] == t1[lo:mid]:
+                        lo = mid
+                    else:
+                        hi = mid
+                matched_tokens = lo
+                break
+            lo = hi
+            step *= 2
+</code></pre>
+<p>This is exponential search — gallop forward in doubling windows, then binary-search the
+window that contained the divergence. The comment at <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L188"><code>:188</code></a> explains the motive: each
+window comparison is one C-level slice compare, so a 4,000-token shared prefix costs about
+a dozen <code>memcmp</code> calls rather than 4,000 iterations of a Python loop. The naive version
+would put an O(prefix length) Python loop on the hot path of every request, which for the
+workloads in the opening section is precisely the case you cannot afford to be slow in.</p>
+<p>Note the first line of the method: <code>self._check_compatible(other)</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L169"><code>:169</code></a>) raises if
+<code>extra_key</code> or <code>cache_salt</code> differ. The namespace boundary is enforced by an exception,
+not by returning zero — a mismatched comparison is a programming error, not a cache miss.</p>
+<h3 id="page-alignment"><a class="header" href="#page-alignment">Page alignment</a></h3>
+<p>Chapter 9 established that KV memory is allocated in pages. The tree inherits that
+constraint, and <code>page_aligned</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L150"><code>:150</code></a>) is where it enters:</p>
+<pre><code class="language-python">    def page_aligned(self, page_size: int) -&gt; RadixKey:
+        if page_size == 1:
+            return self
+        aligned_len = len(self) // page_size * page_size
+        return self[:aligned_len]
+</code></pre>
+<p>Every public entry point calls this before touching the tree. The consequence is worth
+stating plainly: <strong>with <code>page_size &gt; 1</code> the tree can only remember prefixes that are whole
+multiples of the page size.</strong> A 4,001-token prompt with a 32-token page contributes 3,968
+tokens to the cache and drops the remaining 33 on the floor. Most of the subtlety in the
+rest of this chapter — and the entire existence of <code>req.cache_protected_len</code>, which we
+reach below — is bookkeeping for that discarded tail.</p>
+<p><code>child_key</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L217"><code>:217</code></a>) produces the dictionary key used to index a node's children. It
+returns the first <code>page_size</code> logical units, wrapped in the namespace:</p>
+<pre><code class="language-python">        if self.cache_salt is not None:
+            return ((self.extra_key, self.cache_salt), plain)
+        return plain if self.extra_key is None else (self.extra_key, plain)
+</code></pre>
+<p>For <code>page_size == 1</code> with no namespace this degenerates to a bare integer, which makes the
+common case a plain dict lookup on a small int.</p>
+<hr />
+<h2 id="the-node"><a class="header" href="#the-node">The node</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L238"><code>python/sglang/srt/mem_cache/radix_cache.py:238</code></a> <code>TreeNode</code>. The fields divide cleanly by
+purpose:</p>
+<pre><code class="language-python">        self.children = defaultdict(TreeNode)
+        self.parent: TreeNode = None
+        self.key: RadixKey = None
+        self.value: Optional[torch.Tensor] = None
+        self.lock_ref = 0
+        self.last_access_time = time.monotonic()
+</code></pre>
+<p><strong>Structure</strong> — <code>children</code>, <code>parent</code>, <code>key</code>. A node holds a <em>run</em> of tokens, not a single
+token; that is what makes this a radix tree (a compressed trie) rather than a trie. A
+4,000-token system prompt shared by every request is one node with a 4,000-element key,
+not 4,000 nodes.</p>
+<p><strong>Payload</strong> — <code>value</code> is a tensor of KV cache indices, one per logical unit of <code>key</code>. This
+is the entire content of the cache: the tree does not store keys and values, it stores
+<em>where in the Chapter 9 pool</em> they live. <code>evicted</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L268"><code>:268</code></a>) is defined as <code>value is None</code>,
+which makes "this node's data is gone but its structure remains" a representable state —
+the state HiCache needs in Chapter 11.</p>
+<p><strong>Lifetime</strong> — <code>lock_ref</code> is the reference count that keeps a node alive while a request
+is using it. <code>last_access_time</code> feeds eviction.</p>
+<p><strong>Tiering</strong> — <code>host_value</code>, <code>host_ref_counter</code>, <code>protect_host</code> / <code>release_host</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L272"><code>:272</code></a>–
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L285"><code>:285</code></a>) belong to Chapter 11. They are declared here because <code>HiRadixCache</code> subclasses
+this node rather than wrapping it.</p>
+<p>The final method is the one that makes eviction possible:</p>
+<pre><code class="language-python">    def __lt__(self, other: TreeNode):
+        return self.last_access_time &lt; other.last_access_time
+</code></pre>
+<p><code>TreeNode</code> is orderable by access time, so a heap of nodes is an LRU queue for free.</p>
+<hr />
+<h2 id="matching"><a class="header" href="#matching">Matching</a></h2>
+<p><code>match_prefix</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L376"><code>:376</code></a>) is the read path. Its body, stripped of the docstring, is short:</p>
+<pre><code class="language-python">        key, _ = key.maybe_to_bigram_view(self.is_eagle)
+
+        if self.disable or len(key) == 0:
+            return self._empty_match_result
+
+        key = key.page_aligned(self.page_size)
+
+        if len(key) == 0:
+            return self._empty_match_result
+
+        value, last_node = self._match_prefix_helper(self.root_node, key)
+        if value:
+            value = torch.cat(value)
+</code></pre>
+<p>Two guards for the empty case, because page alignment can <em>produce</em> an empty key from a
+non-empty one — a 20-token prompt with a 32-token page matches nothing. <code>disable</code> short-
+circuits the entire cache, which is how <code>--disable-radix-cache</code> is implemented; note it
+returns the same pre-built <code>_empty_match_result</code> object (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L364"><code>:364</code></a>) rather than allocating,
+since this path runs per request.</p>
+<p>The walk itself, <code>_match_prefix_helper</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L678"><code>:678</code></a>):</p>
+<pre><code class="language-python">        while len(key) &gt; 0 and child_key in node.children.keys():
+            child = node.children[child_key]
+            child.last_access_time = access_time
+            prefix_len = child.key.match(key, page_size=self.page_size)
+            if prefix_len &lt; len(child.key):
+                new_node = self._split_node(child.key, child, prefix_len)
+                value.append(new_node.value)
+                node = new_node
+                break
+            else:
+                value.append(child.value)
+                node = child
+                key = key[prefix_len:]
+
+                if len(key):
+                    child_key = key.child_key(self.page_size)
+</code></pre>
+<p>Descend while a child starts with the right token. At each child there are two cases. If
+the query agrees with the <em>whole</em> of the child's key, consume that much of the query and
+continue deeper. If the query diverges partway through the child's key, the tree does not
+have a node boundary where we need one — so we make one, and stop.</p>
+<p>Two details are easy to read past. <code>child.last_access_time</code> is updated during the walk,
+which is what makes eviction LRU rather than random: matching against a node counts as
+using it, even if the request that matched never gets scheduled. And the accumulated
+<code>value</code> list is concatenated only once at the end, in <code>match_prefix</code>, rather than
+repeatedly during descent.</p>
+<hr />
+<h2 id="splitting"><a class="header" href="#splitting">Splitting</a></h2>
+<p><code>_split_node</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L704"><code>:704</code></a>) is the operation that keeps the tree a <em>radix</em> tree. When a query
+diverges inside a node's run, that node must become two: a shared parent and a divergent
+child.</p>
+<pre><code class="language-python">    def _split_node(self, key: RadixKey, child: TreeNode, split_len: int):
+        # new_node -&gt; child
+        new_node = TreeNode(priority=child.priority)
+        new_node.hit_count = child.hit_count
+        new_node.children = {key[split_len:].child_key(self.page_size): child}
+        new_node.parent = child.parent
+        new_node.lock_ref = child.lock_ref
+        new_node.key = child.key[:split_len]
+        new_node.value = child.value[:split_len].clone()
+        child.parent = new_node
+        child.key = child.key[split_len:]
+        child.value = child.value[split_len:].clone()
+        new_node.parent.children[key.child_key(self.page_size)] = new_node
+</code></pre>
+<p>Read it as surgery on a linked structure. The new node takes the first <code>split_len</code> units
+of the child's key and value; the child keeps the rest. The new node is spliced in as the
+child's parent and registered under the old child's key in the grandparent.</p>
+<p>The line that matters most is <code>new_node.lock_ref = child.lock_ref</code>. The child may be in
+use by a running request right now. After the split, the prefix that request holds is
+spread across two nodes — so the reference count must be <em>copied</em>, not moved, or the
+shared half becomes evictable while someone is reading it.</p>
+<p>The <code>.clone()</code> calls are equally deliberate. Slicing a tensor produces a view sharing
+storage with the original; if the two halves shared storage, freeing one would corrupt the
+other. The clone costs a small copy of an index tensor — never of KV data — to buy
+independent lifetimes.</p>
+<p>Return to Chapter 1's deployment for a moment. Its 1,800-token system prompt is one node
+near the root, held by every active conversation, and its 192 conversations hang off that
+node as branches of a few hundred tokens each. The 105 GB of duplicated prefix that
+Chapter 1 counted is simply not allocated: it exists once, <code>lock_ref</code> is 192, and eviction
+cannot touch it while a single one of them is running. That is the entire mechanism behind
+the largest number in this book.</p>
+<p>Splitting is not a failure mode. It is how the tree learns where the branch points in the
+workload actually are. A system prompt followed by two different user messages starts as
+one node and becomes three the first time the second message arrives, and stays that shape
+forever after. The docstring at <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L408"><code>:408</code></a> frames it exactly this way: "this structural
+refinement improves subsequent match efficiency and does not duplicate data."</p>
+<hr />
+<h2 id="inserting"><a class="header" href="#inserting">Inserting</a></h2>
+<p><code>insert</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L436"><code>:436</code></a>) is the write path, and <code>_insert_helper</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L737"><code>:737</code></a>) is a near-mirror of the
+match walk with one extra case at the end:</p>
+<pre><code class="language-python">        if len(key):
+            new_node = TreeNode(priority=priority)
+            new_node.parent = node
+            new_node.key = key
+            new_node.value = value.clone()
+            self._inc_hit_count(new_node, chunked)
+            node.children[child_key] = new_node
+            self.evictable_size_ += len(key)
+            self._update_leaf_status(node)
+            self._update_leaf_status(new_node)
+            self._record_store_event(new_node)
+            node = new_node
+        return total_prefix_length, node
+</code></pre>
+<p>Walk down matching as far as the tree already knows, splitting where the new key diverges,
+then hang whatever is left as a fresh node. The return value is the length that was
+<em>already</em> present — which the callers use to decide what to free.</p>
+<p>One line deserves attention. <code>insert</code> at <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L447"><code>:447</code></a> does:</p>
+<pre><code class="language-python">        if value is not None:
+            value = value[: len(key)]
+        else:
+            # Debug/test fallback: use token ids themselves as values.
+            value = torch.tensor(key.token_ids[: len(key)], dtype=torch.int64)
+</code></pre>
+<p>That fallback is why <code>RadixCache.create_simulated</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L333"><code>:333</code></a>) can build a working tree with
+no memory pools at all. The tree's logic is independent of what the values mean, so it can
+be tested and simulated without a GPU — a property worth noticing when you come to write
+tests against it.</p>
+<p><code>_inc_hit_count</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L729"><code>:729</code></a>) carries a subtle correction:</p>
+<pre><code class="language-python">    def _inc_hit_count(self, node: TreeNode, chunked: bool = False):
+        # Skip the hit count update for chunked requests to avoid self-referencing
+        # inflation where a chunked request increments hit_count on nodes it created
+        # in previous chunks.
+        if chunked:
+            return
+</code></pre>
+<p>A chunked prefill (Chapter 6) inserts its own prefix repeatedly as each chunk lands.
+Counting those as hits would make a single long request look like a stream of cache-
+friendly ones and distort every metric built on hit count.</p>
+<hr />
+<h2 id="the-invariant-reference-counting"><a class="header" href="#the-invariant-reference-counting">The invariant: reference counting</a></h2>
+<p>Everything so far describes a cache. What makes it safe is <code>lock_ref</code>.</p>
+<p>A running request holds KV indices that live in tree nodes. If eviction frees those pages
+while the request is still decoding, the request reads memory that now belongs to someone
+else. The rule that prevents this is: <strong>a node on the path to any live request's prefix
+must not be evicted.</strong></p>
+<p><code>inc_lock_ref</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L622"><code>:622</code></a>) walks from a node to the root, incrementing:</p>
+<pre><code class="language-python">        delta = 0
+        while node != self.root_node:
+            if node.lock_ref == 0:
+                self.evictable_size_ -= len(node.key)
+                self.protected_size_ += len(node.key)
+                delta -= len(node.key)
+            node.lock_ref += 1
+            self._update_leaf_status(node)
+            node = node.parent
+        return IncLockRefResult(delta=delta)
+</code></pre>
+<p>The walk is to the <em>root</em>, not just the node, because holding a prefix means holding every
+ancestor that composes it. The accounting moves tokens between two counters —
+<code>evictable_size_</code> and <code>protected_size_</code> — and only on the 0→1 transition, so a node held
+by three requests is counted once. Those two numbers are what the scheduler reads in
+Chapter 6 when it asks how much memory it can actually reclaim; <code>delta</code> is returned so the
+caller can update its own budget without recomputing.</p>
+<p><code>dec_lock_ref</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L637"><code>:637</code></a>) is the mirror, with a guard worth quoting:</p>
+<pre><code class="language-python">            if node.parent is None:
+                assert (
+                    node is self.root_node
+                ), "This request holds the node from another tree"
+</code></pre>
+<p>Reaching a parentless node that is not the root means the node was detached — the request
+is holding a pointer into a tree that no longer contains it. The assertion converts a
+silent memory-corruption bug into a loud one.</p>
+<p>The root itself is initialized with <code>lock_ref = 1</code> in <code>reset</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L353"><code>:353</code></a>) so it is never a
+candidate for eviction, and with <code>priority=-sys.maxsize</code> so any real priority overrides it.</p>
+<hr />
+<h2 id="eviction"><a class="header" href="#eviction">Eviction</a></h2>
+<p><code>evict</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L592"><code>:592</code></a>) reclaims memory when the allocator runs dry:</p>
+<pre><code class="language-python">        leaves = list(self.evictable_leaves)
+        eviction_heap = [
+            (self.eviction_strategy.get_priority(node), node) for node in leaves
+        ]
+        heapq.heapify(eviction_heap)
+
+        num_evicted = 0
+        while num_evicted &lt; num_tokens and len(eviction_heap):
+            _priority, x = heapq.heappop(eviction_heap)
+
+            self.token_to_kv_pool_allocator.free_segment(x.value, start_pos=0)
+            num_evicted += len(x.value)
+            self._delete_leaf(x)
+
+            if len(x.parent.children) == 0 and x.parent.lock_ref == 0:
+                new_priority = self.eviction_strategy.get_priority(x.parent)
+                heapq.heappush(eviction_heap, (new_priority, x.parent))
+</code></pre>
+<p><strong>Eviction is leaf-first, and it must be.</strong> An interior node is a prefix of its children;
+freeing it would leave descendants whose cached KV depends on pages that no longer exist.
+So only leaves are candidates — and when a leaf is removed, its parent may have just
+<em>become</em> a leaf, which is why the parent is pushed back onto the heap mid-loop. A single
+<code>evict</code> call can therefore peel a whole branch from the tip inward.</p>
+<p>The candidate set is maintained incrementally rather than recomputed. <code>evictable_leaves</code>
+is a set kept current by <code>_update_leaf_status</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L820"><code>:820</code></a>):</p>
+<pre><code class="language-python">    def _update_leaf_status(self, node: TreeNode):
+        if node.evicted or node.lock_ref &gt; 0:
+            if node in self.evictable_leaves:
+                self.evictable_leaves.remove(node)
+            return
+
+        for child in node.children.values():
+            if not child.evicted:
+                if node in self.evictable_leaves:
+                    self.evictable_leaves.remove(node)
+                return
+
+        if node not in self.evictable_leaves:
+            self.evictable_leaves.add(node)
+</code></pre>
+<p>A node is evictable exactly when it is unlocked, still resident, and has no resident
+children. Every operation that could change one of those three — insert, split, lock,
+unlock, delete — calls this. The payoff is that <code>evict</code> heapifies a set proportional to the
+number of <em>leaves</em>, not the number of nodes.</p>
+<p>Ordering is delegated to <code>self.eviction_strategy</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L328"><code>:328</code></a>), selected by name from
+<code>params.eviction_policy</code>. LRU falls out of <code>TreeNode.__lt__</code>; other strategies weigh
+priority, which is why <code>_insert_helper</code> propagates <code>max(node.priority, priority)</code> down the
+path it walks.</p>
+<hr />
+<h2 id="where-requests-meet-the-tree"><a class="header" href="#where-requests-meet-the-tree">Where requests meet the tree</a></h2>
+<p>Two methods connect the data structure to the request lifecycle, and both are more subtle
+than their names suggest.</p>
+<p><code>cache_unfinished_req</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L515"><code>:515</code></a>) runs when a request has produced KV worth publishing but
+is not done — after each prefill chunk, and between decode steps:</p>
+<pre><code class="language-python">        result = self.insert(InsertParams(key=radix_key, value=values, ...))
+        new_prefix_len = result.prefix_len
+
+        self.token_to_kv_pool_allocator.free_segment(
+            kv_indices[req.cache_protected_len : new_prefix_len],
+            start_pos=req.cache_protected_len,
+        )
+
+        # The prefix indices could be updated, reuse it
+        match_result = self.match_prefix(MatchPrefixParams(key=radix_key))
+        new_indices, new_last_node = (...)
+        ...
+        self.req_to_token_pool.write(
+            (req.req_pool_idx, slice(req.cache_protected_len, len(new_indices))),
+            new_indices[req.cache_protected_len :],
+        )
+        ...
+        self.dec_lock_ref(req.last_node)
+        self.inc_lock_ref(new_last_node)
+</code></pre>
+<p>Insert, free the duplicate range the insert revealed, then <strong>match again</strong>. The re-match is
+not redundant: if another request inserted an overlapping prefix concurrently, this
+request's tokens may now live at <em>different</em> pool indices than the ones it just computed
+into. The request adopts the tree's indices, writes them back into its <code>req_to_token</code> row
+(the Chapter 9 first-level mapping), and only then swaps its lock from the old node to the
+new one — increment before decrement in effect, so the prefix is never momentarily
+unprotected.</p>
+<p><code>cache_protected_len</code> is the page-alignment tail from earlier, and the comment at <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L564"><code>:564</code></a>
+is one of the more valuable in the file:</p>
+<blockquote>
+<p>The <code>cache_protected_len</code> is not always equal to <code>len(req.prefix_indices)</code> since for
+<code>page_size &gt; 1</code>, the partial part is added to <code>req.prefix_indices</code>, but that part of kv
+indices is not added to the tree. It should be freed in the next <code>cache_unfinished_req</code>
+and final <code>cache_finished_req</code> to avoid memory leak.</p>
+</blockquote>
+<p>The request holds more KV than the tree knows about — the partial trailing page. That tail
+belongs to the request alone, and the request must free it itself.</p>
+<p><code>cache_finished_req</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L458"><code>:458</code></a>) runs at completion and frees in two segments (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/radix_cache.py#L501"><code>:501</code></a>):</p>
+<pre><code class="language-python">        self.token_to_kv_pool_allocator.free_segments(
+            [
+                (
+                    kv_indices[req.cache_protected_len : freed_end],
+                    req.cache_protected_len,
+                ),
+                (kv_indices[key_len:], key_len),
+            ]
+        )
+</code></pre>
+<p>The first segment is the range the tree already had — a duplicate this request computed
+before the insert told it so. The second is the unaligned tail past <code>key_len</code>, which was
+never eligible for the tree. What is <em>not</em> freed is the middle: the range this request
+contributed, now owned by the tree and protected by the <code>lock_ref</code> it took during insert.</p>
+<hr />
+<h2 id="where-the-model-touches-it"><a class="header" href="#where-the-model-touches-it">Where the model touches it</a></h2>
+<p>Nothing in this chapter has been visible to model code, and that is the point.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/radix_attention.py#L91"><code>python/sglang/srt/layers/radix_attention.py:91</code></a> <code>RadixAttention</code> is the layer a model
+instantiates in place of a plain attention module. Chapter 13 shows <code>LlamaAttention</code>
+constructing one and Chapter 14 covers the backends it dispatches to; here it is enough to
+note the division of labor. The model declares <em>that</em> it attends. The tree decides <em>what
+is already computed</em>, the Chapter 9 allocator decides <em>where new entries go</em>, and the
+attention backend reads whatever page table it is handed. A model file contains no cache
+logic at all, which is why adding a model (Chapter 23) does not require understanding this
+chapter.</p>
+<hr />
+<h2 id="the-scheduler-feedback-loop"><a class="header" href="#the-scheduler-feedback-loop">The scheduler feedback loop</a></h2>
+<p>The tree's most consequential consumer is not the model — it is the scheduler.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_policy.py#L314"><code>python/sglang/srt/managers/schedule_policy.py:314</code></a> <code>_compute_prefix_matches</code> runs
+<code>match_prefix</code> for queued requests, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_policy.py#L374"><code>:374</code></a> <code>_sort_by_longest_prefix</code> orders the queue
+by how much each one would hit. Chapter 6 covers the policy in full; what matters here is
+the shape of the loop:</p>
+<ol>
+<li>The cache determines which request is cheapest to run.</li>
+<li>The scheduler runs that request next.</li>
+<li>Running it extends the cache along the branch it already shared.</li>
+<li>Which makes the next similar request cheaper still.</li>
+</ol>
+<p>Cache-aware scheduling and prefix caching are not two features that happen to compose;
+each makes the other worth more. The same loop, one level up, is what makes cache-aware
+<em>routing</em> work in Chapter 18 — the gateway keeps its own approximate copy of this tree so
+it can send a request to the replica most likely to hold its prefix.</p>
+<hr />
+<h2 id="a-worked-example"><a class="header" href="#a-worked-example">A worked example</a></h2>
+<p>Three requests, <code>page_size = 1</code>, sharing a 6-token system prompt <code>S</code>. Write <code>S = s1..s6</code>.</p>
+<p><strong>Request A</strong> arrives with <code>S + "what is 2+2"</code>. <code>match_prefix</code> finds nothing: the root has
+no child under <code>s1</code>. <code>_match_prefix_helper</code> returns immediately with an empty value list
+and the root as <code>last_node</code>. A runs a full prefill. On completion <code>cache_finished_req</code>
+inserts the whole sequence; <code>_insert_helper</code> finds no existing child, so the entire
+sequence becomes one node hanging off the root:</p>
+<pre><code>root
+ └── [s1..s6, "what is 2+2"]          (A's node)
+</code></pre>
+<p><strong>Request B</strong> arrives with <code>S + "what is 3+3"</code>. The walk enters A's node and calls
+<code>RadixKey.match</code>, which galloping-compares and returns 6 + the shared part of "what is "
+before diverging at <code>2</code> vs <code>3</code>. Since <code>prefix_len &lt; len(child.key)</code>, <code>_split_node</code> fires:</p>
+<pre><code>root
+ └── [s1..s6, "what is "]             (shared, lock_ref copied from A's node)
+      └── ["2+2"]                     (A's tail)
+</code></pre>
+<p>B's prefill starts from the split point — the shared node's <code>value</code> is returned as
+<code>device_indices</code>, and B computes only its own suffix. On completion B inserts, walks to the
+shared node, finds no child under <code>3</code>, and hangs a second tail:</p>
+<pre><code>root
+ └── [s1..s6, "what is "]
+      ├── ["2+2"]
+      └── ["3+3"]
+</code></pre>
+<p><strong>Request C</strong> arrives with just <code>S</code>. The walk enters the shared node and matches 6 units
+before running out of query. <code>prefix_len &lt; len(child.key)</code> again — the query is shorter
+than the node — so the node splits once more:</p>
+<pre><code>root
+ └── [s1..s6]                          (the system prompt, now its own node)
+      └── ["what is "]
+           ├── ["2+2"]
+           └── ["3+3"]
+</code></pre>
+<p>The system prompt is now a node in its own right, and every subsequent request that starts
+with it matches in a single hop. Nobody planned that node; the third request's shape
+carved it. That is the property to take away: <strong>the tree's structure converges on the
+branch points of the workload, without being told what they are.</strong></p>
+<p>Under memory pressure, <code>evict</code> pops from <code>evictable_leaves</code> — which contains <code>["2+2"]</code> and
+<code>["3+3"]</code> but <em>not</em> the two interior nodes. If A is still decoding, its <code>lock_ref</code> also
+keeps <code>["2+2"]</code> out of the candidate set entirely. Only after both tails are freed does
+<code>["what is "]</code> become a leaf and join the heap, and only after that the system prompt
+itself — exactly the reverse of the order in which the nodes were created, and exactly the
+order that preserves the most reuse per byte freed.</p>
+<figure>
+<svg viewBox="0 0 700 364" role="img" aria-label="A radix tree evolving as three chat requests share a system prompt">
+<title>The radix tree after each of three requests</title>
+<rect class="dgm-box" x="28.0" y="92" width="180" height="28" rx="6"/>
+<text class="dgm-small" x="118.0" y="110.4" text-anchor="middle" style="font-size:11.0px">S + “what is 2+2”</text>
+<rect class="dgm-box-accent" x="274.0" y="92" width="152" height="28" rx="6"/>
+<text class="dgm-small" x="350.0" y="110.4" text-anchor="middle" style="font-size:11.0px">S + “what is ”</text>
+<rect class="dgm-box" x="252.0" y="148" width="76" height="28" rx="6"/>
+<text class="dgm-small" x="290.0" y="166.4" text-anchor="middle" style="font-size:11.0px">“2+2”</text>
+<rect class="dgm-box" x="346.0" y="148" width="76" height="28" rx="6"/>
+<text class="dgm-small" x="384.0" y="166.4" text-anchor="middle" style="font-size:11.0px">“3+3”</text>
+<rect class="dgm-box-accent" x="544.0" y="92" width="76" height="28" rx="6"/>
+<text class="dgm-small" x="582.0" y="110.4" text-anchor="middle" style="font-size:11.0px">S</text>
+<rect class="dgm-box-accent" x="521.0" y="148" width="122" height="28" rx="6"/>
+<text class="dgm-small" x="582.0" y="166.4" text-anchor="middle" style="font-size:11.0px">“what is ”</text>
+<rect class="dgm-box" x="500.0" y="204" width="76" height="28" rx="6"/>
+<text class="dgm-small" x="538.0" y="222.4" text-anchor="middle" style="font-size:11.0px">“2+2”</text>
+<rect class="dgm-box" x="594.0" y="204" width="76" height="28" rx="6"/>
+<text class="dgm-small" x="632.0" y="222.4" text-anchor="middle" style="font-size:11.0px">“3+3”</text>
+<text class="dgm-label" x="118" y="34" text-anchor="middle" font-weight="600" style="font-size:11.5px">after request A</text>
+<circle class="dgm-box" cx="118" cy="56" r="9"/>
+<text class="dgm-small" x="134" y="60" text-anchor="start" style="font-size:10.5px">root</text>
+<path class="dgm-line" d="M118 65 L118 92"/>
+<text class="dgm-label" x="350" y="34" text-anchor="middle" font-weight="600" style="font-size:11.5px">after request B — split</text>
+<circle class="dgm-box" cx="350" cy="56" r="9"/>
+<path class="dgm-line" d="M350 65 L350 92"/>
+<path class="dgm-line" d="M340 120 L290 148"/>
+<path class="dgm-line" d="M360 120 L384 148"/>
+<text class="dgm-label" x="582" y="34" text-anchor="middle" font-weight="600" style="font-size:11.5px">after request C</text>
+<circle class="dgm-box" cx="582" cy="56" r="9"/>
+<path class="dgm-line" d="M582 65 L582 92"/>
+<path class="dgm-line" d="M582 120 L582 148"/>
+<path class="dgm-line" d="M572 176 L538 204"/>
+<path class="dgm-line" d="M592 176 L632 204"/>
+<path class="dgm-dash" d="M234 20 L234 246"/>
+<path class="dgm-dash" d="M466 20 L466 246"/>
+<path class="dgm-dash" d="M20 264 L680 264"/>
+<text class="dgm-small" x="350.0" y="290" text-anchor="middle" style="font-size:11.5px">Nobody planned the node holding the system prompt S — the third request's shape carved it.</text>
+<text class="dgm-small" x="350.0" y="308" text-anchor="middle" style="font-size:11.5px">The tree finds the workload's branch points without being told what they are.</text>
+<text class="dgm-small" x="350.0" y="334" text-anchor="middle" style="font-size:11.5px">Eviction runs the other way, leaves first: the tails go before “what is ”, and S —</text>
+<text class="dgm-small" x="350.0" y="352" text-anchor="middle" style="font-size:11.5px">shared by everything — goes last.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
+</svg>
+<figcaption>Splitting is not a failure mode; it is how the tree learns where the workload actually branches.</figcaption>
+</figure>
+<p><code>pretty_print</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_policy.py#L585"><code>:585</code></a>) will dump this structure from a live server, which is the fastest
+way to check that a workload is sharing what you think it is.</p>
+<hr />
+<h2 id="variants"><a class="header" href="#variants">Variants</a></h2>
+<p><code>RadixCache</code> is one implementation of an interface, and the alternatives are the clearest
+way to see what the interface actually promises.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/base_prefix_cache.py#L230"><code>python/sglang/srt/mem_cache/base_prefix_cache.py:230</code></a> <code>BasePrefixCache</code> defines it, with
+the parameter and result objects at <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/base_prefix_cache.py#L49"><code>:49</code></a>–<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/base_prefix_cache.py#L166"><code>:166</code></a> (<code>MatchPrefixParams</code>, <code>MatchResult</code>,
+<code>EvictParams</code>, <code>IncLockRefResult</code>). Passing structs rather than positional arguments is
+what lets <code>HiRadixCache</code> return host-tier fields from the same call.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/chunk_cache.py#L35"><code>python/sglang/srt/mem_cache/chunk_cache.py:35</code></a> <code>ChunkCache</code> implements that interface with
+no reuse whatsoever — <code>match_prefix</code> always misses, <code>insert</code> does nothing durable. It is
+the honest baseline, and reading it is the fastest way to see exactly which parts of the
+scheduler depend on prefix caching and which do not.</p>
+<p>The remaining variants specialize the same algorithm for a different unit of storage:</p>
+<ul>
+<li><code>python/sglang/srt/mem_cache/swa_radix_cache.py</code> — sliding-window attention, where only a
+suffix of the KV is retained, so an ancestor's data may be gone while the node remains.</li>
+<li><code>python/sglang/srt/mem_cache/mamba_radix_cache.py</code> — state-space models, where the cached
+object is a fixed-size recurrent state rather than a growing KV run. Chapter 9's
+<code>MambaPool</code> is its backing store.</li>
+<li><code>python/sglang/srt/mem_cache/radix_cache_cpp.py</code> with
+<code>python/sglang/srt/mem_cache/cpp_radix_tree/</code> — the same algorithm in C++. Its existence
+is the strongest evidence for the claims made about <code>RadixKey.match</code> above: at high
+request rates with long prefixes, tree maintenance became measurable against the Python
+interpreter itself.</li>
+</ul>
+<p>Chapter 11 takes the last variant, <code>HiRadixCache</code>, which keeps the algorithm and adds a
+memory tier beneath it.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 10 in one page</p><ol class="bk-card-arg"><li>Real workloads share long prefixes — system prompts, few-shot examples, conversation history — and recompute them per request.</li><li>A radix tree keyed on token ids stores each shared prefix once and finds the longest match in one walk.</li><li>Nobody declares the branch points; splitting discovers them from the workload's own shape.</li><li>Reference counting is the invariant that makes it safe: a node in use by a running request cannot be evicted.</li><li>Eviction runs leaf-first, so the most-shared prefixes survive longest — which is LRU with the tree's structure as the tiebreak.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Shared prefix, Chapter 1's deployment</th><td>1,800 of 2,550 tokens</td></tr><tr><th scope='row'>Cache that duplicating it would cost</th><td>105 GB of 150 GB</td></tr><tr><th scope='row'>Concurrency once it is shared once</th><td>192 → far more</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>The tree</th><td><code>python/sglang/srt/mem_cache/radix_cache.py</code></td></tr><tr><th scope='row'>Where requests meet it</th><td><code>python/sglang/srt/managers/schedule_batch.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch09-kv-pools.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch11-beyond-hbm.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch09-kv-pools.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch11-beyond-hbm.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

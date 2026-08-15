@@ -1,0 +1,602 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>1. Why Serving Engines Exist - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item expanded "><a href="ch01-why-serving-engines.html" class="active">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch01-why-serving-engines.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="1-why-serving-engines-exist"><a class="header" href="#1-why-serving-engines-exist">1. Why Serving Engines Exist</a></h1>
+<blockquote>
+<p><em>The cost structure of autoregressive decoding, not model quality, is what forces an
+engine to exist.</em></p>
+</blockquote>
+<p>Ask an engineer why running a large language model is expensive and you will usually hear
+that the models are enormous and matrix multiplication is costly. That answer is correct
+about training and almost entirely wrong about serving — and the difference is not a
+detail. It determines what an inference engine is for.</p>
+<p>This chapter works out what generating a token actually costs. The answer is strange enough
+to be worth stating up front: a graphics card producing one token for one user is idle
+more than 99% of the time, and it is idle not because the work is easy but because the data
+cannot reach the arithmetic units fast enough.</p>
+<p>Getting from there to a useful machine takes two steps, and the second creates the problem
+the rest of this book is about — a problem of memory, not of speed.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 16 min</span></p><ul><li>Compute, for a given model and GPU, how many users it can serve at once</li><li>Explain why decode is memory-bound and prefill is not</li><li>Derive the critical batch size, and say what it means for a scheduler</li><li>Name which of TTFT, ITL, throughput, and goodput a technique helps and which it charges</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="two-phases-two-bottlenecks"><a class="header" href="#two-phases-two-bottlenecks">Two phases, two bottlenecks</a></h2>
+<p>A transformer generates text one token at a time. Given a prompt, it produces a
+distribution over the next token, samples one, appends it, and repeats. That loop is the
+whole of inference, and it splits into two phases with almost nothing in common.</p>
+<p><strong>Prefill</strong> processes the prompt. Every token in the prompt is known up front, so all of
+them go through the network at once. A 2,000-token prompt means matrix multiplications
+with a 2,000-row activation matrix against the model's weights. Each weight is loaded from
+memory once and used 2,000 times.</p>
+<p><strong>Decode</strong> produces the output, one token per step. Only one token per sequence is new, so
+the activation matrix has <em>one</em> row. Each weight is still loaded from memory once — and
+used once.</p>
+<p>That difference is not a detail. It is the entire economics of LLM serving.</p>
+<div class="bk-note bk-note-definition">
+<p class="bk-note-label">Definition — Arithmetic intensity</p>
+<p>Floating-point operations performed per byte moved from memory. It is a property of an
+<em>algorithm on a shape</em>, not of hardware — and for a weight-bound GEMM it depends on the
+batch size and the element width and nothing else.</p>
+</div>
+<p>The relevant measure is <strong>arithmetic intensity</strong>: floating-point operations performed per
+byte moved from memory. An H100 delivers roughly 1,000 TFLOP/s of BF16 compute against
+roughly 3.35 TB/s of memory bandwidth. The ratio is near 300 FLOP per byte — meaning the
+hardware needs to do about 300 operations on every byte it loads to keep its arithmetic
+units busy.</p>
+<p>A matrix-vector product — which is what decode does — performs two operations per weight
+byte loaded. Two, against a requirement of three hundred. The GPU spends more than 99% of
+its cycles waiting for memory. You can verify this without any profiler: decode a single
+sequence, measure tokens per second, multiply by the model's parameter count in bytes, and
+you will land within a few percent of the GPU's rated memory bandwidth. The arithmetic
+units are idle; the memory bus is saturated.</p>
+<p>Prefill sits on the other side of the line. With 2,000 rows instead of one, arithmetic
+intensity rises by three orders of magnitude and the same hardware becomes compute-bound.</p>
+<p>The consequence is the founding observation of this book:</p>
+<blockquote>
+<p><strong>Decode is memory-bound, and its cost is dominated by re-reading weights that have not
+changed.</strong> The fix is not faster arithmetic. It is to make each weight read serve more
+tokens — which means batching.</p>
+</blockquote>
+<p>If you process 64 sequences together, one weight load serves 64 token computations.
+Arithmetic intensity rises 64×, and throughput rises nearly as much for nearly free. This
+is why <em>every</em> serving engine is, at its core, a batching machine — and why the hard part
+is not the model, but deciding what to batch and finding the memory to batch it in.</p>
+<hr />
+<h2 id="the-roofline-and-the-batch-size-it-demands"><a class="header" href="#the-roofline-and-the-batch-size-it-demands">The roofline, and the batch size it demands</a></h2>
+<p>The argument above deserves to be made precisely, because the precise version tells you
+<em>how much</em> batching is enough — a number the engine will spend the rest of the book trying
+to reach.</p>
+<p>The tool is the <strong>roofline model</strong> (Williams, Waterman, and Patterson, 2009). Any kernel has
+an arithmetic intensity <em>I</em>, in FLOP per byte of memory traffic. The hardware has a peak
+compute rate π (FLOP/s) and a peak bandwidth β (byte/s). Achievable performance is capped by
+whichever runs out first:</p>
+<pre><code>performance ≤ min(π, I × β)
+</code></pre>
+<p>Plotted against <em>I</em>, that is a rising line that flattens into a ceiling. The corner is the
+<strong>ridge point</strong>, <em>I</em>* = π / β — the intensity at which a kernel stops being starved by
+memory and starts being limited by arithmetic. For an H100 SXM at BF16, π ≈ 990 TFLOP/s
+and β ≈ 3.35 TB/s, so</p>
+<pre><code>I* = 990e12 / 3.35e12 ≈ 296 FLOP per byte
+</code></pre>
+<p>Now compute <em>I</em> for the thing decode actually does. One linear layer with weight matrix
+<em>W</em> ∈ R^(<em>K</em>×<em>N</em>), applied to a batch of <em>B</em> token rows, costs 2<em>BKN</em> FLOP and reads <em>KN</em>·<em>s</em>
+bytes of weights, where <em>s</em> is bytes per element. Ignoring activation traffic, which is
+small when <em>B</em> is small:</p>
+<pre><code>I(B) = 2BKN / (KN × s) = 2B / s
+</code></pre>
+<p>The weight dimensions cancel. Arithmetic intensity for a weight-bound GEMM depends on
+<strong>nothing but the batch size and the element width</strong> — not on the model, not on the layer,
+not on how big the matrix is. That single fact explains most of what a serving engine does.</p>
+<p>Setting <em>I</em>(<em>B</em>) = <em>I</em>* and solving gives the <strong>critical batch size</strong>, the point at which the
+GPU stops idling:</p>
+<pre><code>B* = s × π / (2β) = 2 × 296 / 2 ≈ 296 rows at BF16
+</code></pre>
+<p>Under 300 rows, adding work to a batch is nearly free: you are paying for bandwidth you have
+already spent. Past it, arithmetic starts to cost real time. The number moves with the dtype
+in the direction you would expect — an FP8 weight halves <em>s</em> but roughly doubles π on
+Hopper, so <em>B</em>* lands in the same neighbourhood — and it moves with the hardware, which is
+why the engine measures rather than assumes.</p>
+<p>Which is a reason to run it for your own hardware rather than take the H100 figure on
+faith. Chapter 2 has a table of accelerators to draw the inputs from:</p>
+<div class="bk-calc" data-calc="roofline"></div>
+<figure>
+<svg viewBox="0 0 700 348" role="img" aria-label="A log-log roofline plot showing decode far to the left of the ridge point and prefill at the compute ceiling">
+<title>The roofline, and where decode sits on it</title>
+<text class="dgm-label" x="376" y="22" text-anchor="middle" font-weight="600" style="font-size:12.5px">H100 SXM, BF16 — attainable performance vs arithmetic intensity</text>
+<path class="dgm-line" d="M96 44 L96 244 L664 244"/>
+<text class="dgm-small" x="88" y="248" text-anchor="end" style="font-size:10.5px">1</text>
+<text class="dgm-small" x="88" y="184.0" text-anchor="end" style="font-size:10.5px">10</text>
+<text class="dgm-small" x="88" y="120.0" text-anchor="end" style="font-size:10.5px">100</text>
+<text class="dgm-small" x="88" y="56.0" text-anchor="end" style="font-size:10.5px">1000</text>
+<text class="dgm-small" x="38" y="150" text-anchor="middle" style="font-size:11px">TFLOP/s</text>
+<text class="dgm-small" x="96" y="264" text-anchor="middle" style="font-size:10.5px">1</text>
+<text class="dgm-small" x="236.0" y="264" text-anchor="middle" style="font-size:10.5px">10</text>
+<text class="dgm-small" x="376.0" y="264" text-anchor="middle" style="font-size:10.5px">100</text>
+<text class="dgm-small" x="516.0" y="264" text-anchor="middle" style="font-size:10.5px">1000</text>
+<text class="dgm-small" x="656" y="264" text-anchor="middle" style="font-size:10.5px">10⁴</text>
+<text class="dgm-small" x="376.0" y="284" text-anchor="middle" style="font-size:11px">arithmetic intensity — FLOP per byte</text>
+<path class="dgm-line-accent" d="M96.0 210.4 L441.9 52.3 L656.0 52.3"/>
+<text class="dgm-small" x="124.6" y="224.7" text-anchor="start" style="font-size:11px">memory-bound</text>
+<text class="dgm-small" x="124.6" y="233.7" text-anchor="start" style="font-size:11px">slope = 3.35 TB/s</text>
+<text class="dgm-small" x="536.5" y="40.3" text-anchor="middle" style="font-size:11px">compute-bound — 990 TFLOP/s</text>
+<path class="dgm-dash" d="M441.9 244 L441.9 52.3"/>
+<text class="dgm-small" x="450.9" y="236" text-anchor="start" font-weight="600" style="font-size:11px">I* = 296</text>
+<circle class="dgm-fill-accent" cx="138.1" cy="191.1" r="4.5"/>
+<text class="dgm-small" x="148.1" y="195.1" text-anchor="start" style="font-size:11px">decode, batch 1</text>
+<circle class="dgm-fill-accent" cx="348.9" cy="94.8" r="4.5"/>
+<text class="dgm-small" x="358.9" y="98.8" text-anchor="start" style="font-size:11px">decode, batch 64</text>
+<circle class="dgm-fill-accent" cx="558.1" cy="52.3" r="4.5"/>
+<text class="dgm-small" x="558.1" y="70.3" text-anchor="middle" style="font-size:11px">prefill</text>
+<text class="dgm-small" x="350.0" y="318" text-anchor="middle" style="font-size:11.5px">Batching moves a workload right along the slope. The whole point is to reach the corner.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
+</svg>
+<figcaption>Arithmetic intensity for a weight-bound GEMM is <code>2B/s</code> — batch size over element width, and nothing else. Everything the scheduler does is an attempt to move right.</figcaption>
+</figure>
+<p>So "batch more" has a target: <strong>a few hundred token rows per forward pass</strong>. Below it the
+GPU is a very expensive memory controller. That target is the reason chunked prefill
+(Chapter 6) mixes prefill chunks with decode rows rather than running them separately, the
+reason speculative decoding (Chapter 19) is profitable at all, and the reason the scheduler
+would rather wait a few milliseconds than launch a batch of four.</p>
+<h3 id="where-the-roofline-stops-applying"><a class="header" href="#where-the-roofline-stops-applying">Where the roofline stops applying</a></h3>
+<p>One part of the forward pass refuses to follow this argument, and it is worth naming now
+because three later chapters exist because of it.</p>
+<p>Batching amortizes a weight read across the whole batch <em>because every sequence multiplies
+against the same weights</em>. Attention has no such matrix. Each sequence attends over <strong>its
+own</strong> KV cache, which no other sequence in the batch shares. Reading it is
+<code>2 × L × H_kv × d × s × T</code> bytes for a sequence of <em>T</em> tokens, and it serves exactly one
+query row. Its arithmetic intensity is around 2 FLOP per byte at any batch size.</p>
+<p>Attention is therefore memory-bound <em>no matter how large the batch gets</em>. Batching fixes the
+GEMMs and leaves attention exactly where it was. That is why:</p>
+<ul>
+<li>attention gets its own pluggable backend layer and its own hand-written kernels
+(Chapter 14) while the linear layers are ordinary PyTorch;</li>
+<li>shrinking the KV cache per token is an architectural priority worth redesigning attention
+around — GQA, and then MLA (Chapter 13);</li>
+<li><em>sharing</em> KV across requests, so one read serves many, is the single highest-leverage
+optimization in the system (Chapter 10).</li>
+</ul>
+<p>Two regimes, then, inside one forward pass: weight traffic that batching amortizes, and KV
+traffic that it does not. Almost every design decision in SGLang is aimed at one or the
+other.</p>
+<hr />
+<h2 id="the-kv-cache-and-the-bill-it-creates"><a class="header" href="#the-kv-cache-and-the-bill-it-creates">The KV cache, and the bill it creates</a></h2>
+<p>Naively, generating token <em>n</em> means re-running attention over all <em>n−1</em> previous tokens,
+which means recomputing their keys and values every step. Total work grows with the square
+of sequence length.</p>
+<div class="bk-note bk-note-definition">
+<p class="bk-note-label">Definition — KV cache</p>
+<p>The stored keys and values for every token a sequence has already seen, kept so that
+attention does not recompute them each step. It converts generation from quadratic to
+linear in sequence length, and it is the resource everything else in this book competes
+for.</p>
+</div>
+<p>But those keys and values do not change. Token 5's key vector is the same at step 6 and at
+step 600. So they are computed once and kept: the <strong>KV cache</strong>. Generation becomes linear
+in sequence length, and decode becomes the memory-bound matrix-vector problem described
+above.</p>
+<p>The trade is compute for memory, and the memory bill is large. Per token:</p>
+<pre><code>bytes_per_token = 2 × num_layers × num_kv_heads × head_dim × dtype_bytes
+</code></pre>
+<p>The leading 2 is for K and V. Work it through for Llama-3-70B — 80 layers, 8 KV heads
+(grouped-query attention), 128 head dimension, BF16:</p>
+<pre><code>2 × 80 × 8 × 128 × 2 = 327,680 bytes ≈ 320 KB per token
+</code></pre>
+<p>A 4,000-token conversation therefore holds <strong>1.25 GB</strong> of KV cache.</p>
+<p>Now put that against a real deployment. The weights are 130 GB, so the model does not fit on
+one 80 GB H100 at all, and on two it fits with about 10 GB left over — room for eight
+conversations, which is not a service. On four H100s there is roughly 150 GB left after
+weights and overheads, and that is about <strong>120 concurrent 4,000-token conversations</strong>.</p>
+<p>Notice what just happened. The reason to reach for a second and third GPU was that the
+weights did not fit; the reason to reach for a fourth is that the <em>cache</em> did not. Past the
+point where the model fits, additional accelerators are bought almost entirely for KV
+capacity — and that number, not FLOPs, is what determines how many users you serve.</p>
+<p>This is the most useful arithmetic in the book, so it is worth having for your own model and
+hardware rather than for Llama-3-70B on an H100. Every input below is a line from a config
+file or a spec sheet:</p>
+<div class="bk-calc" data-calc="capacity"></div>
+<p>Two behaviours in there are worth provoking deliberately, because both become chapters
+later. Raise the parallel size past the KV head count and watch the per-token figure stop
+falling — that is the replication Chapter 16 introduces data-parallel attention to escape.
+And raise the context length: concurrency falls linearly, which is why long-context serving
+is a memory problem rather than a compute one, and why Chapters 10 and 11 are about not
+storing the same tokens twice.</p>
+<p>Now recall the previous section: throughput demands large batches, and batch size is
+capped by KV cache memory. <strong>Memory capacity is the direct limiter on throughput.</strong> This
+is the tension every remaining chapter is a response to:</p>
+<div class="table-wrapper"><table><thead><tr><th>Chapter</th><th>Response to the memory wall</th></tr></thead><tbody>
+<tr><td>5</td><td>Admit only as many requests as the budget allows; retract when wrong</td></tr>
+<tr><td>8</td><td>Allocate in pages so nothing is reserved-but-unused</td></tr>
+<tr><td>9</td><td>Store each shared prefix once instead of once per request</td></tr>
+<tr><td>10</td><td>Spill cold cache to host memory and disk</td></tr>
+<tr><td>14</td><td>Store fewer bytes per entry via quantization</td></tr>
+<tr><td>15</td><td>Avoid replicating the cache across parallel ranks</td></tr>
+<tr><td>17</td><td>Move prefill somewhere else entirely</td></tr>
+</tbody></table>
+</div>
+<p>Once you see the KV cache as the scarce resource, the architecture of the engine stops
+looking like a collection of features and starts looking like a single sustained argument.</p>
+<h3 id="a-deployment-to-keep-in-mind"><a class="header" href="#a-deployment-to-keep-in-mind">A deployment to keep in mind</a></h3>
+<p>Abstractions about "a request" are hard to hold onto, so the rest of the book refers back to
+one concrete deployment. It is deliberately ordinary — a customer-support assistant, the most
+common shape of production LLM traffic:</p>
+<div class="table-wrapper"><table><thead><tr><th></th><th></th></tr></thead><tbody>
+<tr><td>Model</td><td>Llama-3-70B, BF16, on 4×H100</td></tr>
+<tr><td>System prompt and tool schemas</td><td>1,800 tokens, byte-identical on every request</td></tr>
+<tr><td>Conversation history</td><td>~600 tokens, different every time</td></tr>
+<tr><td>Reply</td><td>~150 tokens</td></tr>
+<tr><td>Traffic</td><td>a few requests per second, bursty on weekday mornings</td></tr>
+</tbody></table>
+</div>
+<p>Run the arithmetic above on it. A conversation holds 2,550 tokens of context, so its KV cache
+is <strong>0.78 GB</strong>, and the ~150 GB left after weights holds about <strong>192 of them at once</strong>.</p>
+<p>Now notice something about that number. Of the 2,550 tokens each conversation stores, 1,800
+are the <em>same</em> 1,800 tokens — the system prompt every request begins with. Stored per
+request, that shared prefix accounts for 0.55 GB each and <strong>105 GB of the 150 GB cache</strong>:
+seventy percent of the scarcest resource in the deployment, holding 192 identical copies of
+one document.</p>
+<p>Store it once and that 105 GB comes back, which nearly triples concurrency without touching a
+kernel, a flag, or a GPU. That is Chapter 10, and it is why prefix caching is the largest
+single win in this book rather than one optimization among many.</p>
+<p>We return to this deployment when the scheduler decides what to admit (Chapter 6), when the
+cache is built (Chapter 10), when a router picks a replica (Chapter 18), and when somebody
+has to decide how many replicas to pay for (Chapter 24).</p>
+<h3 id="littles-law-closes-the-loop"><a class="header" href="#littles-law-closes-the-loop">Little's Law closes the loop</a></h3>
+<p>There is one more relation worth writing down, because it turns "how much memory do I have"
+into "how many requests per second can I serve" without any reference to the model.</p>
+<p>Little's Law, from queueing theory, says that for any stable system the average number of
+items resident inside it equals arrival rate times average residence time:</p>
+<pre><code>L = λ × W
+</code></pre>
+<p>Here <em>L</em> is the number of requests concurrently in flight, λ the arrival rate, and <em>W</em> the
+average end-to-end latency. The engine does not get to choose <em>L</em> freely: it is bounded
+above by how many KV caches fit in memory. Rearranged,</p>
+<pre><code>λ_max = L_max / W
+</code></pre>
+<p>Take the Llama-3-70B numbers above — about 120 concurrent 4,000-token conversations on four
+H100s — and suppose an average request takes 20 seconds end to end. Then the ceiling is six
+requests per second, and no amount of kernel tuning moves it. Only three things do: fit more
+caches into memory (raise <code>L_max</code>), finish requests faster (lower <em>W</em>), or stop storing the
+same prefix a hundred times over (raise <code>L_max</code> again, and by the largest factor available).</p>
+<p>This is also why an overloaded engine degrades so sharply rather than gracefully. Push λ
+above λ_max and <em>W</em> does not rise a little — queueing delay grows without bound until
+something sheds load. Chapter 6's admission control is that something, and Chapter 6's
+retraction machinery is what happens when the estimate that admitted a request turns out to
+have been optimistic.</p>
+<hr />
+<h2 id="the-problem-in-sglangs-own-terms"><a class="header" href="#the-problem-in-sglangs-own-terms">The problem in SGLang's own terms</a></h2>
+<p>The smallest thing in the repository that runs a real forward pass is
+<code>python/sglang/benchmark/one_batch.py</code>. It has no server, no scheduler, and no HTTP — it
+loads a model, builds one batch, and times prefill and decode separately. (The top-level
+<code>python/sglang/bench_one_batch.py</code> is a deprecated shim that re-exports it.)</p>
+<p>Its two core functions are exactly the two phases. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/benchmark/one_batch.py#L487"><code>python/sglang/benchmark/one_batch.py:487</code></a> <code>extend</code>:</p>
+<pre><code class="language-python">    batch.prepare_for_extend()
+    ...
+    forward_batch = ForwardBatch.init_new(
+        batch,
+        model_runner,
+        return_hidden_states_before_norm=False,
+    )
+    logits_output = model_runner.forward(forward_batch).logits_output
+    next_token_ids = model_runner.sample(logits_output, forward_batch)
+</code></pre>
+<p>And <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/benchmark/one_batch.py#L526"><code>python/sglang/benchmark/one_batch.py:526</code></a> <code>decode</code>:</p>
+<pre><code class="language-python">    batch.input_ids = input_token_ids.to(torch.int64)
+    batch.prepare_for_decode()
+    ...
+    logits_output = model_runner.forward(forward_batch).logits_output
+    next_token_ids = model_runner.sample(logits_output, forward_batch)
+</code></pre>
+<p>The bodies are nearly identical. The difference is one method call —
+<code>prepare_for_extend</code> versus <code>prepare_for_decode</code> — and everything downstream branches on
+what that produces. Chapter 7 shows exactly how far that branch propagates.</p>
+<p>Two things in <code>extend</code> are worth noticing now. The <code>dummy_tree_cache</code> built at <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/benchmark/one_batch.py#L488"><code>:488</code></a> is a
+<code>TreeCacheNamespace</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/benchmark/one_batch.py#L469"><code>:469</code></a>) that carries only a page size, a device, and an allocator:
+the benchmark deliberately runs <em>without</em> prefix caching, so its numbers reflect raw
+forward-pass cost rather than cache hits. And both functions call <code>model_runner.forward</code>
+followed by <code>model_runner.sample</code> — the same two-step contract Chapter 8 examines.</p>
+<p>The measurement code (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/benchmark/one_batch.py#L734"><code>python/sglang/benchmark/one_batch.py:734</code></a> <code>latency_test_run_once</code>) reports the
+two phases in different units, which is itself the lesson:</p>
+<pre><code class="language-python">    prefill_latency = time.perf_counter() - tic
+    ...
+    throughput = input_len * batch_size / prefill_latency
+</code></pre>
+<pre><code class="language-python">        latency = time.perf_counter() - tic
+        ...
+        throughput = batch_size / latency
+</code></pre>
+<p>Prefill throughput counts <code>input_len × batch_size</code> tokens; decode counts <code>batch_size</code>
+tokens. One step of prefill on a batch of 8 with 2,000-token prompts moves 16,000 tokens.
+One step of decode on the same batch moves 8. Run it and the printed numbers differ by
+roughly three orders of magnitude — the arithmetic-intensity argument, made concrete on
+your own hardware in about ninety seconds.</p>
+<hr />
+<h2 id="what-the-metrics-mean"><a class="header" href="#what-the-metrics-mean">What the metrics mean</a></h2>
+<p>Serving performance is not one number, and the common ones pull against each other.</p>
+<p><strong>TTFT (time to first token)</strong> — request arrival to first streamed token. Dominated by
+queueing plus prefill. This is what a user perceives as responsiveness.</p>
+<p><strong>ITL / TPOT (inter-token latency / time per output token)</strong> — the gap between successive
+tokens once generation starts. This is perceived as reading speed; below roughly 30 ms it
+stops mattering to a human reader.</p>
+<p><strong>Throughput</strong> — total tokens per second across all requests. The operator's metric, since
+it sets cost per token.</p>
+<p><strong>Goodput</strong> — throughput counting only requests that met their latency targets. The honest
+metric, and the one that exposes the others as incomplete: an engine can post excellent
+throughput while every individual request violates its SLO.</p>
+<p>They conflict in specific, structural ways:</p>
+<ul>
+<li><strong>Batch size</strong> raises throughput and raises ITL. Every sequence in a batch waits for the
+slowest operation in that step.</li>
+<li><strong>Chunked prefill</strong> (Chapter 6) lowers ITL for requests already decoding, and raises TTFT
+for the request being chunked. It moves latency between customers rather than removing
+it.</li>
+<li><strong>Prefix caching</strong> (Chapter 10) is the rare case that improves everything at once — it
+removes work rather than relocating it. This is why it gets a chapter of its own.</li>
+<li><strong>Speculative decoding</strong> (Chapter 19) lowers ITL while <em>raising</em> total compute. It spends
+the idle arithmetic units that the first section identified.</li>
+</ul>
+<p>Whenever a later chapter says a technique "helps," the question to ask is which of these
+four it helps, and which it charges.</p>
+<hr />
+<h2 id="the-idea-inventory"><a class="header" href="#the-idea-inventory">The idea inventory</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/README.md#L68"><code>README.md:68</code></a> compresses SGLang's answer into a single paragraph:</p>
+<blockquote>
+<p><strong>Fast Runtime</strong>: Provides efficient serving with RadixAttention for prefix caching, a
+zero-overhead CPU scheduler, prefill-decode disaggregation, speculative decoding,
+continuous batching, paged attention, tensor/pipeline/expert/data parallelism, structured
+outputs, chunked prefill, quantization (FP4/FP8/INT4/AWQ/GPTQ), and multi-LoRA batching.</p>
+</blockquote>
+<p>Unpacked, with the problem each one solves and where this book covers it:</p>
+<div class="table-wrapper"><table><thead><tr><th>Feature</th><th>The problem it attacks</th><th>Chapter</th></tr></thead><tbody>
+<tr><td>RadixAttention</td><td>Shared prompt prefixes recomputed per request</td><td>10</td></tr>
+<tr><td>Zero-overhead scheduler</td><td>CPU scheduling stalling the GPU between steps</td><td>5</td></tr>
+<tr><td>PD disaggregation</td><td>Prefill and decode contending on one machine</td><td>18</td></tr>
+<tr><td>Speculative decoding</td><td>Decode's idle arithmetic units</td><td>19</td></tr>
+<tr><td>Continuous batching</td><td>Requests waiting for a batch to drain</td><td>6</td></tr>
+<tr><td>Paged attention</td><td>Memory reserved for growth that never happens</td><td>9</td></tr>
+<tr><td>TP / PP / EP / DP</td><td>A model too large, or a cache too replicated, for one GPU</td><td>16, 17</td></tr>
+<tr><td>Structured outputs</td><td>Generation that must satisfy a schema</td><td>20</td></tr>
+<tr><td>Chunked prefill</td><td>One long prompt stalling every active decode</td><td>6</td></tr>
+<tr><td>Quantization</td><td>Too many bytes per weight and per cache entry</td><td>15</td></tr>
+<tr><td>Multi-LoRA batching</td><td>Requests in one batch needing different weights</td><td>21</td></tr>
+<tr><td>Read that table as a map of the memory-and-latency argument above. Nothing in it is a</td><td></td><td></td></tr>
+<tr><td>feature for its own sake; each is a response to a specific line in the cost model. The rest</td><td></td><td></td></tr>
+<tr><td>of the book is that table, expanded, with the code that implements each row.</td><td></td><td></td></tr>
+</tbody></table>
+</div>
+<p>Chapter 3 gets us oriented in the repository before we start walking a request through it.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 1 in one page</p><ol class="bk-card-arg"><li>Decode reads every weight to produce one token per sequence, so it is bound by memory bandwidth, not arithmetic.</li><li>The fix is batching: one weight read serving many tokens. Arithmetic intensity for a weight-bound GEMM is 2B/s — batch size and dtype, nothing else.</li><li>Batch size is capped by KV cache memory, so memory capacity is the direct limiter on throughput.</li><li>Little's Law turns that capacity into a request rate, and the ceiling moves only by fitting more caches, finishing faster, or storing prefixes once.</li><li>Every later chapter is a response to one of those three.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>H100 ridge point</th><td>~296 FLOP/byte</td></tr><tr><th scope='row'>Critical batch size at BF16</th><td>~296 rows</td></tr><tr><th scope='row'>KV per token, Llama-3-70B</th><td>320 KB</td></tr><tr><th scope='row'>Concurrent 4k conversations on 4×H100</th><td>~120</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>The smallest thing that runs a real forward pass</th><td><code>python/sglang/benchmark/one_batch.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="part1.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch02-the-machine-underneath.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="part1.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch02-the-machine-underneath.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

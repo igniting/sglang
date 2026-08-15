@@ -1,0 +1,544 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>4. From HTTP to Token IDs - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item expanded "><a href="ch04-http-to-token-ids.html" class="active">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch04-http-to-token-ids.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="4-from-http-to-token-ids"><a class="header" href="#4-from-http-to-token-ids">4. From HTTP to Token IDs</a></h1>
+<blockquote>
+<p><em>The front of the engine is an async/sync boundary, and most of its complexity is in
+making message passing look like <code>await</code>.</em></p>
+</blockquote>
+<p>A request has arrived. Over the next five chapters we follow it all the way to a token
+appearing on someone's screen, and this chapter covers the first leg: from an HTTP socket
+to a message sitting in the scheduler's queue.</p>
+<p>Chapter 3 established the topology — a tokenizer process at the front, schedulers owning the
+GPUs, detokenizers at the back, ZeroMQ between them. What that diagram does not convey is
+the awkwardness of the boundary it creates. The web server is asynchronous, with thousands
+of coroutines in flight. The scheduler is a synchronous loop that would not know what an
+<code>await</code> was. Between them is a socket that has no concept of a request at all, only bytes.</p>
+<p>Something has to reconcile those three worlds, and that something is <code>TokenizerManager</code>. It
+converts text to token ids, which is the job its name advertises. Its larger and more
+interesting job is making a fire-and-forget message protocol behave like an ordinary
+awaitable function call.</p>
+<p>That trick — and the validation, batching, and zero-copy transport that surround it — is
+what this chapter is about.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 10 min</span></p><ul><li>Follow a request from an HTTP handler to a message on a ZeroMQ socket</li><li>Explain what a tokenizer does and which of its properties leak into the engine</li><li>Say why validation happens at the front and not at the scheduler</li><li>Trace an abort across process boundaries</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="the-manager-and-its-event-loop"><a class="header" href="#the-manager-and-its-event-loop">The manager and its event loop</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L374"><code>python/sglang/srt/managers/tokenizer_manager.py:374</code></a> <code>TokenizerManager</code> runs in the main
+process, on the same asyncio event loop as the HTTP server. Its <code>__init__</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L387"><code>:387</code></a>) is a
+sequence of named setup steps in the style Chapter 5 discusses:
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L449"><code>:449</code></a> <code>init_model_config</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L466"><code>:466</code></a> <code>init_tokenizer_and_processor</code>,
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L534"><code>:534</code></a> <code>init_ipc_channels</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L567"><code>:567</code></a> <code>init_running_status</code>,
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L732"><code>:732</code></a> <code>init_request_dispatcher</code>.</p>
+<p>The public entry point is <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L755"><code>:755</code></a> <code>generate_request</code>, and its first line is worth pausing
+on:</p>
+<pre><code class="language-python">    async def generate_request(
+        self,
+        obj: Union[GenerateReqInput, EmbeddingReqInput],
+        request: Optional[fastapi.Request] = None,
+    ):
+        self.auto_create_handle_loop()
+</code></pre>
+<p><code>auto_create_handle_loop</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L2175"><code>:2175</code></a>) lazily starts the background task that drains results
+from the scheduler. It is called per request rather than at construction because the
+manager may be built before an event loop exists — in the embedded <code>Engine</code> case
+(Chapter 3), construction happens in a context where <code>asyncio.get_running_loop()</code> would
+fail. Doing it on first use sidesteps the ordering problem entirely.</p>
+<hr />
+<h2 id="text-to-token-ids"><a class="header" href="#text-to-token-ids">Text to token ids</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L985"><code>:985</code></a> <code>_tokenize_one_request</code> handles a single request. It begins by working out what kind
+of input it actually received:</p>
+<pre><code class="language-python">        if obj.input_embeds is not None:
+            if not self.server_args.disable_radix_cache:
+                raise ValueError(
+                    "input_embeds is provided while disable_radix_cache is False. "
+                    "Please add `--disable-radix-cache` when you launch the server "
+                    "if you want to use input_embeds as inputs."
+                )
+            input_embeds = obj.input_embeds
+            input_ids = obj.input_ids
+        elif obj.input_ids is not None:
+            input_ids = obj.input_ids
+        else:
+            if self.tokenizer is None:
+                raise ValueError(...)
+</code></pre>
+<p>Three input formats — raw embeddings, pre-tokenized ids, or text — and the first branch is
+a genuine cross-subsystem constraint stated as a runtime error. Chapter 10 explains why:
+the radix cache is keyed on <em>token ids</em>. Supplying embeddings directly means two requests
+with identical ids may have entirely different activations, so prefix sharing would return
+the wrong data. The engine cannot detect this, so it refuses the combination.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L823"><code>:823</code></a> <code>_detect_input_format</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L361"><code>:361</code></a> <code>InputFormat</code> classify the request;
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L881"><code>:881</code></a> <code>_tokenize_texts</code> does batch tokenization; and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L1359"><code>:1359</code></a> <code>_create_tokenized_object</code>
+assembles the message that crosses to the scheduler.</p>
+<p>Tokenization is CPU work, and at high request rates it is not free.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L1570"><code>python/sglang/srt/managers/tokenizer_manager.py:1570</code></a> <code>_should_use_batch_tokenization</code>
+decides when to batch tokenizer calls, and
+<code>python/sglang/srt/managers/async_dynamic_batch_tokenizer.py</code> implements the batching so
+the fast Rust tokenizer amortizes across requests.</p>
+<h3 id="what-a-token-actually-is"><a class="header" href="#what-a-token-actually-is">What a token actually is</a></h3>
+<p>The engine treats token ids as opaque integers, but a few properties of how they are
+produced leak into the rest of the book, so they are worth stating.</p>
+<p>Modern tokenizers are <strong>subword</strong> tokenizers, and almost all of them descend from
+byte-pair encoding — Gage's 1994 compression algorithm, repurposed for NLP by Sennrich,
+Haddow, and Birch in 2016. Training is one loop: start with a vocabulary of single bytes,
+count adjacent pairs across a corpus, merge the most frequent pair into a new symbol, and
+repeat until the vocabulary reaches its target size. The merges are recorded in the order
+they were learned. Encoding replays that list against a new string, applying the earliest
+applicable merge at each step.</p>
+<p>Three consequences matter downstream:</p>
+<p><strong>Encoding is greedy and order-dependent, so it is not compositional.</strong> The tokens for
+<code>"foo"</code> need not be a prefix of the tokens for <code>"foobar"</code>, because a merge that spans the
+boundary can fire in the longer string and not the shorter one. This is exactly why
+Chapter 8's detokenizer cannot decode one token at a time and concatenate, and why the
+<code>--skip-tokenizer-init</code> path exists for callers that manage ids themselves.</p>
+<p><strong>Byte-level BPE has no out-of-vocabulary case.</strong> GPT-2 and its descendants start from the
+256 possible bytes, so any byte string is encodable. The price is that a single token can be
+<em>part of</em> a UTF-8 sequence rather than a whole character, which is the direct cause of the
+partial-codepoint problem Chapter 8 spends a section on, and the reason Chapter 20's grammar
+engine works over <em>bytes</em> rather than characters.</p>
+<p><strong>One token is roughly four characters of English, and much less of anything else.</strong> Every
+token budget in Chapter 6, every KV-cache calculation in Chapter 1, and every context-length
+limit is denominated in this unit — which is a property of the corpus the tokenizer was
+trained on, not of the text being served. The same prompt in Thai or in JSON can cost several
+times what it costs in English prose.</p>
+<p>The tokenizer itself is not SGLang's code; it is HuggingFace's <code>tokenizers</code>, a Rust library
+behind a Python wrapper. What SGLang adds is the concurrency wrapper: at high request rates
+the per-call overhead of crossing into Rust dominates, so <code>AsyncDynamicbatchTokenizer</code> in
+<code>python/sglang/srt/managers/async_dynamic_batch_tokenizer.py</code> collects requests arriving
+within a short window and encodes them in one batched call, where the Rust side can use its
+own thread pool.</p>
+<hr />
+<h2 id="validation-as-a-stability-boundary"><a class="header" href="#validation-as-a-stability-boundary">Validation as a stability boundary</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L1185"><code>python/sglang/srt/managers/tokenizer_manager.py:1185</code></a> <code>_validate_one_request</code> is a wall of
+checks. In a single-process server such checks
+are a nicety; here they are structural. Every request that gets past this point enters a
+process shared by every other in-flight request — one that holds tens of gigabytes of model
+weights and cannot be cheaply restarted. <strong>A malformed request that crashes the scheduler
+is an outage for everyone.</strong></p>
+<p>The dedicated validators name the hazards:</p>
+<ul>
+<li><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L1278"><code>:1278</code></a> <code>_validate_mm_limits</code> — image and video counts, before decoders allocate for them.</li>
+<li><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L1321"><code>:1321</code></a> <code>_validate_token_ids_logprob</code> — logprob parameters against the request's shape.</li>
+<li><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L1341"><code>:1341</code></a> <code>_validate_input_ids_in_vocab</code> — every id inside the embedding table. An
+out-of-range id here would be an illegal memory access inside a CUDA kernel, which does
+not raise a Python exception; it corrupts or kills the process.</li>
+<li><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L1293"><code>:1293</code></a> <code>_validate_for_matryoshka_dim</code> — embedding dimension requests.</li>
+</ul>
+<p>The pattern to take away: validation lives on the <em>safe</em> side of the process boundary, and
+the checks that look most paranoid are the ones guarding operations that fail
+uncatchably on the far side.</p>
+<hr />
+<h2 id="turning-messages-into-futures"><a class="header" href="#turning-messages-into-futures">Turning messages into futures</a></h2>
+<p>This is the mechanism the chapter exists for.</p>
+<p>Each in-flight request gets a <code>ReqState</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L201"><code>:201</code></a>):</p>
+<pre><code class="language-python">class ReqState:
+    """Store the state a request."""
+
+    out_list: List[Dict[Any, Any]]
+    finished: bool
+    event: asyncio.Event
+    obj: Union[GenerateReqInput, EmbeddingReqInput]
+
+    # For performance metrics
+    time_stats: APIServerReqTimeStats
+    last_completion_tokens: int = 1
+    ttft_observed: bool = False
+
+    # For streaming output
+    last_output_offset: int = 0
+</code></pre>
+<p>Three fields carry the mechanism. <code>out_list</code> accumulates outputs as they arrive. <code>finished</code>
+marks completion. <code>event</code> is an <code>asyncio.Event</code> — the bridge. States live in
+<code>self.rid_to_state</code>, keyed by request id.</p>
+<p>The awaiting side is <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L1722"><code>:1722</code></a> <code>_wait_one_response</code>:</p>
+<pre><code class="language-python">        state = self.rid_to_state[obj.rid]
+        is_stream = getattr(obj, "stream", False)
+        while True:
+            try:
+                await asyncio.wait_for(
+                    state.event.wait(), timeout=_REQUEST_STATE_WAIT_TIMEOUT
+                )
+            except asyncio.TimeoutError:
+                if (
+                    request is not None
+                    and not obj.background
+                    and await request.is_disconnected()
+                ):
+                    # Abort the request for disconnected requests (non-streaming, waiting queue)
+                    self.abort_request(obj.rid)
+                    raise ValueError(...)
+                continue
+
+            # Drain all pending outputs atomically.
+            out_list = state.out_list
+            state.out_list = []
+            finished = state.finished
+            state.event.clear()
+</code></pre>
+<p>Wait on the event; when it fires, take everything queued and clear. The timeout is not a
+failure path — it is a <em>liveness</em> path. Without it, a client that disconnects mid-generation
+would leave the coroutine parked forever and the request occupying GPU memory until it hit
+its token limit. The periodic wake lets the manager poll <code>request.is_disconnected()</code> and
+abort, which is how a cancelled HTTP request actually frees a KV cache allocation.</p>
+<p>Note also <code>out_list = state.out_list; state.out_list = []</code> rather than draining in place.
+The producer runs on the same event loop, so no lock is needed — but rebinding rather than
+mutating means a concurrently-appending producer cannot lose an item between the read and
+the clear.</p>
+<p>The producing side is <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L2200"><code>:2200</code></a> <code>handle_loop</code>, the background task, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L2215"><code>:2215</code></a>
+<code>_handle_batch_output</code>, which looks up <code>rid_to_state</code>, appends to <code>out_list</code>, sets
+<code>finished</code>, and calls <code>event.set()</code>. That is the whole trick: <strong>a socket receive becomes a
+coroutine wake-up.</strong></p>
+<p><code>ReqState.append_text</code> / <code>get_text</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L222"><code>:222</code></a>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L226"><code>:226</code></a>) are a small but instructive
+optimization:</p>
+<pre><code class="language-python">    def append_text(self, chunk: str):
+        if chunk:
+            self.text_chunks.append(chunk)
+
+    def get_text(self) -&gt; str:
+        if self.text_chunks:
+            self.text += "".join(self.text_chunks)
+            self.text_chunks.clear()
+        return self.text
+</code></pre>
+<p>Text accumulates as a list and is joined only when read. Concatenating strings per token
+would be O(n) per step and O(n²) over a generation — a real cost at 4,000 output tokens.
+The comment at <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L1739"><code>:1739</code></a> notes the same concern from the other direction: intermediate
+streaming chunks carry <code>"text": None</code> so the full string is never rebuilt per step.</p>
+<hr />
+<h2 id="the-wire-contract"><a class="header" href="#the-wire-contract">The wire contract</a></h2>
+<p><code>python/sglang/srt/managers/io_struct.py</code> defines every message that crosses a process
+boundary, and reading its type list is the most precise description of the architecture
+available.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/io_struct.py#L160"><code>python/sglang/srt/managers/io_struct.py:160</code></a> <code>GenerateReqInput</code> is what arrives from HTTP — text or ids, sampling parameters,
+streaming flags, multimodal payloads. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/io_struct.py#L941"><code>python/sglang/srt/managers/io_struct.py:941</code></a> <code>TokenizedGenerateReqInput</code> is what leaves for
+the scheduler: text resolved to ids, defaults filled, validation passed. Two types rather
+than one because the boundary is real — everything past it may assume validity.</p>
+<p>Coming back, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/io_struct.py#L1404"><code>python/sglang/srt/managers/io_struct.py:1404</code></a> <code>BatchTokenIDOutput</code> carries token ids from the scheduler to the
+detokenizer, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/io_struct.py#L1504"><code>python/sglang/srt/managers/io_struct.py:1504</code></a> <code>BatchStrOutput</code> carries text from the detokenizer to the
+tokenizer manager. Both are <em>batch</em> types: the scheduler produces results for a whole batch
+per step, and sending them individually would multiply syscalls by batch size.</p>
+<p>Per <code>.claude/rules/no-dataclasses.md</code> these are <code>msgspec.Struct</code> rather than <code>@dataclass</code> —
+faster to serialize, strictly typed, and translatable if the boundary is ever
+reimplemented in another language.</p>
+<hr />
+<h2 id="zeromq-and-who-is-allowed-to-talk"><a class="header" href="#zeromq-and-who-is-allowed-to-talk">ZeroMQ, and who is allowed to talk</a></h2>
+<p>Sockets are created in <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L733"><code>python/sglang/srt/managers/scheduler.py:733</code></a> <code>init_ipc_channels</code>
+(with <code>python/sglang/srt/managers/scheduler_components/ipc_channels.py</code> holding the
+details) using the names from <code>PortArgs</code> that Chapter 3 introduced. The transport is Unix
+domain sockets for same-node communication — the common case, and considerably cheaper
+than TCP loopback.</p>
+<p>On the scheduler side, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L2007"><code>python/sglang/srt/managers/scheduler.py:2007</code></a> <code>init_request_receiver</code> and
+<code>python/sglang/srt/managers/scheduler_components/request_receiver.py</code> own the receive path,
+and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L1872"><code>python/sglang/srt/managers/scheduler.py:1872</code></a> <code>process_input_requests</code> drains it each iteration.</p>
+<p>Dispatch is table-driven. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L1523"><code>python/sglang/srt/managers/scheduler.py:1523</code></a> <code>init_request_dispatcher</code> maps message type to
+handler, and the tokenizer manager has a mirror at <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L732"><code>python/sglang/srt/managers/tokenizer_manager.py:732</code></a>:</p>
+<pre><code class="language-python">        self._result_dispatcher = TypeBasedDispatcher(
+            [
+                (AbortReq, self._handle_abort_req),
+                (OpenSessionReqOutput, self._handle_open_session_req_output),
+                (
+                    UpdateWeightFromDiskReqOutput,
+                    self._handle_update_weights_from_disk_req_output,
+                ),
+                (FreezeGCReq, lambda x: None),
+                # For handling case when scheduler skips detokenizer and forwards back to the tokenizer manager, we ignore it.
+                (HealthCheckOutput, lambda x: None),
+                ...
+            ]
+        )
+</code></pre>
+<p>The <code>lambda x: None</code> entries are informative. A health check bypasses detokenization —
+there is no text anyone wants — so it arrives at the tokenizer manager as a message with no
+handler. Rather than special-casing the sender, the receiver registers an explicit no-op.
+Silence is expressed in the table rather than in a comment somewhere else.</p>
+<h3 id="the-rank-0-asymmetry"><a class="header" href="#the-rank-0-asymmetry">The rank-0 asymmetry</a></h3>
+<p>Under tensor parallelism, <code>PortArgs</code> says the tokenizer sends to "scheduler (rank 0)". The
+other ranks receive nothing from the front end.</p>
+<p>They cannot. Tensor parallelism requires every rank to execute the <em>same</em> collective
+operations in the <em>same</em> order (Chapter 16). If ranks independently received from a socket,
+network timing alone could give them different batches, and the first <code>all_reduce</code> would
+deadlock — or worse, silently mismatch. So rank 0 receives and broadcasts, and every rank
+proceeds from an identical view.</p>
+<p>The cost is a broadcast on every scheduler iteration, and a structural rule that follows
+from it: <strong>any state that affects control flow must be broadcast, never recomputed
+per-rank.</strong> A surprising share of distributed hangs are violations of that rule; the
+<code>.claude/skills/debug-distributed-hang/SKILL.md</code> playbook is organized around finding the
+first rank whose state diverged.</p>
+<hr />
+<h2 id="not-sending-pixels-through-a-socket"><a class="header" href="#not-sending-pixels-through-a-socket">Not sending pixels through a socket</a></h2>
+<p>Multimodal requests strain the design. An image is megabytes; serializing it, copying it
+through a Unix socket, and deserializing it per request would dwarf the cost of the model
+forward pass.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L1906"><code>python/sglang/srt/managers/scheduler.py:1906</code></a> <code>_materialize_cuda_vmm_inputs</code> is the escape
+hatch. When the processor has already produced tensors on the GPU, what crosses the socket
+is a CUDA IPC handle — a reference other processes can map directly — rather than the data.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L430"><code>python/sglang/srt/managers/schedule_batch.py:430</code></a> <code>has_cuda_ipc_proxy</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L440"><code>:440</code></a>
+<code>reconstruct</code> are the receiving side, and
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L521"><code>python/sglang/srt/managers/tokenizer_manager.py:521</code></a>
+<code>_validate_cuda_vmm_feature_transport_support</code> refuses the path where the platform cannot
+support it.</p>
+<p>Chapter 21 covers the multimodal pipeline in full. The point here is that the process
+boundary, which buys isolation and parallelism, charges for every byte crossing it — and
+the engine pays that toll only where it is cheap.</p>
+<hr />
+<h2 id="tracing-an-abort"><a class="header" href="#tracing-an-abort">Tracing an abort</a></h2>
+<p><code>AbortReq</code> is worth following end to end, because it touches every mechanism above.</p>
+<ol>
+<li>A client disconnects. <code>_wait_one_response</code> wakes on its timeout, sees
+<code>request.is_disconnected()</code>, and calls <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L1980"><code>python/sglang/srt/managers/tokenizer_manager.py:1980</code></a> <code>abort_request</code>.</li>
+<li>That sends an <code>AbortReq</code> over <code>scheduler_input_ipc_name</code>.</li>
+<li>Rank 0 receives it in <code>process_input_requests</code>, dispatches via the type table to
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L4437"><code>python/sglang/srt/managers/scheduler.py:4437</code></a> <code>abort_request</code>, and broadcasts so all
+ranks agree.</li>
+<li>The scheduler removes the request from the waiting queue, or marks a running request
+finished with <code>FINISH_ABORT</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/schedule_batch.py#L276"><code>python/sglang/srt/managers/schedule_batch.py:276</code></a>).</li>
+<li>Its KV cache is released through the Chapter 10 path — <code>cache_finished_req</code>, which frees
+the request's pages and decrements the tree's lock references.</li>
+<li>A final output flows back through the detokenizer, <code>_handle_batch_output</code> sets the
+state's event, and the awaiting coroutine — if any is still there — unblocks and cleans
+up <code>rid_to_state</code>.</li>
+</ol>
+<p>Six hops for a cancellation. That is the price of the topology, and it is why abort is a
+first-class message type rather than an exception: an exception cannot cross a process
+boundary, but a <code>msgspec.Struct</code> can.</p>
+<hr />
+<p>Chapter 5 picks the request up on the other side of the socket, where a synchronous loop is
+deciding what to do with it.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 4 in one page</p><ol class="bk-card-arg"><li>The front end is an async/sync boundary: an asyncio event loop on one side, a synchronous scheduler loop on the other.</li><li>Most of its complexity is making message passing look like `await` — a future per request, resolved when a message comes back.</li><li>Subword tokenization is greedy and not compositional, which is why detokenization cannot be done one token at a time.</li><li>Validation is a stability boundary: past it, a malformed request would crash a process holding the model.</li><li>Large tensors travel by shared memory, not through the socket.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Rough English tokens per character</th><td>~1 per 4</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Manager and event loop</th><td><code>python/sglang/srt/managers/tokenizer_manager.py</code></td></tr><tr><th scope='row'>Batched tokenization</th><td><code>python/sglang/srt/managers/async_dynamic_batch_tokenizer.py</code></td></tr><tr><th scope='row'>Wire types</th><td><code>python/sglang/srt/managers/io_struct.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="part2.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch05-scheduler-loop.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="part2.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch05-scheduler-loop.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

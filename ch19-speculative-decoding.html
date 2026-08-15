@@ -1,0 +1,587 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>19. Speculative Decoding - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item expanded "><a href="ch19-speculative-decoding.html" class="active">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch19-speculative-decoding.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="19-speculative-decoding"><a class="header" href="#19-speculative-decoding">19. Speculative Decoding</a></h1>
+<blockquote>
+<p><em>Verifying k tokens costs nearly what generating one costs, so the only question is how
+good a draft you can produce cheaply.</em></p>
+</blockquote>
+<p>Return to the uncomfortable fact from Chapter 1: during decode, a GPU's arithmetic units are
+idle more than 99% of the time. All that silicon is sitting there while the memory bus does
+the actual work.</p>
+<p>Speculative decoding is the idea of spending it.</p>
+<p>The observation is simple once stated. Running the model on five tokens costs almost exactly
+what running it on one costs, because the weights get read once either way and the extra
+arithmetic lands on units that were idle. So if something cheap could <em>guess</em> the next five
+tokens, the real model could check all five in a single pass and keep however many were
+right.</p>
+<p>What makes this more than a heuristic is the acceptance rule. It is a rejection-sampling
+argument, and it guarantees the output distribution is identical to what the model would
+have produced alone. A wrong guess costs wasted compute — never a wrong token.</p>
+<p>The cost is paid elsewhere, and this chapter is largely about where. Speculation reaches
+into memory pools, scheduling budgets, forward modes, CUDA graphs, the radix cache, and
+grammar state. Almost nothing in the engine is untouched by it, which is why it comes this
+late in the book.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 13 min</span></p><ul><li>Prove that speculation leaves the output distribution unchanged</li><li>Predict the speedup from an acceptance rate and a draft depth</li><li>Explain why a tree beats a chain</li><li>Name the subsystems speculation reaches into and why</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="the-bandwidth-argument"><a class="header" href="#the-bandwidth-argument">The bandwidth argument</a></h2>
+<p>Chapter 1 established that decode is memory-bound: the GPU reads every weight to produce one
+token per sequence, and its arithmetic units are more than 99% idle.</p>
+<p>Now ask what it costs to run the model on <em>five</em> tokens instead of one. The weights are read
+exactly once either way. The activation matrix has five rows instead of one, so the
+arithmetic is five times larger — against units that were idle anyway. In the memory-bound
+regime, <strong>a five-token forward pass costs almost the same as a one-token forward pass.</strong></p>
+<p>That is the whole opportunity. If you could guess the next five tokens, you could check all
+five in one pass and accept however many were right.</p>
+<p>The guess comes from something cheap: a small draft model, a lightweight head, or a lookup
+table. The check is a single forward pass of the real model. And the acceptance rule — a
+rejection-sampling argument — guarantees the output distribution is <em>identical</em> to what the
+target model would have produced alone. Speculative decoding is not an approximation. A
+wrong draft costs wasted compute, never a wrong token.</p>
+<p>The economics: if you draft 5 tokens and accept 3 on average, you produce 3 tokens per
+target forward pass instead of 1. Latency per token drops by roughly 3×, while total FLOPs
+rise — spending idle arithmetic to buy latency, exactly as Chapter 1's tradeoff table
+predicted.</p>
+<hr />
+<h2 id="the-acceptance-rule-and-why-it-is-exact"><a class="header" href="#the-acceptance-rule-and-why-it-is-exact">The acceptance rule, and why it is exact</a></h2>
+<p>The claim that speculation changes nothing about the output distribution is strong enough to
+deserve its proof, and the proof is four lines. Leviathan et al. (2023) state it as modified
+rejection sampling.</p>
+<p>Let <em>p</em> be the target model's distribution over the next token and <em>q</em> the draft's. Draw a
+candidate <em>x</em> ~ <em>q</em>. Then:</p>
+<pre><code>accept x  with probability  min(1, p(x) / q(x))
+otherwise  draw x  from  norm(max(0, p − q))
+</code></pre>
+<p>The draft over-proposes some tokens and under-proposes others. Where <em>q</em>(<em>x</em>) ≤ <em>p</em>(<em>x</em>) the draft
+was not over-confident and the token is always accepted. Where <em>q</em>(<em>x</em>) &gt; <em>p</em>(<em>x</em>) it was, and the
+token is accepted only <em>p</em>(<em>x</em>)/<em>q</em>(<em>x</em>) of the time — exactly enough to cancel the excess. The
+rejection branch then samples from the <em>residual</em>, the part of <em>p</em> the draft failed to cover,
+renormalized.</p>
+<p>To see that the composite is <em>p</em>, sum the two paths for any token <em>x</em>:</p>
+<pre><code>P(output x)  =  q(x) · min(1, p(x)/q(x))              accepted
+             +  P(reject) · norm(max(0, p − q))(x)     resampled
+             =  min(q(x), p(x))  +  [p(x) − min(q(x), p(x))]
+             =  p(x)
+</code></pre>
+<p>The first term is min(<em>p</em>, <em>q</em>) because <em>q</em> · min(1, <em>p</em>/<em>q</em>) is <em>q</em> when <em>q</em> ≤ <em>p</em> and <em>p</em>
+when <em>q</em> &gt; <em>p</em>. The second term is what is left over. They telescope. <strong>The output distribution is
+<em>p</em> exactly</strong>, for any draft <em>q</em> whatsoever — including a terrible one, including an
+adversarial one. A bad draft lowers the acceptance rate and therefore the speedup; it cannot
+change what the model says.</p>
+<p>Two engineering consequences follow directly, and both show up in the code below.</p>
+<p>The rule needs <em>q</em>(<em>x</em>), the draft's probability of the token it proposed — not just the token.
+That is why <code>draft</code> returns <code>draft_probs</code> alongside <code>draft_tokens</code>, and why the draft's
+sampling path has to be instrumented rather than treated as a black box.</p>
+<p>At temperature 0 the rule degenerates into something much cheaper. <em>p</em> becomes a point mass
+on <code>argmax</code>, so the accept test reduces to "is the drafted token the target's argmax?" — an
+integer comparison. Greedy verification is a different, faster kernel than sampled
+verification, which is why the code below has two paths.</p>
+<h3 id="how-many-tokens-you-get-back"><a class="header" href="#how-many-tokens-you-get-back">How many tokens you get back</a></h3>
+<p>The gain is quantifiable. Define the <strong>acceptance rate</strong> α as the expected probability that a
+drafted token is accepted. Accepting tokens along a chain is a sequence of Bernoulli trials
+that stops at the first failure, capped at the γ tokens drafted, so the number produced per
+target forward pass is a capped geometric variable with expectation</p>
+<pre><code>E[tokens per step] = (1 − α^(γ+1)) / (1 − α)
+</code></pre>
+<p>Read the shape of it rather than the formula. At α = 0.8 and γ = 4 you get about 3.4 tokens
+per step; pushing γ to 8 raises that only to about 4.2, because α^(γ+1) has already
+collapsed. <strong>Depth has sharply diminishing returns</strong>, since acceptance decays geometrically —
+one mistake ends the chain regardless of how many tokens followed it.</p>
+<p>That is the entire argument for drafting a <em>tree</em> instead of a chain. A chain of five tokens
+bets everything on the top choice at every step. A tree spends the same verification budget
+on several branches, so a wrong top choice at depth two does not discard depths three through
+five — a sibling may carry them. The expected accepted length rises for the same number of
+verified positions, which is why every serious implementation since 2024, EAGLE included,
+drafts trees.</p>
+<h3 id="where-eagles-draft-comes-from"><a class="header" href="#where-eagles-draft-comes-from">Where EAGLE's draft comes from</a></h3>
+<p>The remaining lever is α, and it is where EAGLE (Li et al., 2024) makes its contribution.</p>
+<p>An independent small model drafts badly because it is a <em>different</em> model — it has its own
+opinions, and its distribution diverges from the target's for reasons that have nothing to do
+with the current context. EAGLE's first observation is that autoregression is easier at the
+<strong>feature</strong> level than the token level: the sequence of second-to-top-layer hidden states is
+far more regular than the sequence of discrete tokens sampled from them. So predict the next
+<em>feature</em> from the current one, and let the target model's own LM head turn it into a token.</p>
+<p>The second observation is the fix for the first. A feature does not determine the next
+feature, because sampling intervenes: the same hidden state can yield different tokens and
+therefore different continuations. So the draft head is fed the feature sequence <em>and</em> the
+token sequence shifted one step ahead — the sampling outcome is given to it rather than
+guessed.</p>
+<p>What results is small: an embedding layer and LM head borrowed unchanged from the target, one
+fully-connected layer reducing the concatenated <code>[feature, token-embedding]</code> back to hidden
+size, and <strong>a single decoder layer</strong>. That is the whole draft model. It reports 3.6–3.9
+tokens accepted per forward pass on MT-Bench, for 2.7–3.5× end-to-end speedup on a 70B
+target — and it is better-informed than any independent small model could be, because it sees
+what the target actually computed.</p>
+<p>The cost is a coupling the rest of the engine has to carry: the draft consumes the target's
+hidden states, so the target's forward pass must <em>return</em> them. That is the
+<code>carries_draft_hidden_states</code> capability below, and it reaches into Chapter 8's logits
+processor, Chapter 9's memory pools, and Chapter 15's CUDA graphs.</p>
+<hr />
+<h2 id="capabilities-before-implementations"><a class="header" href="#capabilities-before-implementations">Capabilities before implementations</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/speculative/spec_info.py#L30"><code>python/sglang/srt/speculative/spec_info.py:30</code></a> <code>SpeculativeAlgorithm</code> is where to start,
+and its docstring explains why:</p>
+<pre><code class="language-python">class SpeculativeAlgorithm(Enum):
+    """Builtin speculative decoding algorithms. Plugin-registered ones are
+    ``CustomSpecAlgo`` instances; ``from_string`` returns either type, and
+    both expose the same ``is_*()`` / ``create_worker`` interface so callers
+    dispatch uniformly without isinstance checks.
+    """
+
+    DFLASH = auto()
+    DSPARK = auto()
+    EAGLE = auto()
+    EAGLE3 = auto()
+    FROZEN_KV_MTP = auto()
+    STANDALONE = auto()
+    NGRAM = auto()
+    NONE = auto()
+</code></pre>
+<p>Callers never compare against enum members. They ask <strong>capability questions</strong>:</p>
+<pre><code>:94   is_speculative                    speculation at all?
+:152  has_draft_kv                      does the draft model keep its own KV cache?
+:158  carries_draft_hidden_states       must hidden states be captured?
+:138  supports_ragged_verify            can verification use ragged batching?
+:144  supports_grammar_overlap          can grammar advance overlap with drafting?
+:127  supports_target_verify_for_draft
+:130  is_war_publish_phase
+</code></pre>
+<p>This matters because speculation touches nearly every subsystem in this book, and each
+subsystem cares about a <em>property</em>, not an algorithm name. Chapter 9's memory pool needs to
+know whether there is a second KV cache. Chapter 8's logits processor needs to know whether
+to capture hidden states. Chapter 20's grammar needs to know whether it can overlap.</p>
+<p>Predicates keep those subsystems from enumerating algorithms — which is what makes
+<code>_get_registered_spec</code> and plugin algorithms possible at all. Read
+<code>.claude/skills/speculative-naming/SKILL.md</code> before touching any of this; the naming
+conventions are enforced precisely because so many subsystems depend on these names.</p>
+<hr />
+<h2 id="eagle-end-to-end"><a class="header" href="#eagle-end-to-end">EAGLE end to end</a></h2>
+<p>EAGLE is the default and the one to understand. Its insight: rather than a separate small
+model, use a <em>lightweight head</em> that consumes the target model's own hidden states. The
+draft is better-informed than an independent small model could be, because it sees what the
+target model actually computed.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/speculative/eagle_worker_v2.py#L1008"><code>python/sglang/srt/speculative/eagle_worker_v2.py:1008</code></a> <code>EAGLEWorkerV2</code> implements Chapter
+7's worker interface, so Chapter 5's scheduler calls <code>forward_batch_generation</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/speculative/eagle_worker_v2.py#L1105"><code>:1105</code></a>)
+and never learns that two models are involved.</p>
+<h3 id="drafting"><a class="header" href="#drafting">Drafting</a></h3>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/speculative/eagle_worker_v2.py#L128"><code>:128</code></a> <code>EagleDraftWorker</code> owns the draft model, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/speculative/eagle_worker_v2.py#L494"><code>:494</code></a> <code>draft</code> produces candidates:</p>
+<pre><code class="language-python">    def draft(self, batch: ScheduleBatch):
+        draft_input: EagleDraftInput = batch.spec_info
+        forward_batch, can_run_decode_cuda_graph = prepare_for_draft(
+            draft_input,
+            self.req_to_token_pool,
+            batch,
+            self.cuda_graph_runner,
+            self.draft_runner,
+            self.topk,
+            self.speculative_num_steps,
+        )
+        ...
+        with canary_outside_ctx:
+            # Run draft
+            if can_run_decode_cuda_graph:
+                parent_list, top_scores_index, draft_tokens, draft_probs = (
+                    self.cuda_graph_runner.execute(forward_batch)
+                )
+</code></pre>
+<p>Two parameters define the draft's shape. <code>speculative_num_steps</code> is depth — how many tokens
+ahead. <code>topk</code> is width — how many candidates per step.</p>
+<p>Together they make a <strong>tree</strong>, not a chain. At each step the draft keeps its top-<em>k</em>
+continuations, so after 3 steps with topk 4 there are many candidate sequences. The
+returned <code>parent_list</code> and <code>top_scores_index</code> encode that tree's structure.</p>
+<p>Why a tree beats a chain: acceptance probability decays with depth. A chain of 5 tokens is
+accepted only as far as the first mistake. A tree hedges — if the top choice at step 2 is
+wrong, a sibling may be right — so the <em>expected</em> accepted length is higher for the same
+number of verified tokens.</p>
+<figure>
+<svg viewBox="0 0 700 306" role="img" aria-label="A speculative draft tree verified in a single target forward pass">
+<title>Drafting and verifying a token tree</title>
+<rect class="dgm-box" x="120.0" y="46" width="100" height="28" rx="6"/>
+<text class="dgm-small" x="170.0" y="64.4" text-anchor="middle" style="font-size:11.0px">context</text>
+<rect class="dgm-box-accent" x="42.0" y="100" width="76" height="28" rx="6"/>
+<text class="dgm-small" x="80.0" y="118.4" text-anchor="middle" style="font-size:11.0px">“the”</text>
+<rect class="dgm-box" x="190.0" y="100" width="64" height="28" rx="6"/>
+<text class="dgm-small" x="222.0" y="118.4" text-anchor="middle" style="font-size:11.0px">“a”</text>
+<rect class="dgm-box-accent" x="16.0" y="154" width="72" height="28" rx="6"/>
+<text class="dgm-small" x="52.0" y="172.4" text-anchor="middle" style="font-size:11.0px">“cat”</text>
+<rect class="dgm-box" x="100.0" y="154" width="72" height="28" rx="6"/>
+<text class="dgm-small" x="136.0" y="172.4" text-anchor="middle" style="font-size:11.0px">“dog”</text>
+<rect class="dgm-box" x="196.0" y="154" width="72" height="28" rx="6"/>
+<text class="dgm-small" x="232.0" y="172.4" text-anchor="middle" style="font-size:11.0px">“big”</text>
+<rect class="dgm-box-accent" x="336" y="54" width="344" height="120" rx="6"/>
+<text class="dgm-label" x="508.0" y="73.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">one target forward pass</text>
+<text class="dgm-small" x="508.0" y="91.4" text-anchor="middle" style="font-size:11.5px">every node is verified at once, under a mask</text>
+<text class="dgm-small" x="508.0" y="109.4" text-anchor="middle" style="font-size:11.5px">where a candidate attends to its ancestors</text>
+<text class="dgm-small" x="508.0" y="127.4" text-anchor="middle" style="font-size:11.5px">only — never to a sibling branch</text>
+<text class="dgm-small" x="508.0" y="163.4" text-anchor="middle" style="font-size:11.5px">cost ≈ one ordinary decode step</text>
+<text class="dgm-label" x="170" y="30" text-anchor="middle" font-weight="600" style="font-size:11.5px">draft tree — depth 3, top-k 2</text>
+<path class="dgm-line" d="M160 74 L80 100"/>
+<path class="dgm-line" d="M186 74 L222 100"/>
+<path class="dgm-line" d="M70 128 L52 154"/>
+<path class="dgm-line" d="M92 128 L136 154"/>
+<path class="dgm-line" d="M224 128 L232 154"/>
+<path class="dgm-line-accent" d="M286 112 L330 114.0" marker-end="url(#arrow-accent)"/>
+<path class="dgm-dash" d="M20 200 L680 200"/>
+<text class="dgm-small" x="350.0" y="226" text-anchor="middle" style="font-size:11.5px">The accepted prefix is the longest run of a branch the target agrees with: here</text>
+<text class="dgm-small" x="350.0" y="244" text-anchor="middle" style="font-size:11.5px">“the → cat”, three tokens for the price of one forward pass.</text>
+<text class="dgm-small" x="350.0" y="270" text-anchor="middle" style="font-size:11.5px">Acceptance is rejection sampling, so the output distribution is identical to</text>
+<text class="dgm-small" x="350.0" y="288" text-anchor="middle" style="font-size:11.5px">ordinary decoding. A bad draft costs compute, never correctness.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
+</svg>
+<figcaption>A tree hedges where a chain cannot: if the top choice at depth two is wrong, a sibling may still be right.</figcaption>
+</figure>
+<p>The <code>can_run_decode_cuda_graph</code> check threads Chapter 15 through here. The draft model gets
+its own captured graphs (<code>python/sglang/srt/speculative/eagle_draft_cuda_graph_runner.py</code>,
+<code>python/sglang/srt/speculative/eagle_draft_extend_cuda_graph_runner.py</code>,
+<code>python/sglang/srt/speculative/multi_layer_eagle_draft_extend_cuda_graph_runner.py</code>) because it runs the same
+launch-bound decode loop the target does, at even smaller sizes where launch overhead
+matters more.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/speculative/eagle_worker_v2.py#L726"><code>:726</code></a> <code>draft_extend</code> handles the draft model's own prefill, with separate paths for the
+prefill and decode cases (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/speculative/eagle_worker_v2.py#L729"><code>:729</code></a> <code>_draft_extend_for_prefill</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/speculative/eagle_worker_v2.py#L856"><code>:856</code></a>
+<code>_draft_extend_for_decode</code>).</p>
+<h3 id="verifying"><a class="header" href="#verifying">Verifying</a></h3>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/speculative/eagle_worker_v2.py#L1497"><code>:1497</code></a> <code>verify</code> delegates, and the call site is the clearest statement of what
+verification needs:</p>
+<pre><code class="language-python">    def verify(self, batch: ScheduleBatch, grammar_barrier=None):
+        return run_eagle_verify(
+            batch,
+            target_worker=self.target_worker,
+            req_to_token_pool=self.req_to_token_pool,
+            token_to_kv_pool_allocator=self.token_to_kv_pool_allocator,
+            plan_stream=self.plan_stream,
+            plan_stream_ctx=self.plan_stream_ctx,
+            topk=self.topk,
+            num_steps=self.speculative_num_steps,
+            num_draft_tokens=self.speculative_num_draft_tokens,
+            device=self.device,
+            metadata_ready_pre_pad=False,
+            finalize_tree_path=True,
+            grammar_barrier=grammar_barrier,
+        )
+</code></pre>
+<p>The target model runs on the whole draft tree at once — Chapter 7's <code>TARGET_VERIFY</code> mode,
+which <code>is_extend()</code> returns true for because verifying <em>n</em> tokens has the same shape as
+prefilling <em>n</em>. Attention must respect the tree structure: a candidate may attend to its
+ancestors but not to its siblings, which is a custom mask
+(<code>python/sglang/srt/layers/attention/verify_mask.py</code>) rather than the usual causal one.</p>
+<p><code>grammar_barrier</code> is Chapter 20 intruding. If output is grammar-constrained, every drafted
+token must be legal, and the grammar state advances as tokens are accepted — creating a
+dependency between verification and grammar that has to be synchronized.</p>
+<p><code>python/sglang/srt/speculative/eagle_info.py</code> holds the metadata, and
+<code>python/sglang/srt/speculative/eagle_utils.py</code> the tree operations.</p>
+<hr />
+<h2 id="down-to-the-kernel"><a class="header" href="#down-to-the-kernel">Down to the kernel</a></h2>
+<p>Verification is parallel tensor work, and the kernels are in-repo.
+<code>python/sglang/kernels/ops/speculative/</code> holds the Triton side;
+<code>python/sglang/kernels/aot/csrc/speculative/</code> the CUDA.</p>
+<p>Two operations dominate. <strong>Tree mask construction</strong> turns <code>parent_list</code> into an attention
+mask where each candidate sees its ancestors and nothing else — built on the GPU per step,
+since the tree shape changes every iteration. <strong>Verification</strong> compares target
+probabilities against draft probabilities under the acceptance rule and finds, for each
+sequence, the longest accepted path through the tree. That is a parallel prefix problem
+over a tree, which is exactly the kind of thing that must be a kernel rather than a Python
+loop.</p>
+<p><code>python/sglang/srt/speculative/ragged_verify.py</code> is the batching optimization: sequences
+accept different numbers of tokens, so a dense representation wastes work on the ones that
+accepted few.</p>
+<hr />
+<h2 id="what-it-costs-the-rest-of-the-engine"><a class="header" href="#what-it-costs-the-rest-of-the-engine">What it costs the rest of the engine</a></h2>
+<p>Speculation is not a self-contained feature. It reaches into most of this book:</p>
+<p><strong>Chapter 7 — modes.</strong> <code>TARGET_VERIFY</code> and <code>DRAFT_EXTEND_V2</code> exist for it, and
+<code>is_cuda_graph()</code> includes <code>TARGET_VERIFY</code> so verification can be captured.</p>
+<p><strong>Chapter 9 — memory.</strong> With <code>has_draft_kv</code>, the draft model needs its own KV pool. Both
+grow, and Chapter 6's budget must account for both.</p>
+<p><strong>Chapter 6 — scheduling.</strong> A step may produce 1 to <em>k</em> tokens per sequence, so memory
+demand per step is variable rather than exactly one slot per sequence. The new-token-ratio
+estimate becomes correspondingly harder.</p>
+<p><strong>Chapter 10 — the radix cache.</strong> EAGLE's <code>RadixKey.is_bigram</code> flag — the one Chapter 10
+explained as an O(1) view flip — exists because EAGLE's cached unit is a token <em>pair</em>.</p>
+<p><strong>Chapter 8 — logits.</strong> <code>CaptureHiddenMode</code> and <code>_get_hidden_states_to_store</code> exist so the
+draft head can consume target hidden states.</p>
+<p><strong>Chapter 15 — graphs.</strong> A second model means a second set of captured graphs and more
+capture memory.</p>
+<p><strong>Chapter 18 — disaggregation.</strong> <code>draft_token_to_kv_pool</code> in the bootstrap queue is the
+draft cache crossing machines.</p>
+<p>That breadth is why <code>SpeculativeAlgorithm</code>'s predicates matter so much. Without them, every
+one of these subsystems would need to know the algorithm list.</p>
+<hr />
+<h2 id="the-other-algorithms"><a class="header" href="#the-other-algorithms">The other algorithms</a></h2>
+<p><strong>N-gram</strong> (<code>python/sglang/srt/speculative/ngram_worker.py</code> and <code>python/sglang/srt/speculative/cpp_ngram/</code>) has no draft
+model at all. It looks for repetitions in the context and drafts the continuation that
+followed last time. Nearly free, and remarkably effective on code completion, summarization,
+and any task where the output echoes the input.
+<code>python/sglang/srt/speculative/external_corpus_manager.py</code> extends this to an external
+corpus, with runtime endpoints (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L3996"><code>python/sglang/srt/managers/scheduler.py:3996</code></a>
+<code>add_external_corpus</code>).</p>
+<p><strong>MTP / frozen-KV MTP</strong> (<code>python/sglang/srt/speculative/frozen_kv_mtp_worker_v2.py</code>) uses multi-token-prediction heads
+that some models ship with — DeepSeek among them. "Frozen KV" means the draft reuses the
+target's KV cache rather than keeping its own, which is why <code>has_draft_kv</code> is a predicate.</p>
+<p><strong>Standalone</strong> (<code>python/sglang/srt/speculative/standalone_worker_v2.py</code>) is the classical form: a genuinely separate small
+model. Simple, and generally worse than EAGLE for the same compute, because it does not see
+the target's hidden states.</p>
+<p><strong>DFlash and DSpark</strong> (<code>python/sglang/srt/speculative/dflash_worker_v2.py</code>,
+<code>python/sglang/srt/speculative/dspark_components/</code>) are the newest, from the
+2026-06 blog post linked in <code>README.md</code>.</p>
+<p><strong>Multi-layer EAGLE</strong> (<code>python/sglang/srt/speculative/multi_layer_eagle_worker_v2.py</code>) uses several draft layers for
+better acceptance at higher draft cost.</p>
+<hr />
+<h2 id="knowing-when-to-stop"><a class="header" href="#knowing-when-to-stop">Knowing when to stop</a></h2>
+<p>Acceptance rate is workload-dependent. Predictable text drafts well; novel content does not.
+And when acceptance is low, speculation is <em>worse</em> than not speculating — you pay for draft
+passes and discard the results.</p>
+<p><code>python/sglang/srt/speculative/adaptive_runtime_state.py</code> measures acceptance and adjusts,
+with <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/speculative/eagle_worker_v2.py#L1301"><code>python/sglang/srt/speculative/eagle_worker_v2.py:1301</code></a> <code>build_adaptive_runtime_state</code> and
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/speculative/eagle_worker_v2.py#L1379"><code>python/sglang/srt/speculative/eagle_worker_v2.py:1379</code></a> <code>apply_runtime_state</code> on the worker.
+At high batch sizes the calculus shifts again: with 256 sequences, decode is no longer
+severely memory-bound (Chapter 1's batching argument), the spare arithmetic speculation was
+spending is already in use, and speculation costs more than it saves. Adaptive speculation
+turns itself down.</p>
+<p>Chapter 5's per-request histograms (<code>update_spec_correct_drafts_histogram</code>,
+<code>update_spec_cap_lens_histogram</code>) and Chapter 22's
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L2766"><code>python/sglang/srt/managers/tokenizer_manager.py:2766</code></a> <code>_calculate_spec_decoding_metrics</code>
+are how you see it happening.</p>
+<p><code>docs/docs/advanced_features/speculative_decoding.mdx</code> and
+<code>docs/docs/advanced_features/adaptive_speculative_decoding.mdx</code> carry the tuning guidance.
+The parameters that matter are <code>--speculative-num-steps</code> (depth),
+<code>--speculative-eagle-topk</code> (width), and <code>--speculative-num-draft-tokens</code> (total verified) —
+and the number to watch is accepted length per step, because if it is not comfortably above
+1, speculation is costing you.</p>
+<p>Speculation changes <em>how many</em> tokens the engine produces per step. Chapter 20 changes
+<em>which</em> tokens it is allowed to produce at all.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 19 in one page</p><ol class="bk-card-arg"><li>Running the model on five tokens costs nearly what running it on one costs, because the weights are read once either way.</li><li>The acceptance rule is modified rejection sampling, and it yields the target distribution exactly — for any draft, including a bad one.</li><li>Tokens per step is a capped geometric, so depth has sharply diminishing returns and width does not.</li><li>EAGLE drafts at the feature level from the target's own hidden states, which is why its acceptance rate is high and its head is tiny.</li><li>The cost is coupling: memory pools, scheduling budgets, forward modes, CUDA graphs, the radix cache, and grammar state all learn about it.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>EAGLE accepted length</th><td>3.6–3.9 tokens/pass</td></tr><tr><th scope='row'>EAGLE speedup on a 70B target</th><td>2.7–3.5×</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Capabilities</th><td><code>python/sglang/srt/speculative/spec_info.py</code></td></tr><tr><th scope='row'>EAGLE worker</th><td><code>python/sglang/srt/speculative/eagle_worker_v2.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="part6.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch20-shaping-output.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="part6.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch20-shaping-output.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

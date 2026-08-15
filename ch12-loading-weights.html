@@ -1,0 +1,529 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>12. Loading and Updating Weights - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item expanded "><a href="ch12-loading-weights.html" class="active">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch12-loading-weights.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="12-loading-and-updating-weights"><a class="header" href="#12-loading-and-updating-weights">12. Loading and Updating Weights</a></h1>
+<blockquote>
+<p><em>Weight loading is a distributed sharding problem disguised as file I/O, and the same
+machinery serves both startup and reinforcement learning.</em></p>
+</blockquote>
+<p>Part IV opens the box that Chapter 7 handed a batch to.</p>
+<p>Before a model can run, a few hundred gigabytes of numbers have to get from files on disk
+into the right memory on the right GPUs. That sounds like file I/O and a progress bar. It is
+really a distributed sharding problem, because under the tensor parallelism of Chapter 16 no
+single rank ever holds a complete weight matrix — each holds a slice, and has to know which
+slice is its own without ever materializing the whole thing.</p>
+<p>This chapter follows a checkpoint from a model path to sharded parameters. Along the way we
+get an unusually good look at an interface migration caught mid-flight: two generations of
+the weight-loading protocol living side by side in the same file, selected by an environment
+variable, which is a rare chance to see why the newer one exists.</p>
+<p>The chapter then turns to a use of the same machinery that has nothing to do with startup.
+Reinforcement learning needs an inference engine whose weights can be replaced every few
+minutes, without restarting, while sharing a GPU with a trainer. That requirement is why
+SGLang is described as a rollout backend and not only a server.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 11 min</span></p><ul><li>Explain how a rank loads only its own shard without materializing the whole model</li><li>Say why safetensors' layout is what makes that free</li><li>Read the two generations of the weight-loading protocol against each other</li><li>Choose a weight-update path for a reinforcement-learning loop</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="from-a-path-to-a-class"><a class="header" href="#from-a-path-to-a-class">From a path to a class</a></h2>
+<p><code>--model-path meta-llama/Llama-3-70B</code> has to become a Python class, a config object, and a
+few hundred gigabytes of tensors in the right places on the right GPUs. Three translations
+happen along the way.</p>
+<p><strong>Architecture to class.</strong> A Hugging Face config file names an architecture —
+<code>LlamaForCausalLM</code> — and the registry maps that string to one of the 218 classes in
+<code>python/sglang/srt/models/</code>. Adding a model (Chapter 23) is mostly adding an entry here.</p>
+<p><strong>Config to config.</strong> <code>python/sglang/srt/configs/</code> holds SGLang's own config classes, 63 of
+them, because HF configs are written for the reference implementation and SGLang needs
+things they do not always state: which layers are MoE, what the KV layout should be, where
+sliding-window boundaries fall. <code>python/sglang/srt/configs/model_config.py</code> is the common wrapper, and it is what
+Chapter 9's pool sizing reads.</p>
+<p><strong>Checkpoint to sharded parameters.</strong> The rest of this chapter.</p>
+<hr />
+<h2 id="each-rank-loads-only-its-slice"><a class="header" href="#each-rank-loads-only-its-slice">Each rank loads only its slice</a></h2>
+<p>Under tensor parallelism (Chapter 16) a rank holds a <em>fraction</em> of every weight matrix. It
+would be wasteful to load the whole checkpoint on each rank and then slice — the peak
+memory would be the full model on every GPU, which for a 70B model on 8 ranks is exactly
+what you cannot afford.</p>
+<p>Instead each parameter carries its own loading logic. When a module registers a parameter,
+it attaches a <code>weight_loader</code> function; the loader iterates checkpoint tensors and asks
+each parameter to take the piece it wants. <code>python/sglang/srt/model_loader/weight_utils.py</code>
+holds <code>default_weight_loader</code> and its relatives, and
+<code>python/sglang/srt/layers/parameter.py</code> holds the parameter wrappers that know their own
+shard geometry.</p>
+<p><code>python/sglang/srt/model_loader/loader.py</code> implements the load formats and
+<code>python/sglang/srt/model_loader/auto_loader.py</code> the newer generic path.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L1057"><code>python/sglang/srt/model_executor/model_runner.py:1057</code></a> <code>load_model</code> orchestrates it, and
+its opening is mostly about <em>speed</em>:</p>
+<pre><code class="language-python">        tic_total = time.perf_counter()
+        before_avail_memory = get_available_gpu_memory(self.device, self.gpu_id)
+        logger.info(
+            f"Load weight begin. avail mem={get_available_gpu_memory(self.device, self.gpu_id):.2f} GB"
+        )
+
+        # This can reduce thread conflicts and speed up weight loading.
+        if self.device != "cpu":
+            torch.set_num_threads(1)
+</code></pre>
+<p>The <code>set_num_threads(1)</code> line is counterintuitive and worth understanding: with eight
+scheduler processes on one node, each spawning a thread pool for tensor conversion, the
+threads contend rather than help. Restricting each process to one thread makes the <em>node</em>
+faster even though it makes each process nominally slower.</p>
+<p>The memory logging bracketing this function is what produces the startup lines operators
+read to see how much room the KV pool will get (Chapter 9).</p>
+<hr />
+<h2 id="two-generations-of-the-protocol-side-by-side"><a class="header" href="#two-generations-of-the-protocol-side-by-side">Two generations of the protocol, side by side</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L663"><code>python/sglang/srt/models/llama.py:663</code></a> <code>load_weights</code> is a fork in the road:</p>
+<pre><code class="language-python">    def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]]):
+        from sglang.srt.environ import envs
+
+        if envs.SGLANG_ENABLE_WEIGHT_LOADER_V2.get():
+            return self._load_weights_v2(weights)
+        return self._legacy_load_weights(weights)
+</code></pre>
+<p>Two implementations of the same job, selected by environment variable. This is an interface
+migration caught mid-flight, and reading both is more instructive than reading either.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L670"><code>:670</code></a> <code>_legacy_load_weights</code> is explicit and per-model:</p>
+<pre><code class="language-python">        stacked_params_mapping = [
+            # (param_name, shard_name, shard_id)
+            (".qkv_proj", ".q_proj", "q"),
+            (".qkv_proj", ".k_proj", "k"),
+            (".qkv_proj", ".v_proj", "v"),
+            (".gate_up_proj", ".gate_proj", 0),
+            (".gate_up_proj", ".up_proj", 1),
+        ]
+</code></pre>
+<p>That table is the checkpoint-to-runtime structural difference in five lines. The checkpoint
+stores <code>q_proj</code>, <code>k_proj</code>, <code>v_proj</code> as three matrices because that is how the reference
+implementation defines them. SGLang fuses them into one <code>qkv_proj</code> (Chapter 13 explains
+why: one GEMM instead of three). So loading must route three checkpoint tensors into three
+slices of one parameter, and <code>shard_id</code> says which slice.</p>
+<p>The same function also handles renames, pipeline filtering, and skips:</p>
+<pre><code class="language-python">            if name.endswith(".activation_scale"):
+                name = name.replace(".activation_scale", ".input_scale")
+            if name.endswith(".weight_scale_inv"):
+                name = name.replace(".weight_scale_inv", ".weight_scale")
+
+            layer_id = get_layer_id(name)
+            if (
+                layer_id is not None
+                and hasattr(self.model, "start_layer")
+                and (
+                    layer_id &lt; self.model.start_layer
+                    or layer_id &gt;= self.model.end_layer
+                )
+            ):
+                continue
+            if "rotary_emb.inv_freq" in name or "projector" in name:
+                continue
+</code></pre>
+<p>The scale renames are quantization-format drift (Chapter 15) — different exporters use
+different names for the same tensor. The <code>start_layer</code> / <code>end_layer</code> filter is pipeline
+parallelism: a rank holding layers 20–39 skips everything else, which is what keeps PP
+memory proportional. And <code>rotary_emb.inv_freq</code> is skipped because SGLang computes rotary
+frequencies rather than loading them.</p>
+<p>Multiply that by 218 models and the problem with the legacy path is obvious: every model
+re-implements the same loop with small variations, and every quantization format adds a
+rename to all of them.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L743"><code>:743</code></a> <code>_load_weights_v2</code> is the response:</p>
+<pre><code class="language-python">    def _load_weights_v2(self, weights: Iterable[Tuple[str, torch.Tensor]]) -&gt; set[str]:
+        """AutoWeightsLoader path with RemapRegistry for FP8 suffix normalization."""
+        from sglang.srt.model_loader.auto_loader import (
+            AutoWeightsLoader,
+            filter_pp_weights,
+            get_weight_remap,
+        )
+
+        if hasattr(self.model, "start_layer"):
+            weights = filter_pp_weights(
+                weights, self.model.start_layer, self.model.end_layer
+            )
+
+        skip_prefixes = []
+        if self.config.tie_word_embeddings:
+            skip_prefixes.append("lm_head.")
+</code></pre>
+<p>Each concern is now a named, shared component: <code>filter_pp_weights</code> for the pipeline slice,
+<code>get_weight_remap</code> for the rename registry, <code>AutoWeightsLoader</code> for the traversal. The model
+declares its exceptions instead of implementing the mechanism.</p>
+<p><code>tie_word_embeddings</code> is a good example of a model-specific fact that must stay in the
+model: when input embeddings and the LM head share weights, the checkpoint may contain only
+one, and loading <code>lm_head.</code> would fail on a parameter that does not exist.</p>
+<hr />
+<h2 id="formats-and-sources"><a class="header" href="#formats-and-sources">Formats and sources</a></h2>
+<h3 id="why-the-format-matters-more-than-the-loader"><a class="header" href="#why-the-format-matters-more-than-the-loader">Why the format matters more than the loader</a></h3>
+<p>A 70B model in BF16 is 140 GB. Loading it is, in the best case, a question of moving 140 GB
+from storage into HBM, and the interesting engineering is entirely about not doing anything
+<em>else</em>.</p>
+<p>The floor is set by the slowest link on the path:</p>
+<pre><code>load_time ≥ bytes / min(storage_bandwidth, PCIe_bandwidth)
+</code></pre>
+<p>At 5 GB/s from NVMe that is 28 seconds for 140 GB; at 25 GB/s over PCIe 4 it is 5.6 seconds
+if storage could keep up. Anything above that floor is overhead, and historically the
+overhead came from one place: <strong>deserialization</strong>.</p>
+<p>PyTorch's native <code>.pt</code>/<code>.bin</code> format is a zip archive of pickled Python objects. Loading it
+means running the pickle interpreter, allocating a host tensor per parameter, copying bytes
+into it, then copying again to the device. That is three passes over 140 GB and an arbitrary
+amount of Python object churn — plus the security problem that <code>pickle</code> executes code by
+design, so loading an untrusted checkpoint is loading untrusted code.</p>
+<p><strong>Safetensors</strong> is a response to both. The format is a JSON header giving each tensor's
+name, dtype, shape, and byte offsets, followed by the raw tensor bytes contiguously. There
+is nothing to interpret and nothing to execute. Because the layout on disk is exactly the
+layout in memory, the file can be <code>mmap</code>ed and a tensor constructed as a <em>view</em> over the
+mapped region — no parse, no host copy, no allocation. The bytes go from page cache to HBM
+in one DMA, and a tensor the rank does not need is never touched at all.</p>
+<p>That last property is what makes this chapter's central trick work. A tensor-parallel rank
+loading only its own slice does not read the other ranks' slices from a mmapped file; the
+pages are simply never faulted in. With a format that requires deserialization, every rank
+would pay to decode the whole checkpoint and then throw most of it away.</p>
+<p>So the practical hierarchy is:</p>
+<div class="table-wrapper"><table><thead><tr><th>Format</th><th>Cost per byte</th><th>Zero-copy</th><th>Executes code</th></tr></thead><tbody>
+<tr><td>Safetensors</td><td>one DMA</td><td>yes</td><td>no</td></tr>
+<tr><td>GGUF</td><td>one DMA, plus dequantization</td><td>mostly</td><td>no</td></tr>
+<tr><td>PyTorch <code>.bin</code></td><td>parse + 2 copies</td><td>no</td><td>yes</td></tr>
+</tbody></table>
+</div>
+<p><strong>GGUF</strong> is supported through
+<code>python/sglang/srt/model_loader/gguf_name_maps.py</code>. <strong>Sharded checkpoints</strong> are the norm at
+scale, and multiple ranks reading different shards in parallel is where load time actually
+goes.</p>
+<p><code>python/sglang/srt/connector/</code> handles non-local sources:
+<code>python/sglang/srt/connector/s3.py</code>, <code>python/sglang/srt/connector/azure.py</code>,
+<code>python/sglang/srt/connector/redis.py</code>, and <code>python/sglang/srt/connector/remote_instance.py</code>. That last one is the most interesting — loading weights from
+<em>another running instance</em> over the network, which turns a cold start into a peer-to-peer
+copy and matters when you are scaling a deployment up under load.</p>
+<p><code>load_format</code> is the tuning knob, and <code>dummy</code> deserves a mention: it fills weights with
+random values, skipping I/O entirely. Useless for output, ideal for benchmarking shapes and
+memory — Chapter 22's harnesses use it constantly.</p>
+<p><code>python/sglang/srt/model_executor/model_runner_components/startup_weight_load.py</code> and
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L1203"><code>python/sglang/srt/model_executor/model_runner.py:1203</code></a> <code>start_startup_weight_load</code> /
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L1207"><code>python/sglang/srt/model_executor/model_runner.py:1207</code></a> <code>finalize_startup_weight_load</code> split loading
+into a start and a join, so it can overlap with other initialization.
+<code>python/sglang/srt/model_loader/ci_weight_validation.py</code> verifies checkpoints in CI, and
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L1833"><code>python/sglang/srt/model_executor/model_runner.py:1833</code></a> <code>check_weights</code> is the runtime counterpart.</p>
+<hr />
+<h2 id="updating-weights-without-restarting"><a class="header" href="#updating-weights-without-restarting">Updating weights without restarting</a></h2>
+<p>Everything so far assumes weights are loaded once. Reinforcement learning breaks that
+assumption: a rollout backend generates samples, the trainer updates the policy, and the
+new weights must reach the inference engine — every few minutes, for hours.</p>
+<p>Restarting is not an option. It would mean reloading from disk, rebuilding the memory pool,
+re-capturing CUDA graphs, and re-warming caches, on every training step.</p>
+<p>So <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L1365"><code>python/sglang/srt/entrypoints/engine.py:1365</code></a>–<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L1478"><code>:1478</code></a> exposes a family of update paths,
+one per source:</p>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Source</th><th>When</th></tr></thead><tbody>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L1444"><code>:1444</code></a> <code>update_weights_from_disk</code></td><td>checkpoint files</td><td>new checkpoint written out</td></tr>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L1399"><code>:1399</code></a> <code>update_weights_from_distributed</code></td><td>a torch.distributed group</td><td>trainer and engine in one job</td></tr>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L1421"><code>:1421</code></a> <code>update_weights_from_tensor</code></td><td>tensors in the caller's process</td><td>in-process trainer</td></tr>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L1464"><code>:1464</code></a> <code>update_weights_from_ipc</code></td><td>CUDA IPC handles</td><td>trainer on the same node, zero-copy</td></tr>
+</tbody></table>
+</div>
+<p>They are ordered by decreasing overhead, and the ordering is worth understanding as a cost
+model rather than a menu, because it is the same one that governs every large transfer in
+this book.</p>
+<p>Count the copies each path makes of a 140 GB set of weights:</p>
+<div class="table-wrapper"><table><thead><tr><th>Path</th><th>Copies</th><th>Where the bytes go</th></tr></thead><tbody>
+<tr><td>Disk</td><td>3</td><td>trainer HBM → host → filesystem → host → engine HBM</td></tr>
+<tr><td>Distributed</td><td>1</td><td>trainer HBM → engine HBM, over NCCL</td></tr>
+<tr><td>Tensor</td><td>1–2</td><td>trainer HBM → engine HBM, via the caller's process</td></tr>
+<tr><td>IPC</td><td><strong>0</strong></td><td>the engine maps the trainer's memory directly</td></tr>
+</tbody></table>
+</div>
+<p>At 140 GB, each avoided copy is tens of seconds. On a training loop that updates every few
+minutes, the difference between the disk path and the IPC path is the difference between
+spending a meaningful fraction of the run on weight movement and spending essentially none.</p>
+<p>The IPC path works because of a CUDA facility with no CPU analogue: <code>cudaIpcGetMemHandle</code>
+returns an opaque handle to a device allocation that a <em>different process on the same node</em>
+can open with <code>cudaIpcOpenMemHandle</code>, receiving a pointer into the same physical memory. No
+bytes move. It is <code>mmap</code> for GPU memory, and it is the same mechanism Chapter 4 uses to keep
+image tensors out of the ZeroMQ socket.</p>
+<p>Its limits are exactly the limits of shared memory. Same node only — a handle is meaningless
+across machines. Same device, or a peer-accessible one. And the lifetime is the <em>exporter's</em>:
+if the trainer frees the allocation while the engine still holds a pointer into it, the
+result is a use-after-free on the GPU, which surfaces as corrupted weights rather than a
+crash. That is why this path is exposed as an explicit method with a handshake rather than as
+an optimization the engine applies automatically.</p>
+<p>The distributed path is the one to use when the trainer is not co-resident, and it is worth
+noting what it is <em>not</em>: it is not a broadcast of the whole model to every rank. The
+sharding rule above still applies, so each engine rank receives only the slice it owns, and the
+transfer is <code>total_bytes / tp_size</code> per rank rather than <code>total_bytes</code>. This is why
+<code>python/sglang/srt/weight_sync/tensor_bucket.py</code> exists — with sharding, a 70B model becomes
+thousands of small per-rank tensors, and thousands of small NCCL calls cost far more in
+latency than the bytes cost in bandwidth. Bucketing them into a few large transfers is the
+same small-message problem Chapter 17 hits with all-to-all, solved the same way.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L1365"><code>:1365</code></a> <code>init_weights_update_group</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L1387"><code>:1387</code></a> <code>destroy_weights_update_group</code> manage the
+process group for the distributed path.
+<code>python/sglang/srt/model_executor/model_runner_components/weight_updater.py</code> implements the
+engine side, <code>python/sglang/srt/weight_sync/tensor_bucket.py</code> batches small tensors into
+larger transfers, and <code>python/sglang/srt/checkpoint_engine/</code> handles the checkpoint-based
+flow.</p>
+<h3 id="sharing-a-gpu-with-the-trainer"><a class="header" href="#sharing-a-gpu-with-the-trainer">Sharing a GPU with the trainer</a></h3>
+<p>The harder problem is memory. During a training step, the inference engine is idle but
+still holding weights, a KV pool sized to fill the GPU (Chapter 9), and CUDA graph buffers
+(Chapter 15). The trainer needs that memory for optimizer state and activations.</p>
+<pre><code>:1573  release_memory_occupation(tags)    give the memory back
+:1579  resume_memory_occupation(tags)     take it again
+</code></pre>
+<p>Tags allow partial release — weights but not the KV pool, or the reverse — because what the
+trainer needs varies. Under the hood this is the memory-saver adapter visible throughout
+Chapter 9's pools (<code>GPU_MEMORY_TYPE_KV_CACHE</code> regions), which is why those <code>with memory_saver_adapter.region(...)</code> blocks exist at all.</p>
+<p>Generation must be quiesced first, and that is a scheduler operation:</p>
+<pre><code>python/sglang/srt/managers/scheduler.py:4576  pause_generation
+python/sglang/srt/managers/scheduler.py:4665  continue_generation
+</code></pre>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L4573"><code>python/sglang/srt/managers/scheduler.py:4573</code></a> <code>_pause_engine</code> returns the paused requests, so in-flight work survives the pause
+rather than being aborted.</p>
+<p>A full RL step therefore looks like:</p>
+<ol>
+<li><code>pause_generation</code> — quiesce the scheduler.</li>
+<li><code>release_memory_occupation</code> — hand the GPU to the trainer.</li>
+<li>Trainer runs.</li>
+<li><code>resume_memory_occupation</code> — take the memory back.</li>
+<li><code>update_weights_from_*</code> — install the new policy.</li>
+<li><code>continue_generation</code> — resume.</li>
+</ol>
+<p>Two more pieces complete the picture. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L4246"><code>python/sglang/srt/managers/scheduler.py:4246</code></a>
+<code>flush_cache</code> clears the radix tree — <strong>mandatory</strong> after a weight update, because Chapter
+10's cache holds KV computed by the <em>old</em> weights, and serving it against new weights would
+silently mix two policies. And <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L854"><code>python/sglang/srt/models/llama.py:854</code></a> <code>get_embed_and_head</code>
+/ <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L857"><code>:857</code></a> <code>set_embed_and_head</code> expose embeddings and the LM head directly, for frameworks
+that update only those.</p>
+<p><code>docs/docs/advanced_features/sglang_for_rl.mdx</code> and
+<code>docs/docs/references/post_training_integration.mdx</code> cover the integrations — verl, slime,
+AReaL, Miles, Tunix — that this API exists to serve. It is the reason SGLang is
+described as a rollout backend and not only a server.</p>
+<p>The weights are on the GPU. Chapter 13 opens one of the files that describes what to do with
+them.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 12 in one page</p><ol class="bk-card-arg"><li>Weight loading looks like file I/O and is really distributed sharding: no rank ever holds a complete matrix.</li><li>Each parameter carries its own loader, so the checkpoint is iterated once and each parameter takes the slice it wants.</li><li>Safetensors is memory-mappable, so a rank never faults in the pages it does not need — which is what makes per-rank slicing free.</li><li>The legacy path spells the fusion mapping out per model; the v2 path factors it into a registry, because 218 models cannot each re-implement it.</li><li>The same machinery serves reinforcement learning, where weights are replaced every few minutes without a restart.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Llama-3-70B in BF16</th><td>130 GB</td></tr><tr><th scope='row'>Copies of the weights: disk path vs IPC path</th><td>3 vs 0</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Loaders</th><td><code>python/sglang/srt/model_loader/loader.py</code></td></tr><tr><th scope='row'>A model's own loader</th><td><code>python/sglang/srt/models/llama.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="part4.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch13-anatomy-of-a-model.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="part4.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch13-anatomy-of-a-model.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

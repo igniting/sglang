@@ -1,0 +1,499 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>18. Disaggregation and Routing - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item expanded "><a href="ch18-disaggregation.html" class="active">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch18-disaggregation.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="18-disaggregation-and-routing"><a class="header" href="#18-disaggregation-and-routing">18. Disaggregation and Routing</a></h1>
+<blockquote>
+<p><em>Prefill and decode want different hardware and different SLOs, so at scale the right move
+is to stop running them on the same machine.</em></p>
+</blockquote>
+<p>Chapter 1 showed that prefill and decode are opposite workloads. Chapter 6 showed the
+scheduler negotiating between them every single iteration, and chunked prefill softening the
+conflict without removing it.</p>
+<p>This chapter is about giving up on the negotiation.</p>
+<p>Disaggregation refuses the compromise: separate fleets of prefill and decode instances, each
+configured for its own job, with the KV cache shipped between them over the network. The
+cost is that the shipping is now on the critical path — a 4,000-token prefill produces over
+a gigabyte of cache that has to arrive before the first output token.</p>
+<p>The chapter ends one level further out, with the router that decides which instance gets
+each request. That decision turns out to depend on Chapter 10, and the dependence is strong
+enough that routing policy can matter more than any kernel in this book.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 11 min</span></p><ul><li>State the interference argument and the goodput framing it needs</li><li>Explain what the prefill and decode sides each do at the handshake</li><li>Say when disaggregation beats chunked prefill and when it does not</li><li>Describe what a cache-aware router decides and on what evidence</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="why-colocation-compromises-both"><a class="header" href="#why-colocation-compromises-both">Why colocation compromises both</a></h2>
+<p>Chapter 1's two phases have opposite characteristics, and Chapter 6 showed the scheduler
+negotiating between them every iteration. Chunked prefill mitigates the conflict; it does
+not remove it.</p>
+<p>Look at what each phase actually wants:</p>
+<div class="table-wrapper"><table><thead><tr><th></th><th>Prefill</th><th>Decode</th></tr></thead><tbody>
+<tr><td>Bottleneck</td><td>compute</td><td>memory bandwidth</td></tr>
+<tr><td>Wants</td><td>large batches, high FLOPs</td><td>many concurrent sequences, large KV pool</td></tr>
+<tr><td>Metric</td><td>TTFT</td><td>ITL</td></tr>
+<tr><td>Best parallelism</td><td>TP for compute</td><td>DP attention for cache capacity</td></tr>
+<tr><td>Batch shape</td><td>few requests, many tokens</td><td>many requests, one token each</td></tr>
+</tbody></table>
+</div>
+<p>Every row is a conflict. On one machine you must pick a middle setting for each and be
+mediocre at both. A GPU sized for decode's memory needs is over-provisioned in memory for
+prefill; a parallelism layout tuned for prefill's compute replicates the cache that decode
+depends on.</p>
+<p>Disaggregation resolves it by refusing the compromise: <strong>prefill instances and decode
+instances, each configured for its own job</strong>, with KV cache transferred between them.</p>
+<p>The cost is that the transfer is now on the critical path. A 4,000-token prefill produces
+1.25 GB of KV (Chapter 1's figure for a 70B model) that must reach the decode node before
+the first output token. That is why this chapter is mostly about the transfer.</p>
+<h3 id="the-interference-measured"><a class="header" href="#the-interference-measured">The interference, measured</a></h3>
+<p>Zhong et al.'s DistServe (OSDI '24) is the paper that made this case, and its central
+measurement is worth restating because it is sharper than the table above.</p>
+<p>Add <strong>one</strong> prefill request to a batch of decodes, and both get worse. The decodes wait for
+the prefill's much longer forward pass, so ITL spikes for every sequence in the batch — one
+long prompt taxes every user in the batch, whether or not they asked for anything. And the
+prefill itself is slowed by the decode rows sharing its kernels. Neither phase gets what it
+wants, and the damage is proportional to how heterogeneous the batch is — which continuous
+batching, by design, maximizes.</p>
+<p>The reason this is worse than it sounds is that the two phases are graded on different
+scales. Prefill is measured by <strong>TTFT</strong>, decode by <strong>TPOT/ITL</strong>, and an SLO is normally
+stated as both: "95% of requests under 500 ms to first token and under 50 ms between
+tokens." <strong>Goodput</strong> — the request rate at which both targets are met — is the honest metric,
+and it is not a function of average throughput. A colocated deployment can post excellent
+aggregate tokens per second while missing one SLO or the other on most requests, because the
+interference lands unevenly.</p>
+<p>Once you accept two pools, a second freedom appears that a single pool cannot have: <strong>the two
+phases can use different parallelism.</strong> Prefill is compute-bound, so tensor parallelism buys
+it real latency reduction. Decode is bandwidth-bound and cache-hungry, so replicating the KV
+cache across TP ranks is precisely wrong for it, and Chapter 16's data-parallel attention is
+right. On one machine you must choose one layout for both. DistServe's placement algorithm
+searches the two configurations independently and reports <strong>7.4× the request rate</strong>, or 12.6×
+tighter SLOs, at 90% attainment.</p>
+<p>The obvious objection is the transfer, and the paper's answer is arithmetic. The KV for a
+request is bytes_per_token × prompt_length, and it is transferred exactly once, against a
+prefill that took tens of milliseconds of GPU time to produce. For OPT-175B they measure the
+transfer at <strong>under 0.1%</strong> of total request latency — provided it crosses a fast link. Which
+is the real constraint: the placement algorithm is bandwidth-aware precisely because the
+conclusion inverts on a slow one. Given NVLink between the pools, disaggregation is nearly
+free; given commodity Ethernet, the transfer becomes the bottleneck it appears to be.</p>
+<p>This is the counter-argument to Chapter 6's chunked prefill, and the two papers genuinely
+disagree. Sarathi says: interleave them, and the decodes ride along on compute the prefill
+was buying anyway. DistServe says: interleaving is what causes the interference, chunking
+only bounds it, and chunking makes attention re-read the prefix once per chunk — a cost that
+grows quadratically with context length. Both are correct in their own regime. Short prompts
+and modest SLOs favour chunking, which needs one pool and no network. Long prompts, strict
+TTFT targets, and a fast interconnect favour disaggregation. SGLang implements both, and the
+choice is a deployment decision rather than an architectural one.</p>
+<hr />
+<h2 id="the-two-sides"><a class="header" href="#the-two-sides">The two sides</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/disaggregation/prefill.py#L119"><code>python/sglang/srt/disaggregation/prefill.py:119</code></a> <code>PrefillBootstrapQueue</code> holds requests
+that have arrived but whose transfer path is not yet established:</p>
+<pre><code class="language-python">class PrefillBootstrapQueue:
+    """
+    Store the requests in bootstrapping
+    """
+
+    def __init__(
+        self,
+        token_to_kv_pool: KVCache,
+        draft_token_to_kv_pool: Optional[KVCache],
+        req_to_metadata_buffer_idx_allocator: ReqToMetadataIdxAllocator,
+        metadata_buffers: MetadataBuffers,
+        ...
+        transfer_backend: TransferBackend,
+    ):
+</code></pre>
+<p>The constructor names the moving parts. <code>token_to_kv_pool</code> is Chapter 9's pool — the source
+of the bytes. <code>metadata_buffers</code> carry the small out-of-band information (sampled token,
+finish state) that must accompany the KV. <code>draft_token_to_kv_pool</code> is there because
+speculative decoding (Chapter 19) has a second cache that must also cross.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/disaggregation/prefill.py#L299"><code>:299</code></a> <code>create_sender</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/disaggregation/prefill.py#L326"><code>:326</code></a> <code>ensure_metadata_buffer</code>, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/disaggregation/prefill.py#L336"><code>:336</code></a> <code>finalize_bootstrap</code>
+are the handshake steps, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/disaggregation/prefill.py#L383"><code>:383</code></a> <code>pop_bootstrapped</code> yields requests ready to run.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/disaggregation/prefill.py#L367"><code>:367</code></a> <code>_check_if_req_exceed_kv_capacity</code> rejects early: a request too large for the decode
+node's pool must fail before prefill spends compute on it.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/disaggregation/prefill.py#L485"><code>:485</code></a> <code>SchedulerDisaggregationPrefillMixin</code> is how this attaches to Chapter 5, and the
+important detail is that it provides <em>variant event loops</em>:</p>
+<pre><code>:569  event_loop_normal_disagg_prefill
+:607  event_loop_overlap_disagg_prefill
+:543  get_next_disagg_prefill_batch_to_run
+:501  resolve_waiting_queue_bootstrap
+</code></pre>
+<p>Same structure as Chapter 5 — receive, decide, run, process — with two changes. Requests
+must be bootstrapped before they are schedulable, and a request is <em>finished</em> when its KV
+has been sent rather than when it produced a token. A prefill instance never decodes.</p>
+<p><code>python/sglang/srt/disaggregation/decode.py</code> is the mirror. Its requests arrive with KV
+already computed, which is Chapter 7's <code>PREBUILT</code> forward mode:</p>
+<blockquote>
+<p>Used in disaggregated decode worker. Represent a batch of requests having their KV cache
+ready to start decoding.</p>
+</blockquote>
+<p>The decode side has its own queues — waiting for transfer, transfer complete, ready to run —
+and <code>python/sglang/srt/disaggregation/decode_schedule_batch_mixin.py</code>,
+<code>python/sglang/srt/disaggregation/decode_kvcache_offload_manager.py</code>, and
+<code>python/sglang/srt/disaggregation/decode_hicache_mixin.py</code> connect it to Chapters 9 and 11.</p>
+<hr />
+<h2 id="the-handshake"><a class="header" href="#the-handshake">The handshake</a></h2>
+<p>Before a byte moves, the two sides must agree on where it goes. The decode instance
+allocates KV pages from <em>its own</em> pool (Chapter 9) and tells the prefill instance the
+addresses; the prefill instance writes directly into them.</p>
+<p><code>python/sglang/srt/disaggregation/base/conn.py</code> defines the interface and
+<code>python/sglang/srt/disaggregation/common/conn.py</code> holds the shared implementation —
+<code>CommonKVManager</code>, plus sender and receiver roles.
+<code>python/sglang/srt/managers/disagg_service.py</code> runs the bootstrap service that puts the two
+sides in touch, and <code>python/sglang/srt/disaggregation/common/staging_buffer.py</code> and
+<code>python/sglang/srt/disaggregation/common/staging_handler.py</code> handle cases where a direct write is not possible.</p>
+<p>Two details make this harder than it sounds. <strong>Layout must match</strong>: Chapter 9's pool layouts
+differ, and a page-major sender writing into a layer-major receiver produces garbage. And
+<strong>parallelism may differ</strong>: a prefill instance running TP 8 and a decode instance running TP
+4 with DP attention hold their caches in different shard shapes, so the transfer is a
+redistribution, not a copy. That is a large part of why the connection layer is as
+substantial as it is.</p>
+<hr />
+<h2 id="moving-kv-between-machines"><a class="header" href="#moving-kv-between-machines">Moving KV between machines</a></h2>
+<p>The transfer backends map onto the RDMA landscape:</p>
+<ul>
+<li><code>python/sglang/srt/disaggregation/mooncake/</code> — Mooncake's transfer engine, the most
+commonly deployed.</li>
+<li><code>python/sglang/srt/disaggregation/nixl/</code> — NVIDIA's NIXL.</li>
+<li><code>python/sglang/srt/disaggregation/mori/</code> — AMD.</li>
+<li><code>python/sglang/srt/disaggregation/ascend/</code> — Ascend NPUs.</li>
+<li><code>python/sglang/srt/disaggregation/fake/</code> — the test double.</li>
+</ul>
+<p>The <code>fake</code> backend deserves attention. It implements the interface with no network at all,
+which makes the control flow — bootstrap, handshake, transfer, completion — testable
+without a cluster. When reading this subsystem, start there: it is the version where you
+can see the state machine without RDMA obscuring it.</p>
+<p><code>python/sglang/srt/disaggregation/kv_events.py</code> publishes cache events, which is what lets
+an external system (the router below) know what is cached where.</p>
+<hr />
+<h2 id="epd-a-third-stage"><a class="header" href="#epd-a-third-stage">EPD: a third stage</a></h2>
+<p>Multimodal models (Chapter 21) add another asymmetric phase. Running a vision encoder is
+compute-heavy, bursty, and needs no KV cache at all — a third workload with a third profile.</p>
+<p><code>python/sglang/srt/disaggregation/encode_server.py</code> and
+<code>python/sglang/srt/disaggregation/encode_grpc_server.py</code> run encoding as its own service,
+with <code>python/sglang/srt/disaggregation/encode_receiver.py</code> on the consuming side. The
+<code>--encoder-only</code> flag in <code>python/sglang/launch_server.py</code> (Chapter 3) selects it.</p>
+<p><code>docs/docs/advanced_features/epd_disaggregation.mdx</code> covers the three-stage arrangement.</p>
+<hr />
+<h2 id="routing-in-front-of-it-all"><a class="header" href="#routing-in-front-of-it-all">Routing in front of it all</a></h2>
+<p>Disaggregation multiplies instances, and something must decide which one gets each request.
+<code>sgl-model-gateway/</code> is that something, in Rust.</p>
+<p>Round-robin is the obvious policy and the wrong one, <strong>because Chapter 10 exists</strong>. If
+request <em>B</em> shares a prefix with request <em>A</em>, sending it to the replica that already served
+<em>A</em> turns a full prefill into a cache hit. Sending it elsewhere throws that away. At an 80%
+prefix-sharing rate, routing policy is worth more than any kernel optimization in this book.</p>
+<p>Chapter 1's support deployment makes the stakes concrete. Every request shares the same
+1,800-token prefix, so on a replica that already holds it, prefill is 600 tokens; on any
+other replica it is 2,400. Round-robin across four replicas turns a 75% cache hit into a
+25% one and quadruples the prefill bill — and, worse, causes all four replicas to store
+their own copy of the prefix, spending four times the memory to get a quarter of the
+benefit. The router is where Chapter 10's win is either collected or thrown away.</p>
+<p><code>sgl-model-gateway/src/policies/</code> holds the implementations:</p>
+<pre><code>cache_aware.rs        route by prefix locality — the interesting one
+tree.rs               the router's own approximate radix tree
+prefix_hash.rs        hash-based prefix affinity
+consistent_hashing.rs stable assignment under membership change
+power_of_two.rs       sample two, pick the less loaded
+round_robin.rs        the baseline
+random.rs             the other baseline
+bucket.rs             bucketed assignment
+</code></pre>
+<p><code>sgl-model-gateway/src/policies/tree.rs</code> is the key file: the router maintains its <em>own</em> radix tree, approximating what
+each replica has cached. It cannot be exact — it does not see evictions — but it does not
+need to be. It only needs to rank replicas well enough that requests land near their
+prefixes.</p>
+<p>This is Chapter 10's feedback loop lifted one level. Within an instance, the tree tells the
+scheduler which request is cheapest to run next. Across instances, an approximate copy of
+the same tree tells the router which replica makes a request cheapest. Same idea, two
+scales.</p>
+<p><code>sgl-model-gateway/src/policies/power_of_two.rs</code> is the counterweight: pure cache affinity would send every request with a
+popular system prompt to one replica and overload it. Sampling two candidates and choosing
+the less loaded blends locality with balance.</p>
+<p><code>sgl-model-gateway/src/routers/</code> holds the request handling — <code>http/</code>, <code>grpc/</code>, <code>openai/</code>,
+plus <code>sgl-model-gateway/src/routers/router_manager.rs</code> for multi-model serving and
+<code>sgl-model-gateway/src/routers/mesh/</code> for distributed topologies.
+<code>sgl-model-gateway/src/service_discovery.rs</code> tracks which instances exist, which matters
+because in a disaggregated deployment they are not interchangeable: prefill and decode
+instances are different pools with different roles.</p>
+<h3 id="why-rust"><a class="header" href="#why-rust">Why Rust</a></h3>
+<p>The router sits in front of every request and does non-trivial work per request — prefix
+hashing, tree lookup, load comparison. In Python that would be a bottleneck at the request
+rates this is built for, and it would inherit the GIL problems Chapter 3 described. It also
+has no reason to touch a GPU, so nothing pulls it toward the Python ecosystem.</p>
+<p><code>sgl-model-gateway/bindings/</code> exposes it to Python for embedded use, and
+<code>docs/docs/advanced_features/sgl_model_gateway.mdx</code> covers deployment.</p>
+<hr />
+<h2 id="what-a-full-deployment-looks-like"><a class="header" href="#what-a-full-deployment-looks-like">What a full deployment looks like</a></h2>
+<figure>
+<svg viewBox="0 0 700 356" role="img" aria-label="A cache-aware router in front of separate prefill and decode pools">
+<title>A disaggregated deployment</title>
+<rect class="dgm-box-accent" x="160" y="52" width="380" height="68" rx="6"/>
+<text class="dgm-label" x="350.0" y="72.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">sgl-model-gateway</text>
+<text class="dgm-small" x="350.0" y="90.4" text-anchor="middle" style="font-size:11.5px">Rust · cache-aware routing over an approximate</text>
+<text class="dgm-small" x="350.0" y="108.4" text-anchor="middle" style="font-size:11.5px">radix tree · service discovery · PD-aware placement</text>
+<rect class="dgm-box" x="20" y="180" width="290" height="96" rx="6"/>
+<text class="dgm-label" x="165.0" y="205.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">Prefill pool</text>
+<text class="dgm-small" x="165.0" y="223.4" text-anchor="middle" style="font-size:11.5px">compute-bound · large batches</text>
+<text class="dgm-small" x="165.0" y="241.4" text-anchor="middle" style="font-size:11.5px">TP for arithmetic throughput</text>
+<text class="dgm-small" x="165.0" y="259.4" text-anchor="middle" style="font-size:11.5px">never runs a decode step</text>
+<rect class="dgm-box" x="390" y="180" width="290" height="96" rx="6"/>
+<text class="dgm-label" x="535.0" y="205.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">Decode pool</text>
+<text class="dgm-small" x="535.0" y="223.4" text-anchor="middle" style="font-size:11.5px">bandwidth-bound · many sequences</text>
+<text class="dgm-small" x="535.0" y="241.4" text-anchor="middle" style="font-size:11.5px">DP attention · large KV pool</text>
+<text class="dgm-small" x="535.0" y="259.4" text-anchor="middle" style="font-size:11.5px">receives cache, never prefills</text>
+<text class="dgm-label" x="350.0" y="30" text-anchor="middle" font-weight="600" style="font-size:13px">clients</text>
+<path class="dgm-line" d="M350.0 36 L350.0 46" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M260.0 120 L260.0 152 L165.0 152 L165.0 174" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M440.0 120 L440.0 152 L535.0 152 L535.0 174" marker-end="url(#arrow)"/>
+<path class="dgm-line-accent" d="M310 228.0 L384 228.0" marker-end="url(#arrow-accent)"/>
+<text class="dgm-small" x="350" y="216.0" text-anchor="middle" style="font-size:11.5px">KV cache</text>
+<text class="dgm-small" x="350" y="250.0" text-anchor="middle" style="font-size:11.5px">RDMA</text>
+<text class="dgm-small" x="350.0" y="306" text-anchor="middle" style="font-size:11.5px">The transfer sits on the critical path: a 4,000-token prefill produces over a gigabyte</text>
+<text class="dgm-small" x="350.0" y="324" text-anchor="middle" style="font-size:11.5px">of cache that must land before the decode pool can emit a first token.</text>
+<text class="dgm-small" x="350.0" y="348" text-anchor="middle" style="font-size:11.5px">Every box here is a chapter — pools (8), routing tree (9), parallelism (15, 16).</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
+</svg>
+<figcaption>Prefill and decode want opposite hardware and opposite parallelism. Disaggregation stops asking one machine to be good at both.</figcaption>
+</figure>
+<p>Every box is a chapter. The pools are Chapter 9, the routing is Chapter 10, the parallelism
+choices are Chapters 16 and 17, and the transfer is this one.</p>
+<p>Whether it is worth it is a scale question. Disaggregation adds a network hop to every
+request's critical path and a great deal of operational complexity. Below a few dozen GPUs
+that is a bad trade. At the scale the LMSYS blog posts describe — 96 H100s, GB200 racks —
+the prefill/decode conflict is the binding constraint, and removing it is worth more than
+anything else available.</p>
+<p>Part V ends here, and with it the story of making the engine bigger. Part VI is about making
+it do more.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 18 in one page</p><ol class="bk-card-arg"><li>Prefill and decode want opposite hardware, opposite parallelism, and are graded on different metrics.</li><li>Colocating them means one long prompt taxes every decoding user in the batch, and the damage is uneven.</li><li>Separating the pools lets each be configured for its own job — including different parallelism, which one machine cannot do.</li><li>The KV transfer is on the critical path, so the conclusion inverts on a slow interconnect.</li><li>This is the direct counter-argument to chunked prefill; both are right in different regimes, and SGLang implements both.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>DistServe request-rate gain</th><td>7.4×</td></tr><tr><th scope='row'>Transfer as a share of latency, fast link</th><td><0.1%</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Prefill and decode sides</th><td><code>python/sglang/srt/disaggregation/prefill.py</code></td></tr><tr><th scope='row'>Transfer</th><td><code>python/sglang/srt/disaggregation/nixl/conn.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch17-moe.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="part6.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch17-moe.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="part6.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

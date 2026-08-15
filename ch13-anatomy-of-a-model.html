@@ -1,0 +1,508 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>13. Anatomy of a Model - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item expanded "><a href="ch13-anatomy-of-a-model.html" class="active">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch13-anatomy-of-a-model.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="13-anatomy-of-a-model"><a class="header" href="#13-anatomy-of-a-model">13. Anatomy of a Model</a></h1>
+<blockquote>
+<p><em>Models are rewritten rather than imported because every layer must cooperate with
+parallelism, quantization, and the KV cache — and llama.py shows exactly how.</em></p>
+</blockquote>
+<p>Hugging Face already ships a <code>LlamaForCausalLM</code>. SGLang has its own, and so do the other 217
+models in this repository. That duplication needs justifying.</p>
+<p>The justification is that the reference implementation makes four assumptions a serving
+engine cannot accept — about whether weights are whole, whether attention is self-contained,
+whether numbers are dense floats, and whether shapes can change between calls. None of them
+can be patched from outside, because they are properties of every layer.</p>
+<p>This chapter reads the Llama implementation closely enough that you will be able to open any of the other
+217 files and know what you are looking at. It is the most concrete chapter in the book: a
+single file, top to bottom, with the reason for each decision.</p>
+<p>Watch for one thing in particular. Almost nothing in the file is about caching, sharding,
+quantization, or graph capture, even though all four are happening. They live in the layers
+the model is built from. That is what makes adding a model a bounded task rather than an
+expert one, and it is why Chapter 23's checklist is as short as it is.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 9 min</span></p><ul><li>Name the four components of a modern decoder block and what each replaced</li><li>Read llama.py end to end and say what each layer choice is for</li><li>Explain why models are rewritten rather than imported</li><li>Distinguish a model's total head count from this rank's</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="the-contract"><a class="header" href="#the-contract">The contract</a></h2>
+<p>A model must provide:</p>
+<pre><code class="language-python">def forward(self, input_ids, positions, forward_batch) -&gt; LogitsProcessorOutput
+def load_weights(self, weights: Iterable[Tuple[str, torch.Tensor]])
+</code></pre>
+<p><code>forward_batch</code> is Chapter 7's <code>ForwardBatch</code>, and it carries everything the model needs to
+know about <em>how</em> it is being run. Everything else is optional capability, declared by
+defining a method.</p>
+<hr />
+<h2 id="the-block-before-the-code"><a class="header" href="#the-block-before-the-code">The block, before the code</a></h2>
+<p>The file we are about to read assumes you know what a modern decoder block contains. It is
+four ideas, each of
+which replaced something simpler for a reason worth knowing, because each reason shows up
+later as a constraint on the engine.</p>
+<p><strong>RMSNorm instead of LayerNorm.</strong> LayerNorm subtracts the mean and divides by the standard
+deviation. Zhang and Sennrich (2019) observed that the re-centering does almost nothing for
+transformers and dropped it:</p>
+<pre><code>RMSNorm(x) = x / sqrt(mean(x²) + ε) × g
+</code></pre>
+<p>One reduction instead of two, no mean, no bias. For the engine this matters twice: it is one
+of the three kernels Chapter 8's determinism work has to make batch-invariant, and being a
+single reduction is what makes it cheap enough to fuse with the residual add and the
+downstream quantization, as this chapter's <code>LlamaDecoderLayer</code> does.</p>
+<p><strong>SwiGLU instead of a plain MLP.</strong> The classic feed-forward block is
+<code>W₂ · act(W₁x)</code>. A gated linear unit splits the first projection in two and uses one half to
+gate the other. With SiLU as the activation (Shazeer, 2020):</p>
+<pre><code>SwiGLU(x) = W_down · ( SiLU(W_gate · x)  ⊙  (W_up · x) )
+</code></pre>
+<p>Three matrices instead of two, so the hidden dimension is usually scaled by 2/3 to keep the
+parameter count level. The engine cares because <code>W_gate</code> and <code>W_up</code> read the <em>same</em> input and
+have the <em>same</em> shape — which is exactly the condition for fusing them into one GEMM, and the
+reason <code>gate_up_proj</code> exists below.</p>
+<p><strong>RoPE instead of learned position embeddings.</strong> Rather than adding a position vector to the
+input, rotary embeddings (Su et al., 2021) <em>rotate</em> each pair of dimensions in Q and K by an
+angle proportional to the token's position. For position <em>m</em> and dimension pair <em>i</em> with
+frequency <em>θ_i</em> = base^(−2<em>i</em>/<em>d</em>):</p>
+<pre><code>q̃_m = R(mθ) q_m ,   k̃_n = R(nθ) k_n
+</code></pre>
+<p>Because rotations compose, the inner product <em>q̃_m</em> · <em>k̃_n</em> depends on <em>m</em> − <em>n</em> and not on <em>m</em>
+and <em>n</em> separately. Absolute positions go in; relative position comes out of the dot product
+for free. Three engine consequences follow. RoPE is applied to Q and K <em>after</em> projection and
+<em>before</em> the cache write, so cached keys are already rotated and a KV entry is valid at
+whatever position it was written at — which is what makes Chapter 10's prefix sharing sound.
+Context extension becomes a matter of rescaling <em>θ</em> rather than retraining, which is why
+<code>rope_scaling</code> is a config key that the loader has to handle several dialects of. And
+Chapter 14's MLA has to work around RoPE specifically, because a rotation cannot be commuted
+through a low-rank compression.</p>
+<p><strong>GQA instead of MHA.</strong> Chapter 1 showed that KV cache size is the direct limiter on batch
+size, and standard multi-head attention stores one K and one V per query head. Shazeer's
+multi-query attention (2019) cut that to a single shared KV head — a 64× reduction for a
+64-head model — but degraded quality and destabilized training. Ainslie et al. (2023)
+interpolated: divide the query heads into <em>G</em> groups and give each group one KV head.</p>
+<pre><code>G = H     →  multi-head attention (full cache)
+1 &lt; G &lt; H →  grouped-query attention
+G = 1     →  multi-query attention (smallest cache)
+</code></pre>
+<p>Their T5-XXL numbers make the case: MHA at 47.2 ROUGE-1 and 1.51 s per inference step, MQA at
+46.6 and 0.28 s, GQA-8 at 47.1 and 0.28 s — MHA's quality at MQA's speed. They also showed
+you do not need to train from scratch to get it: mean-pool an existing checkpoint's KV
+projections down to <em>G</em> heads and continue training for about 5% of the original compute.</p>
+<p>Llama-3-70B is GQA with 64 query heads and 8 KV heads, so its KV cache is one eighth of what
+MHA would need — the difference between Chapter 1's 320 KB per token and 2.5 MB. The cost
+appears in this chapter's constructor, where the head counts no longer divide evenly by the
+tensor-parallel size.</p>
+<hr />
+<h2 id="a-full-read-of-llamapy"><a class="header" href="#a-full-read-of-llamapy">A full read of llama.py</a></h2>
+<h3 id="llamamlp-pythonsglangsrtmodelsllamapy70"><a class="header" href="#llamamlp-pythonsglangsrtmodelsllamapy70"><code>LlamaMLP</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L70"><code>python/sglang/srt/models/llama.py:70</code></a>)</a></h3>
+<p>The feed-forward block, and the first appearance of the fusion pattern. A Llama MLP is
+<code>down(silu(gate(x)) * up(x))</code> — two parallel projections up, one back down. SGLang
+constructs <code>gate_up_proj</code> as a single <code>MergedColumnParallelLinear</code> rather than two
+matrices.</p>
+<p>The reason is arithmetic intensity again (Chapter 1). <code>gate</code> and <code>up</code> read the <em>same</em>
+input and have the same shape; running them as one GEMM loads that input once and doubles
+the work per byte. This is why Chapter 12's <code>stacked_params_mapping</code> has to split one
+checkpoint tensor across two slices — the fusion is SGLang's, not the checkpoint's.</p>
+<p>Column-parallel for the up-projections and row-parallel for the down-projection is the
+standard Megatron pattern, and Chapter 16 explains why that specific pairing needs exactly
+one collective per block.</p>
+<h3 id="llamaattention-138"><a class="header" href="#llamaattention-138"><code>LlamaAttention</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L138"><code>:138</code></a>)</a></h3>
+<p>The constructor is where tensor parallelism becomes concrete:</p>
+<pre><code class="language-python">        tp_size = get_parallel().tp_size
+        self.total_num_heads = num_heads
+        assert self.total_num_heads % tp_size == 0
+        self.num_heads = self.total_num_heads // tp_size
+        self.total_num_kv_heads = num_kv_heads
+        if self.total_num_kv_heads &gt;= tp_size:
+            # Number of KV heads is greater than TP size, so we partition
+            # the KV heads across multiple tensor parallel GPUs.
+            assert self.total_num_kv_heads % tp_size == 0
+        else:
+            # Number of KV heads is less than TP size, so we replicate
+            # the KV heads across multiple tensor parallel GPUs.
+            assert tp_size % self.total_num_kv_heads == 0
+        self.num_kv_heads = max(1, self.total_num_kv_heads // tp_size)
+</code></pre>
+<p>The <code>total_</code> prefix convention is worth internalizing: <code>total_num_heads</code> is the model's,
+<code>num_heads</code> is this rank's. Getting these confused is the single most common bug when
+writing a model.</p>
+<p>The branch is grouped-query attention meeting tensor parallelism. Llama-3-70B has 64 query
+heads and 8 KV heads. On 8-way TP each rank gets 8 query heads and 1 KV head — clean. On
+16-way TP there are more ranks than KV heads, so KV heads must be <strong>replicated</strong>: two ranks
+hold the same KV head and therefore store the same KV cache entries twice. That is real</p>
+<div class="bk-note bk-note-warning">
+<p class="bk-note-label">Watch out — Past the KV head count, tensor parallelism stops buying cache</p>
+<p>When the parallel size exceeds the number of KV heads, the heads are replicated rather
+than split, so two ranks store identical cache entries. Adding GPUs still adds compute
+and weight capacity — it just stops adding the thing that was scarce.</p>
+</div>
+<p>memory duplication, and it is why raising TP does not reduce KV memory per GPU beyond the
+KV head count. Chapter 16's data-parallel attention is one answer.</p>
+<p>Then the layers:</p>
+<pre><code class="language-python">        self.qkv_proj = QKVParallelLinear(
+            hidden_size,
+            self.head_dim,
+            self.total_num_heads,
+            self.total_num_kv_heads,
+            bias=bias,
+            quant_config=quant_config,
+            prefix=add_prefix("qkv_proj", prefix),
+        )
+        self.o_proj = RowParallelLinear(...)
+
+        self.rotary_emb = get_rope(...)
+        self.attn = RadixAttention(
+            self.num_heads,
+            self.head_dim,
+            self.scaling,
+            num_kv_heads=self.num_kv_heads,
+            layer_id=layer_id,
+            quant_config=quant_config,
+            prefix=add_prefix("attn", prefix),
+        )
+</code></pre>
+<p>Four things to notice.</p>
+<p><code>QKVParallelLinear</code> fuses three projections and knows the GQA head ratio, so it shards Q
+and KV correctly despite their different counts.</p>
+<p><code>quant_config</code> is threaded into every layer. A layer decides its own kernel; the model just
+passes the config down (Chapter 15).</p>
+<p><code>prefix=add_prefix(...)</code> builds the parameter's dotted name, which must match the
+checkpoint. This is the thread connecting the module tree to Chapter 12's loader — and to
+quantization configs that name specific layers to skip.</p>
+<p>And <code>RadixAttention</code> (Chapter 10) takes <code>layer_id</code>. That is the whole cache integration: the
+layer knows which slice of the pool is its own, and the rest — which pages to read, where
+to write — arrives through <code>forward_batch</code>. <strong>The model contains no cache logic</strong>, which is
+why adding a model does not require understanding Chapters 9 through 10.</p>
+<h3 id="llamadecoderlayer-283"><a class="header" href="#llamadecoderlayer-283"><code>LlamaDecoderLayer</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L283"><code>:283</code></a>)</a></h3>
+<p>The constructor is mostly config archaeology:</p>
+<pre><code class="language-python">        rope_parameters = getattr(config, "rope_parameters", None)
+        if rope_parameters is not None:
+            rope_theta = rope_parameters.get("rope_theta", 10000)
+            rope_scaling = rope_parameters
+        else:
+            rope_theta = getattr(config, "rope_theta", 10000)
+            rope_scaling = getattr(config, "rope_scaling", None)
+        ...
+        # Support llamafy/Qwen-Qwen2.5-7B-Instruct-llamafied with attention_bias
+        # Support internlm/internlm-7b with bias
+        attention_bias = getattr(config, "attention_bias", False) or getattr(
+            config, "bias", False
+        )
+</code></pre>
+<p>This is what "Llama architecture" means in practice: dozens of checkpoints that are
+<em>nearly</em> Llama, each differing in a config key. Note this file uses <code>getattr</code> with defaults
+despite <code>.claude/rules/no-getattr-defensive.md</code> — legitimately, because these fields
+genuinely may not exist in a third-party config. The rule targets defensive access to
+fields that <em>are</em> always present; reading foreign configs is the exception it allows.</p>
+<p>The forward is where a real optimization hides:</p>
+<pre><code class="language-python">        # Self Attention
+        if residual is None:
+            residual = hidden_states
+            hidden_states = self.input_layernorm(
+                hidden_states, quant_linear=self.self_attn.qkv_proj
+            )
+        else:
+            hidden_states, residual = self.input_layernorm(
+                hidden_states, residual, quant_linear=self.self_attn.qkv_proj
+            )
+</code></pre>
+<p>The <code>residual</code> is threaded <em>through</em> the layer rather than added at the end, so
+<code>input_layernorm</code> performs add-and-normalize as one fused kernel. Over 80 layers that saves
+80 separate elementwise-add kernel launches and 80 round-trips of the hidden state through
+memory — decode is memory-bound, so this is not a micro-optimization.</p>
+<p><code>quant_linear=self.self_attn.qkv_proj</code> is subtler: the norm is told which linear layer
+consumes its output, so if that layer wants FP8 input the norm can <em>emit</em> FP8 directly,
+fusing the quantization into the normalization. The layer boundary is deliberately leaky
+because the fusion is worth it.</p>
+<h3 id="llamamodel-372-and-llamaforcausallm-496"><a class="header" href="#llamamodel-372-and-llamaforcausallm-496"><code>LlamaModel</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L372"><code>:372</code></a>) and <code>LlamaForCausalLM</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L496"><code>:496</code></a>)</a></h3>
+<p><code>LlamaModel</code> is embeddings plus the layer stack, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L640"><code>:640</code></a> <code>start_layer</code> / <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L644"><code>:644</code></a>
+<code>end_layer</code> are its pipeline-parallel bounds (Chapter 16) — this rank builds only its own
+layers, which is what Chapter 12's weight filter pairs with.</p>
+<p><code>LlamaForCausalLM</code> adds the LM head and the logits processor (Chapter 8), and is where the
+optional capabilities live:</p>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Enables</th><th>Chapter</th></tr></thead><tbody>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L599"><code>:599</code></a> <code>forward_split_prefill</code></td><td>layer-split execution for PD multiplexing</td><td>17</td></tr>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L891"><code>:891</code></a> <code>set_eagle3_layers_to_capture</code></td><td>EAGLE-3 hidden-state capture</td><td>18</td></tr>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L905"><code>:905</code></a> <code>set_dflash_layers_to_capture</code></td><td>DFlash capture</td><td>18</td></tr>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L854"><code>:854</code></a> <code>get_embed_and_head</code> / <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L857"><code>:857</code></a> <code>set_embed_and_head</code></td><td>RL weight sync</td><td>11</td></tr>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L888"><code>:888</code></a> <code>load_kv_cache_scales</code></td><td>quantized KV scales</td><td>14</td></tr>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L650"><code>:650</code></a> <code>get_module_name_from_weight_name</code></td><td>LoRA target resolution</td><td>20</td></tr>
+</tbody></table>
+</div>
+<p>Six subsystems reaching into the model, each through one narrow method. A model that
+defines none of them still works; it just cannot participate in those features. This is the
+extension mechanism: <strong>capability by method presence</strong>, which is why the "add a model"
+checklist is short.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/models/llama.py#L918"><code>:918</code></a> <code>Phi3ForCausalLM</code> subclasses <code>LlamaForCausalLM</code> outright — same architecture,
+different config parsing.</p>
+<hr />
+<h2 id="the-parallel-layer-vocabulary"><a class="header" href="#the-parallel-layer-vocabulary">The parallel layer vocabulary</a></h2>
+<p>Model files are written almost entirely in terms of a small set of layers from
+<code>python/sglang/srt/layers/</code>:</p>
+<div class="table-wrapper"><table><thead><tr><th>Layer</th><th>Shards</th><th>Communication</th></tr></thead><tbody>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/linear.py#L293"><code>python/sglang/srt/layers/linear.py:293</code></a> <code>ColumnParallelLinear</code></td><td>output dim</td><td>none (output stays sharded)</td></tr>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/linear.py#L1392"><code>python/sglang/srt/layers/linear.py:1392</code></a> <code>RowParallelLinear</code></td><td>input dim</td><td>all-reduce after</td></tr>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/linear.py#L492"><code>python/sglang/srt/layers/linear.py:492</code></a> <code>MergedColumnParallelLinear</code></td><td>several column-parallel fused</td><td>none</td></tr>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/linear.py#L921"><code>python/sglang/srt/layers/linear.py:921</code></a> <code>QKVParallelLinear</code></td><td>Q/K/V fused, GQA-aware</td><td>none</td></tr>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/linear.py#L195"><code>python/sglang/srt/layers/linear.py:195</code></a> <code>ReplicatedLinear</code></td><td>nothing</td><td>none</td></tr>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/vocab_parallel_embedding.py#L188"><code>python/sglang/srt/layers/vocab_parallel_embedding.py:188</code></a> <code>VocabParallelEmbedding</code></td><td>vocabulary</td><td>all-reduce</td></tr>
+<tr><td><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/vocab_parallel_embedding.py#L587"><code>python/sglang/srt/layers/vocab_parallel_embedding.py:587</code></a> <code>ParallelLMHead</code></td><td>vocabulary</td><td>all-gather (Chapter 8)</td></tr>
+</tbody></table>
+</div>
+<p><strong>The collectives live inside these layers.</strong> A model file contains no <code>all_reduce</code> call.
+Chapter 16 explains why column-then-row needs exactly one; the point here is that a model
+author gets it right by choosing the correct layer type.</p>
+<p><code>python/sglang/srt/layers/layernorm.py</code>, <code>python/sglang/srt/layers/activation.py</code>, and
+<code>python/sglang/srt/layers/rotary_embedding/</code> supply the rest, mostly as fused kernels.</p>
+<hr />
+<h2 id="three-contrast-studies"><a class="header" href="#three-contrast-studies">Three contrast studies</a></h2>
+<p><strong><code>python/sglang/srt/models/deepseek_v2.py</code></strong> — MLA and MoE. Attention is replaced by
+multi-head latent attention, which compresses KV into a single latent vector per token
+(Chapter 9's <code>MLATokenToKVPool</code>) and needs its own attention backends (Chapter 14). The MLP
+is replaced by a mixture of experts (Chapter 17). Almost nothing carries over from Llama
+except the residual structure — a useful demonstration that the "contract" really is just
+<code>forward</code> and <code>load_weights</code>.</p>
+<p><strong>A Qwen-VL variant</strong> — a vision tower feeding a text decoder. The extra work is not in the
+decoder but in <em>splicing</em>: encoder outputs replace placeholder tokens in the embedding
+sequence, and positions become 3D (Chapter 21).</p>
+<p><strong><code>python/sglang/srt/models/falcon_h1.py</code></strong> — a hybrid where some layers are attention and
+others are Mamba-style state-space. Different layers need different cache types in the same
+model, which is what Chapter 9's <code>HybridLinearKVPool</code> and Chapter 14's
+<code>python/sglang/srt/layers/attention/hybrid_linear_attn_backend.py</code> exist for.</p>
+<p>Across all three, what stays fixed is the shape of a model file: a config-driven
+constructor, layers from the shared vocabulary, a <code>forward</code> taking <code>forward_batch</code>, and a
+<code>load_weights</code> mapping checkpoint names to sharded parameters. What varies is everything
+else — which is exactly why the abstraction is drawn where it is.</p>
+<p>One line of that file has been standing in for the hardest operation in the model. Chapter
+14 goes behind it.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 13 in one page</p><ol class="bk-card-arg"><li>RMSNorm, SwiGLU, RoPE, and GQA each replaced something simpler, and each replacement shows up as an engine constraint.</li><li>GQA exists because the KV cache is the scarce resource — it is Chapter 1's argument reaching back into the architecture.</li><li>A model file is a `forward` and a `load_weights` over a shared vocabulary of parallel, quantization-aware layers.</li><li>Fusions like `gate_up_proj` are SGLang's, not the checkpoint's, which is why loading has to split one tensor across two slices.</li><li>The model contains no cache logic at all; `RadixAttention` takes a layer id and the rest arrives through the forward batch.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Llama-3-70B query heads / KV heads</th><td>64 / 8</td></tr><tr><th scope='row'>KV cache saved by GQA at that ratio</th><td>8×</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>The template model</th><td><code>python/sglang/srt/models/llama.py</code></td></tr><tr><th scope='row'>Parallel layers</th><td><code>python/sglang/srt/layers/linear.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch12-loading-weights.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch14-attention-backends.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch12-loading-weights.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch14-attention-backends.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

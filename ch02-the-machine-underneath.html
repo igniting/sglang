@@ -1,0 +1,498 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>2. The Machine Underneath - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item expanded "><a href="ch02-the-machine-underneath.html" class="active">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch02-the-machine-underneath.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="2-the-machine-underneath"><a class="header" href="#2-the-machine-underneath">2. The Machine Underneath</a></h1>
+<blockquote>
+<p><em>Chapter 1's argument is parameterized by two numbers on a spec sheet. Everything that
+follows depends on knowing which two, and what happens when they change.</em></p>
+</blockquote>
+<p>Chapter 1 reached its conclusions from a ratio: peak arithmetic over peak bandwidth, about
+296 FLOP per byte on an H100. Every later chapter inherits that number. The batch size the
+scheduler aims for, the choice between chunking a prefill and shipping it to another
+machine, whether quantization buys anything, whether speculation pays — all of them are
+answers whose sign can flip if the ratio moves.</p>
+<p>So it is worth an hour to know where those numbers come from, how they differ across the
+hardware you might actually be handed, and — the part most treatments skip — which numbers
+on a vendor's slide are real and which are marketing.</p>
+<p>This chapter is the shortest in the book and the one with the least SGLang in it. That is
+deliberate: it is about the machine, not the software. But it ends where the rest of the
+book begins, with the handful of hardware facts SGLang actually reads at startup and the
+decisions it makes from them.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 11 min</span></p><ul><li>Read a GPU spec sheet and say which number binds your workload</li><li>Compute the ridge point for any accelerator, and explain why it barely moves across generations</li><li>Place a collective on the interconnect ladder and predict what it costs</li><li>Find the handful of hardware facts SGLang reads at startup</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="inside-one-accelerator"><a class="header" href="#inside-one-accelerator">Inside one accelerator</a></h2>
+<p>A GPU is not a fast CPU. It is a throughput machine, organized so that thousands of simple
+operations proceed at once, and its structure explains both what it is good at and the very
+specific way it fails.</p>
+<p><strong>Streaming multiprocessors.</strong> The chip is divided into SMs — 132 of them on an H100 SXM,
+148 on a B200. Each SM is an independent scheduler with its own register file and its own
+slice of on-chip memory. Work is dispatched to SMs in units of <em>thread blocks</em>, and a kernel
+that cannot fill the SMs leaves silicon idle no matter how fast the silicon is. This is the
+occupancy problem, and at decode's tiny batch sizes it is a real one: a kernel with four
+thread blocks uses 3% of an H100.</p>
+<p><strong>Three kinds of core, and only one of them matters here.</strong> Each SM holds CUDA cores
+(scalar arithmetic), tensor cores (matrix multiply-accumulate), and special function units
+(transcendentals). For inference, essentially all the arithmetic that matters runs on tensor
+cores. When a spec sheet says "FLOPS," ask which cores it means; the number that governs
+Chapter 1's roofline is tensor-core FLOPS.</p>
+<p><strong>A memory hierarchy with a cliff in it.</strong> Registers are effectively free. Each SM has
+around 256 KB of L1 / shared memory. The whole chip shares 50 MB of L2. Then HBM — 80 GB on
+an H100, 141 GB on an H200, 180 GB on a B200 — at a bandwidth two orders of magnitude below
+on-chip.</p>
+<p>That cliff is not a footnote; it is the reason Chapter 14 exists. FlashAttention is
+precisely the observation that an algorithm which keeps its intermediates in the 256 KB
+rather than spilling them to the 80 GB wins by the ratio between those two speeds.</p>
+<p>Notice that this chapter's hierarchy and Chapter 11's are the same picture at different
+scales: SRAM to HBM here, HBM to host DRAM to SSD there. Both are worth exploiting for the
+same reason and both are exploited the same way, by keeping the hot working set one level up.</p>
+<hr />
+<h2 id="the-three-numbers-and-what-each-one-binds"><a class="header" href="#the-three-numbers-and-what-each-one-binds">The three numbers, and what each one binds</a></h2>
+<p>For serving, an accelerator is almost entirely described by three quantities.</p>
+<p><strong>Memory capacity</strong> decides whether the model fits at all, and then — after weights — how
+much room is left for the KV cache. Chapter 1 showed that leftover capacity is the direct
+limiter on concurrency, so this is the number that sets how many users the GPU serves.</p>
+<p><strong>Memory bandwidth</strong> decides decode speed. Single-stream tokens per second is very nearly
+bandwidth divided by model bytes, and no amount of arithmetic capability changes it.</p>
+<p><strong>Tensor-core FLOPS</strong> decides prefill speed, and therefore time to first token on long
+prompts.</p>
+<p>Their ratio is Chapter 1's ridge point. Here is what it looks like across the hardware you
+are likely to meet, at the precision each part is normally served in:</p>
+<div class="table-wrapper"><table><thead><tr><th>Accelerator</th><th>Memory</th><th>Bandwidth</th><th>Dense FLOPS</th><th>Ridge <em>I</em>*</th></tr></thead><tbody>
+<tr><td>A100 80 GB SXM</td><td>80 GB HBM2e</td><td>2.0 TB/s</td><td>312 TF (BF16)</td><td>~156</td></tr>
+<tr><td>L40S</td><td>48 GB GDDR6</td><td>0.86 TB/s</td><td>362 TF (FP8)</td><td>~421</td></tr>
+<tr><td>H100 SXM</td><td>80 GB HBM3</td><td>3.35 TB/s</td><td>990 TF (BF16)</td><td>~296</td></tr>
+<tr><td>H100 SXM (FP8)</td><td>80 GB HBM3</td><td>3.35 TB/s</td><td>1,979 TF (FP8)</td><td>~591</td></tr>
+<tr><td>H200 SXM</td><td>141 GB HBM3e</td><td>4.8 TB/s</td><td>1,979 TF (FP8)</td><td>~412</td></tr>
+<tr><td>B200</td><td>180 GB HBM3e</td><td>8.0 TB/s</td><td>4,500 TF (FP8)</td><td>~563</td></tr>
+<tr><td>MI300X</td><td>192 GB HBM3</td><td>5.3 TB/s</td><td>1,307 TF (FP8)</td><td>~247</td></tr>
+</tbody></table>
+</div>
+<p>Read the last column first, because it is the surprise. Across seven parts, six vendors'
+worth of marketing, and four years of releases, the ridge point stays inside a single order
+of magnitude — roughly 150 to 600 FLOP per byte. <strong>Nobody is fixing the memory wall.</strong>
+Bandwidth and arithmetic have grown together, so the batch size at which a GEMM stops being
+bandwidth-starved is a few hundred rows on essentially every accelerator in production.</p>
+<p>Chapter 1's critical-batch-size calculator takes the middle two columns of that table as its
+inputs, so any row of it can be run through the formula directly.</p>
+<p>That is the fact that makes this book's structure stable. If the ridge point were falling,
+batching would matter less each generation and half the engine could be deleted. It is not,
+so it does not.</p>
+<p>The second thing to read off the table is the H100 rows. Same chip, two precisions, and the
+ridge point doubles — because FP8 doubles arithmetic while leaving bandwidth alone. Chapter
+15's quantization chapter is, from this angle, a way of moving <em>left</em> on the roofline by
+shrinking the bytes, on hardware that simultaneously moved the ridge <em>right</em>. Both effects
+are real and they partly cancel; which one wins depends on whether you quantized the weights
+only or the arithmetic too.</p>
+<p>Third, notice the outliers. The L40S has a very high ridge point for a bad reason — GDDR6
+instead of HBM, so its bandwidth is a quarter of a datacenter part's while its FLOPS are not.
+It is a compute-rich, bandwidth-poor accelerator: fine for prefill-heavy or small-model work,
+poor for high-concurrency decode. The MI300X is the reverse: 192 GB at 5.3 TB/s gives it the
+lowest ridge point of the modern parts and the most room for KV cache, which is exactly the
+profile a decode pool wants.</p>
+<hr />
+<h2 id="the-interconnect-ladder"><a class="header" href="#the-interconnect-ladder">The interconnect ladder</a></h2>
+<p>One more hierarchy governs Chapters 16 through 18 entirely, and it is the one people
+underestimate. When a model does not fit on a single accelerator, every collective in the
+forward pass crosses one of these:</p>
+<div class="table-wrapper"><table><thead><tr><th>Link</th><th>Bandwidth</th><th>Scope</th></tr></thead><tbody>
+<tr><td>On-chip SRAM</td><td>~20 TB/s</td><td>within one SM</td></tr>
+<tr><td>HBM</td><td>3–8 TB/s</td><td>within one GPU</td></tr>
+<tr><td>NVLink 4/5 + NVSwitch</td><td>0.9–1.8 TB/s</td><td>GPUs within a node</td></tr>
+<tr><td>PCIe Gen5 x16</td><td>~64 GB/s</td><td>GPU to host</td></tr>
+<tr><td>InfiniBand NDR / 400G RoCE</td><td>~50 GB/s</td><td>node to node</td></tr>
+<tr><td>Datacenter Ethernet</td><td>1–25 GB/s</td><td>rack to rack</td></tr>
+</tbody></table>
+</div>
+<p>Each step down is roughly an order of magnitude, and two steps are worth memorizing because
+they are where designs break.</p>
+<p><strong>NVLink to InfiniBand is a 20× cliff.</strong> This single fact is why Chapter 16 says tensor
+parallelism stays inside a node: TP performs two all-reduces per transformer layer, 160 per
+forward pass on an 80-layer model, and 160 collectives at InfiniBand latency is not a
+forward pass, it is a stall. Pipeline parallelism crosses nodes because it moves one
+activation tensor per stage boundary instead.</p>
+<p><strong>HBM to PCIe is a 100× cliff.</strong> That is the wall Chapter 11's hierarchical cache is trading
+against, and the reason its fetch-versus-recompute arithmetic comes out the way it does.</p>
+<p>The asymmetry between the middle two rows is also what shapes Chapter 17's expert
+parallelism. DeepEP's dispatch kernels route a token across InfiniBand <em>once</em> per destination
+node and then fan out over NVLink inside it, precisely because the two links differ by 20×
+and a naive all-to-all would pay the slow one repeatedly.</p>
+<hr />
+<h2 id="reading-a-spec-sheet-without-being-fooled"><a class="header" href="#reading-a-spec-sheet-without-being-fooled">Reading a spec sheet without being fooled</a></h2>
+<p>Vendor numbers are not lies, but they are chosen. Five things to check.</p>
+<p><strong>Dense or sparse?</strong> Tensor cores can skip multiplications against zero in a 2:4 structured
+sparsity pattern, which doubles the headline number. Inference is dense. If a slide says
+"4 petaFLOPS" with an asterisk, halve it.</p>
+<p><strong>Which precision?</strong> FLOPS roughly double for each halving of element width, so FP4 numbers
+are 4× the BF16 ones on the same silicon. Comparing a Blackwell FP4 figure to a Hopper BF16
+figure compares two different quantities.</p>
+<p><strong>Peak or achieved?</strong> Peak assumes every tensor core is busy every cycle with perfectly
+staged operands. Real kernels reach 60–80% of peak bandwidth and, for well-tuned GEMMs at
+good shapes, perhaps 70% of peak FLOPS. Chapter 22 calls the ratio MFU and MBU; the useful
+habit is to compute both from a profile and see which one is close to its ceiling.</p>
+<p><strong>Which SKU?</strong> "H100" is at least three parts. The SXM module has 3.35 TB/s and NVLink; the
+PCIe card has 2.0 TB/s and no NVLink between arbitrary pairs; the NVL variant differs again.
+The gap between SXM and PCIe is larger than the gap between some <em>generations</em>.</p>
+<p><strong>Is the memory usable?</strong> Weights are not the only resident. Activations, CUDA graph buffers
+(Chapter 15), communication buffers for expert parallelism (Chapter 17), and the framework's
+own allocator all take a cut before the KV cache gets what is left. A 180 GB part does not
+give you 180 GB of cache, and the difference is large enough that SGLang computes it rather
+than assuming it — which is the next section.</p>
+<hr />
+<h2 id="what-sglang-actually-reads"><a class="header" href="#what-sglang-actually-reads">What SGLang actually reads</a></h2>
+<p>Almost nothing in this chapter appears in the code as a number. SGLang does not carry a table
+of GPUs. It carries a small set of <em>questions</em> it asks the device at startup, and everything
+hardware-specific follows from the answers.</p>
+<p>The abstraction is <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/platforms/interface.py#L26"><code>python/sglang/srt/platforms/interface.py:26</code></a> <code>SRTPlatform</code>, with
+<code>python/sglang/srt/platforms/cuda.py</code>, <code>python/sglang/srt/platforms/rocm.py</code>,
+<code>python/sglang/srt/platforms/xpu.py</code>, and <code>python/sglang/srt/platforms/cpu.py</code> as the
+implementations, and out-of-tree vendors registering through setuptools entry points:</p>
+<pre><code class="language-python">class SRTPlatform(DeviceMixin):
+    """
+    Base class for SRT hardware platform backends.
+
+    Inherits device identity queries and operations from DeviceMixin.
+    Adds SRT-specific factory methods, capability flags, and lifecycle hooks.
+
+    OOT platforms should subclass SRTPlatform and override the methods
+    relevant to their hardware.
+    """
+</code></pre>
+<p>The first question is <strong>what generation is this</strong>. On NVIDIA that is the compute capability,
+a <code>(major, minor)</code> pair, and
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/platforms/device_mixin.py#L65"><code>python/sglang/srt/platforms/device_mixin.py:65</code></a> <code>DeviceCapability</code> is careful about how it
+is compared:</p>
+<pre><code class="language-python">class DeviceCapability(NamedTuple):
+    """Device compute capability (major, minor).
+
+    Uses NamedTuple for built-in comparison support:
+    ``DeviceCapability(9, 0) &gt;= DeviceCapability(8, 9)`` works naturally.
+    """
+</code></pre>
+<p>A <code>NamedTuple</code> so that <code>&gt;=</code> does the right thing lexicographically — because nearly every use
+is a threshold test. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/utils/common.py#L610"><code>python/sglang/srt/utils/common.py:610</code></a> <code>get_device_sm</code> flattens it to
+the two-digit form the ecosystem uses (<code>90</code> for Hopper, <code>100</code> for datacenter Blackwell), and
+a family of cached predicates sits on top:</p>
+<pre><code class="language-python">is_sm100_supported = lru_cache(maxsize=1)(
+    partial(
+        _check_cuda_device_version, device_capability_majors=[10], cuda_version=(12, 8)
+    )
+)
+</code></pre>
+<p>Note that each predicate pairs a <em>hardware</em> requirement with a <em>toolkit</em> requirement. An
+SM100 device under CUDA 12.4 is not "Blackwell supported" in any useful sense, because the
+kernels that exploit it will not compile. Hardware capability alone is the wrong question and
+this is the code admitting it.</p>
+<p>The comment above one of these is a good demonstration of how fine the distinctions get:</p>
+<pre><code class="language-python"># Datacenter Blackwell (SM100) plus SM110; excludes consumer Blackwell (SM120).
+# This is the arch set flash_attn.cute accepts for the absorbed-MLA qv argument.
+</code></pre>
+<p>Consumer and datacenter parts of the same generation share a major version and not a kernel.</p>
+<p>The second question is <strong>what precision can this thing do</strong>, and it is asked through
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/quantization/base_config.py#L149"><code>python/sglang/srt/layers/quantization/base_config.py:149</code></a> <code>get_min_capability</code>:</p>
+<pre><code class="language-python">    @classmethod
+    @abstractmethod
+    def get_min_capability(cls) -&gt; int:
+        """Minimum GPU capability to support the quantization method.
+
+        E.g., 70 for Volta, 75 for Turing, 80 for Ampere.
+        This requirement is due to the custom CUDA kernels used by the
+        quantization method.
+        """
+</code></pre>
+<p>Every quantization scheme declares its own floor, and Chapter 15's config layer refuses the
+combination rather than producing wrong numbers. The docstring's last sentence is the honest
+reason: the limit is not the format, it is the kernels somebody wrote.</p>
+<p>The third question is <strong>how much memory is there</strong>, and this one is answered with real
+arithmetic rather than a lookup. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/server_args.py#L4872"><code>python/sglang/srt/server_args.py:4872</code></a> computes a default
+<code>mem_fraction_static</code> by subtracting everything that is <em>not</em> KV cache:</p>
+<pre><code class="language-python">                # Constant meta data (e.g., from attention backend) + activation slack.
+                reserved_mem = 512
+                reserved_mem += activation_tokens * 1.5
+                # Some adjustments for large parallel size
+                reserved_mem += self.tp_size * self.pp_size / 8 * 1024
+                reserved_mem += self.reserve_for_graph_mb()
+                if gpu_mem is not None and gpu_mem &gt; 60 * 1024:
+                    reserved_mem = max(reserved_mem, 10 * 1024)
+                # Reserve headroom for DeepEP all-to-all buffers on top of the floor.
+                reserved_mem += self.reserve_for_deepep_a2a_mb()
+
+            self.mem_fraction_static = (
+                round((gpu_mem - reserved_mem) / gpu_mem, 3)
+                if gpu_mem is not None
+                else 0.88
+            )
+</code></pre>
+<p>Read that as a list of everyone with a claim on the memory before the cache: attention
+backend metadata, the activation working set (scaled by the chunk size, so a larger
+<code>--chunked-prefill-size</code> costs cache capacity), a term that grows with parallel size,
+Chapter 15's captured CUDA graphs, and Chapter 17's all-to-all buffers. The <code>0.88</code> at the
+end is the fallback for when the device will not say how much memory it has.</p>
+<p>This is the section of the book where a hardware fact becomes a serving decision, and it is
+worth noticing that the decision is <em>computed from the device</em>, not configured. Chapter 22's
+first tuning knob is this number, and the reason it is first is that everything downstream —
+concurrency, cache hit rate, whether admission control ever has to retract — is set by what
+survives this subtraction.</p>
+<hr />
+<h2 id="which-number-is-binding-on-your-workload"><a class="header" href="#which-number-is-binding-on-your-workload">Which number is binding on your workload</a></h2>
+<p>Chapter 1 gave metrics; this chapter gives hardware; the join between them is the shape of
+your traffic, and one ratio captures most of it.</p>
+<p>Let <strong>ISL</strong> be input sequence length and <strong>OSL</strong> output sequence length. Their ratio decides
+which phase dominates, and therefore which of the three numbers above you should be buying:</p>
+<div class="table-wrapper"><table><thead><tr><th>Workload</th><th>ISL / OSL</th><th>Dominated by</th><th>Buy</th><th>Chapters that matter</th></tr></thead><tbody>
+<tr><td>Summarization, RAG, classification</td><td>100:1 and up</td><td>prefill</td><td>FLOPS</td><td>6, 14, 18</td></tr>
+<tr><td>Chat and assistants</td><td>~2:1 to 10:1</td><td>mixed</td><td>balance</td><td>6, 10, 18</td></tr>
+<tr><td>Reasoning, agents, long generation</td><td>1:5 and below</td><td>decode</td><td>bandwidth + capacity</td><td>9, 15, 19</td></tr>
+<tr><td>Code completion</td><td>short : short</td><td>latency floor</td><td>clock, low overhead</td><td>5, 15</td></tr>
+</tbody></table>
+</div>
+<p>The same ratio decides several arguments the book has already had. A prefill-dominated
+workload gets little from speculative decoding, because Chapter 19's whole premise is idle
+arithmetic during <em>decode</em> — and there barely is a decode. A decode-dominated workload gets
+little from chunked prefill and a great deal from KV cache capacity, which argues for
+Chapter 16's data-parallel attention and for the accelerator with the most HBM per dollar. A
+mixed chat workload with long shared system prompts is the one where Chapter 10's prefix
+cache is worth more than every kernel optimization in the book combined.</p>
+<p>Measure the ratio before tuning anything. It is one query against your own logs, and it
+determines which half of this book you should read closely.</p>
+<hr />
+<p>Chapter 1 said the machine is memory-bound; this chapter said which memory, how fast, and how
+far away. From here the book stops describing hardware and starts describing the software
+that responds to it — beginning, in Chapter 3, with the shape SGLang takes when you launch it.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 2 in one page</p><ol class="bk-card-arg"><li>An accelerator is three numbers: memory capacity, memory bandwidth, and tensor-core FLOPS. Each binds a different phase.</li><li>Their ratio is Chapter 1's ridge point, and it sits between roughly 150 and 600 FLOP/byte on every part in production — nobody is fixing the memory wall.</li><li>The interconnect ladder falls by an order of magnitude per step; NVLink to InfiniBand is the cliff that keeps tensor parallelism inside a node.</li><li>Spec sheets are chosen, not false: check dense vs sparse, precision, peak vs achieved, and SKU.</li><li>SGLang carries no table of GPUs — it asks the device a few questions and computes the rest.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>H100 SXM</th><td>80 GB · 3.35 TB/s · 990 TF BF16</td></tr><tr><th scope='row'>NVLink vs InfiniBand</th><td>~20× bandwidth gap</td></tr><tr><th scope='row'>HBM vs PCIe</th><td>~100× gap</td></tr><tr><th scope='row'>Realistic fraction of peak</th><td>60–80% bandwidth</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Platform abstraction</th><td><code>python/sglang/srt/platforms/interface.py</code></td></tr><tr><th scope='row'>Capability probes</th><td><code>python/sglang/srt/utils/common.py</code></td></tr><tr><th scope='row'>Memory fraction default</th><td><code>python/sglang/srt/server_args.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch01-why-serving-engines.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch03-shape-of-sglang.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch01-why-serving-engines.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch03-shape-of-sglang.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

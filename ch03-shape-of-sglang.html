@@ -1,0 +1,559 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>3. The Shape of SGLang - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item expanded "><a href="ch03-shape-of-sglang.html" class="active">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch03-shape-of-sglang.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="3-the-shape-of-sglang"><a class="header" href="#3-the-shape-of-sglang">3. The Shape of SGLang</a></h1>
+<blockquote>
+<p><em>The engine's process topology is its architecture; understanding the boundaries explains
+most design choices that follow.</em></p>
+</blockquote>
+<p>Chapter 1 explained why an inference engine has to exist. This chapter is about what one
+looks like from the outside, before we start following anything through it.</p>
+<p>Two things are worth establishing before the tour. The first is that SGLang is not one
+program: cloning the repository gets you a serving runtime, a programming language, a
+kernel library, and a load balancer, and knowing which is which saves a great deal of
+confusion later. The second is that the runtime itself is not one process but four, and
+almost every design decision in Part II follows from where those boundaries fall.</p>
+<p>We will also read the project's own rules — a handful of short files stating invariants the
+codebase enforces. They were written for contributors, but they are the most concentrated
+design documentation in the repository, and each one marks a place where the architecture
+has already been bitten.</p>
+<p>This is the map you will navigate by for the rest of the book. It is worth the twenty
+minutes.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 12 min</span></p><ul><li>Name the four processes and the socket between each pair</li><li>Explain why the schedulers are replicated rather than driven by one controller</li><li>Choose between the HTTP server, the Engine class, and the DSL for a given job</li><li>Predict which process a given kind of bug lives in</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="several-projects-in-one-tree"><a class="header" href="#several-projects-in-one-tree">Several projects in one tree</a></h2>
+<p><code>sglang</code> is not one program. Cloning the repository gets you a serving runtime, a
+programming language, a kernel library, and a load balancer, each of which could plausibly
+be its own project.</p>
+<div class="table-wrapper"><table><thead><tr><th>Path</th><th>What it is</th><th>Language</th></tr></thead><tbody>
+<tr><td><code>python/sglang/srt/</code></td><td>The serving runtime. ~90% of this book.</td><td>Python</td></tr>
+<tr><td><code>python/sglang/lang/</code></td><td>The frontend DSL — the "SGLang" the project is named for.</td><td>Python</td></tr>
+<tr><td><code>python/sglang/kernels/</code></td><td>JIT and AOT kernels. Absorbed the former top-level <code>sgl-kernel/</code>.</td><td>Python, CUDA, C++</td></tr>
+<tr><td><code>python/sglang/benchmark/</code></td><td>Benchmark harnesses.</td><td>Python</td></tr>
+<tr><td><code>sgl-model-gateway/</code></td><td>Cache-aware router and load balancer.</td><td>Rust</td></tr>
+<tr><td><code>python/sglang/multimodal_gen/</code></td><td>Diffusion stack. Out of scope — see the introduction.</td><td>Python</td></tr>
+<tr><td><code>test/</code>, <code>docs/</code>, <code>benchmark/</code></td><td>Test suites, documentation, model-specific benchmarks.</td><td>—</td></tr>
+</tbody></table>
+</div>
+<p><code>srt</code> stands for <strong>SGLang RunTime</strong>. Alphabetically its subdirectories tell you nothing;
+arranged by dependency they tell you almost everything:</p>
+<pre><code>entrypoints/        HTTP, gRPC, and the embeddable Engine        → Ch. 3, 3
+   ↓
+managers/           TokenizerManager, Scheduler, DetokenizerManager
+                    schedule_batch.py, schedule_policy.py        → Ch. 4–7
+   ↓
+model_executor/     ModelRunner, ForwardBatch, CUDA graphs       → Ch. 7, 14
+   ↓
+models/             218 model definitions                        → Ch. 13
+   ↓
+layers/             attention, MoE, quantization, linear, sampler → Ch. 8, 13, 14, 16
+   ↓
+mem_cache/          KV pools, allocators, radix cache            → Ch. 9–10
+distributed/        process groups, communicators                → Ch. 16
+</code></pre>
+<p>Roughly, a request flows top to bottom and its results flow back up. Cutting across that
+spine are the feature subsystems — <code>speculative/</code>, <code>disaggregation/</code>, <code>lora/</code>,
+<code>constrained/</code>, <code>function_call/</code>, <code>multimodal/</code>, <code>eplb/</code>, <code>observability/</code> — each of which
+hooks into the spine at one or two well-defined points. Part VI is a tour of those hooks.</p>
+<p>Two numbers are worth internalizing before you start reading: <code>srt/models/</code> holds 218 model
+files, and <code>python/sglang/srt/server_args.py</code> is about 9,900 lines. Both are consequences of the same
+fact — SGLang supports a very large surface of models and configurations — and both are
+why the rest of the codebase works so hard at abstraction.</p>
+<hr />
+<h2 id="why-multi-process-not-multi-threaded"><a class="header" href="#why-multi-process-not-multi-threaded">Why multi-process, not multi-threaded</a></h2>
+<p>A serving engine has to do three things at once: accept and tokenize incoming HTTP
+requests, run the GPU, and turn output tokens back into text. In a single Python process
+those three would contend for the GIL, and the GPU — the expensive resource — would end up
+waiting on string manipulation.</p>
+<p>So SGLang splits them across processes:</p>
+<figure>
+<svg viewBox="0 0 700 462" role="img" aria-label="Four processes connected by ZeroMQ sockets: tokenizer manager, one scheduler per tensor-parallel rank, and a detokenizer">
+<title>SGLang process topology</title>
+<rect class="dgm-box-accent" x="140" y="44" width="420" height="64" rx="6"/>
+<text class="dgm-label" x="350.0" y="62.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">TokenizerManager</text>
+<text class="dgm-small" x="350.0" y="80.4" text-anchor="middle" style="font-size:11.5px">main process · asyncio event loop</text>
+<text class="dgm-small" x="350.0" y="98.4" text-anchor="middle" style="font-size:11.5px">text → token ids · holds each request's future</text>
+<rect class="dgm-box-accent" x="20" y="196" width="180" height="76" rx="6"/>
+<text class="dgm-label" x="110.0" y="220.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">Scheduler · tp 0</text>
+<text class="dgm-small" x="110.0" y="238.4" text-anchor="middle" style="font-size:11.5px">owns one GPU</text>
+<text class="dgm-small" x="110.0" y="256.4" text-anchor="middle" style="font-size:11.5px">receives, then broadcasts</text>
+<rect class="dgm-box" x="230" y="196" width="170" height="76" rx="6"/>
+<text class="dgm-label" x="315.0" y="229.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">Scheduler · tp 1</text>
+<text class="dgm-small" x="315.0" y="247.4" text-anchor="middle" style="font-size:11.5px">owns one GPU</text>
+<rect class="dgm-box" x="430" y="196" width="170" height="76" rx="6"/>
+<text class="dgm-label" x="515.0" y="229.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">Scheduler · tp n</text>
+<text class="dgm-small" x="515.0" y="247.4" text-anchor="middle" style="font-size:11.5px">owns one GPU</text>
+<rect class="dgm-box" x="20" y="330" width="320" height="58" rx="6"/>
+<text class="dgm-label" x="180.0" y="354.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">DetokenizerManager</text>
+<text class="dgm-small" x="180.0" y="372.4" text-anchor="middle" style="font-size:11.5px">subprocess · token ids → text, incrementally</text>
+<text class="dgm-label" x="350.0" y="26" text-anchor="middle" font-weight="600" style="font-size:13px">HTTP clients</text>
+<path class="dgm-line" d="M350.0 32 L350.0 38" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M350.0 108 L350.0 160 L110.0 160 L110.0 190" marker-end="url(#arrow)"/>
+<text class="dgm-small" x="362.0" y="152" text-anchor="start" style="font-size:11.5px">ZMQ · scheduler_input_ipc_name — rank 0 only</text>
+<path class="dgm-dash" d="M200 234.0 L224 234.0" marker-end="url(#arrow)"/>
+<path class="dgm-dash" d="M400 234.0 L424 234.0" marker-end="url(#arrow)"/>
+<text class="dgm-small" x="400" y="300" text-anchor="middle" style="font-size:11.5px">broadcast_pyobj — every rank runs an identical batch</text>
+<path class="dgm-line" d="M110.0 272 L110.0 324" marker-end="url(#arrow)"/>
+<text class="dgm-small" x="122.0" y="312" text-anchor="start" style="font-size:11.5px">ZMQ · detokenizer_ipc_name</text>
+<path class="dgm-line-accent" d="M340 359.0 L650 359.0 L650 76.0 L566 76.0" marker-end="url(#arrow-accent)"/>
+<text class="dgm-small" x="497" y="350.0" text-anchor="middle" style="font-size:11.5px">ZMQ · tokenizer_ipc_name</text>
+<text class="dgm-small" x="350.0" y="424" text-anchor="middle" style="font-size:11.5px">Output travels forward to the TokenizerManager, not back to the scheduler:</text>
+<text class="dgm-small" x="350.0" y="442" text-anchor="middle" style="font-size:11.5px">that is the process holding the client's awaiting coroutine.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
+</svg>
+<figcaption>The four processes and the sockets between them. Under tensor parallelism only rank&nbsp;0 receives from the front end; it broadcasts to its peers so every rank sees the same batch.</figcaption>
+</figure>
+<p>Note the cycle: the detokenizer does not reply to the scheduler, it sends <em>forward</em> to the
+tokenizer manager, which holds the client's async future. Chapter 4 walks that return path.</p>
+<p>The split buys three things. <strong>Parallelism</strong> — tokenization and detokenization run
+genuinely concurrently with GPU work, not interleaved by the GIL. <strong>Isolation</strong> — a
+tokenizer crash on malformed input does not take down a process holding 70 GB of model
+weights. <strong>Cadence</strong> — the scheduler is a tight synchronous loop with no <code>await</code> in it,
+while the front end is fully async; forcing either into the other's model would be
+painful.</p>
+<p>The topology is constructed in <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L1052"><code>python/sglang/srt/entrypoints/engine.py:1052</code></a>
+<code>_launch_subprocesses</code>, whose docstring states it plainly:</p>
+<blockquote>
+<p>Launch the TokenizerManager in the main process, the Scheduler in a subprocess, and the
+DetokenizerManager in another subprocess.</p>
+</blockquote>
+<p>Its opening steps are the server's entire bootstrap, in order:</p>
+<pre><code class="language-python">        startup_tic = time.perf_counter()
+
+        # Configure global environment
+        configure_logger(server_args)
+        _set_envs_and_config(server_args)
+        ...
+        server_args.check_server_args()
+
+        # Allocate ports for inter-process communications
+        if port_args is None:
+            port_args = PortArgs.init_new(server_args)
+</code></pre>
+<p><code>_set_envs_and_config</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L1620"><code>python/sglang/srt/entrypoints/engine.py:1620</code></a>) sets process-global
+state — environment variables, multiprocessing start method, allocator settings — that must
+be in place <em>before</em> any subprocess forks, because subprocesses inherit it. Startup-order
+bugs in this file tend to be of exactly that form.</p>
+<p><code>PortArgs</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/server_args.py#L9696"><code>python/sglang/srt/server_args.py:9696</code></a>) is the address book, and reading its
+fields is the fastest way to learn the topology:</p>
+<pre><code class="language-python">class PortArgs:
+    # The ipc filename for tokenizer to receive inputs from detokenizer (zmq)
+    tokenizer_ipc_name: str
+    # The ipc filename for scheduler (rank 0) to receive inputs from tokenizer (zmq)
+    scheduler_input_ipc_name: str
+    # The ipc filename for detokenizer to receive inputs from scheduler (zmq)
+    detokenizer_ipc_name: str
+
+    # The port for nccl initialization (torch.dist)
+    nccl_port: int
+
+    # The ipc filename for rpc call between Engine and Scheduler
+    rpc_ipc_name: str
+
+    # The ipc filename for Scheduler to send metrics
+    metrics_ipc_name: str
+</code></pre>
+<p>Each comment names an edge in the diagram above. Note "scheduler (rank 0)": under tensor
+parallelism only rank 0 receives from the tokenizer, and it broadcasts to its peers.
+Chapter 4 explains why that asymmetry exists and what it costs.</p>
+<p><code>_launch_scheduler_processes</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L848"><code>python/sglang/srt/entrypoints/engine.py:848</code></a>) does the
+spawning, and its first decision shows the topology is not fixed:</p>
+<pre><code class="language-python">        use_dp_controller = (
+            server_args.dp_size &gt; 1 or server_args.ep_join_mode == "scale"
+        )
+</code></pre>
+<p>With data parallelism there is an extra process in front — a
+<code>DataParallelController</code> that routes requests across whole replicas. Without it, schedulers
+are spawned directly, one per (pipeline rank, tensor rank) pair computed by
+<code>_calculate_rank_ranges</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L1794"><code>python/sglang/srt/entrypoints/engine.py:1794</code></a>). Chapter 16
+covers what those ranks mean.</p>
+<p><code>_launch_detokenizer_subprocesses</code> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L966"><code>python/sglang/srt/entrypoints/engine.py:966</code></a>)
+completes the picture.</p>
+<hr />
+<h2 id="one-controller-or-one-per-rank"><a class="header" href="#one-controller-or-one-per-rank">One controller, or one per rank?</a></h2>
+<p>The diagram hides a decision that shapes everything downstream, and it is worth pulling out
+because the alternative is what several other systems chose.</p>
+<p>When a model is split across eight GPUs, somebody has to decide what the next batch is. There
+are two ways to arrange that.</p>
+<p><strong>Single controller.</strong> One process owns the scheduling state and drives eight worker
+processes, sending each an instruction per step. This is the shape of a classic
+parameter-server or Ray-style actor system, and it is how vLLM originally drove its workers.
+It is easy to reason about: there is exactly one copy of the truth.</p>
+<p><strong>Multi-controller, or SPMD</strong> — <em>single program, multiple data</em>. Every rank runs the same
+scheduler code over the same inputs and reaches the same conclusions independently. Nobody
+issues instructions; the ranks stay in step because they are computing the same function of
+the same data. This is the shape of MPI programs, and of Megatron-LM's training loop.</p>
+<p>SGLang is SPMD, with one qualification: the ranks do not re-derive the request stream
+independently, because they cannot — requests arrive over a socket, and a socket delivers to
+one reader. Rank 0 receives, then <code>broadcast_pyobj</code> hands the identical Python objects to
+every peer. From that point the ranks are running the same program on the same data, and
+each independently concludes that the same batch should run.</p>
+<p>The reason to prefer it here is per-step latency. A decode step is on the order of ten
+milliseconds. A single controller would need a round trip to every rank inside that budget —
+send the instruction, wait for eight acknowledgements, gather results — and each round trip
+crosses a process boundary, a serializer, and a socket. That overhead does not shrink as the
+model gets faster; it grows as a fraction of the step as GPUs get quicker. SPMD pays a
+single broadcast of a small object instead, on a collective the ranks are already
+synchronized on for the forward pass itself.</p>
+<p>The cost is that <em>every rank must stay deterministic in lockstep</em>. Two ranks that disagree
+about which requests are in the batch will launch different collectives and deadlock — not
+crash, deadlock, which is a much worse failure to debug. This is why so much of the
+scheduler is careful about ordering: dictionaries iterated in insertion order, sorts made
+total by tie-breaking on request id, decisions taken from broadcast data rather than local
+timing. Chapter 5's loop and Chapter 6's batching policy both read differently once you know
+that every line of them is running eight times in parallel and must agree eight times over.</p>
+<p>The three-way split of the <em>front end</em> is a different argument entirely. Tokenization and
+detokenization are pure CPU string work, they are on the critical path of every request, and
+in CPython they would hold the GIL. Putting them in the scheduler's process would mean the
+GPU waits on a regex. So they are separated for concurrency, while the schedulers are
+replicated for scale — two different problems that happen to be solved with the same
+primitive.</p>
+<hr />
+<h2 id="three-front-doors"><a class="header" href="#three-front-doors">Three front doors</a></h2>
+<p><strong>The HTTP server</strong> is the common path.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/http_server.py#L270"><code>python/sglang/srt/entrypoints/http_server.py:270</code></a> <code>lifespan</code> handles FastAPI startup, and
+the endpoints follow: <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/http_server.py#L874"><code>:874</code></a> <code>generate_request</code> for the native API, plus the
+OpenAI-compatible surface in <code>python/sglang/srt/entrypoints/openai/</code>.</p>
+<p>One endpoint is worth singling out now.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/http_server.py#L646"><code>python/sglang/srt/entrypoints/http_server.py:646</code></a> <code>health_generate</code> serves <code>/health</code> and
+<code>/health_generate</code>, and it does <em>not</em> return 200 unconditionally — it runs a real
+generation through the whole pipeline. That is a deliberate choice: in a multi-process
+engine, the HTTP process can be perfectly healthy while the scheduler is deadlocked or the
+GPU has fallen off the bus. A health check that only proves the web server is up would
+keep a broken replica in the load balancer.</p>
+<p><strong>The Engine</strong> is the same runtime without HTTP.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L199"><code>python/sglang/srt/entrypoints/engine.py:199</code></a> <code>class Engine</code> embeds everything in your own
+process, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L352"><code>:352</code></a> <code>generate</code> is a direct call. This is the path used for offline batch
+inference and for RL rollouts, where an HTTP hop per rollout would be pure overhead.
+Chapter 12 covers the weight-update API that makes the RL case work.</p>
+<p><strong>gRPC</strong> exists for deployments that want a binary protocol; <code>serve_grpc</code> and the Rust gRPC
+server are alternate front ends onto the same <code>TokenizerManager</code>.</p>
+<p><code>python/sglang/launch_server.py</code> picks between them, and is short enough to read whole:</p>
+<pre><code class="language-python">def run_server(server_args):
+    """Run the server based on the gRPC flags and server_args.encoder_only."""
+    if server_args.encoder_only:
+        ...
+    elif server_args.smg_grpc_mode:
+        ...
+    elif server_args.use_ray:
+        ...
+    else:
+        # Default mode: HTTP mode.
+        from sglang.srt.entrypoints.http_server import launch_server
+
+        launch_server(server_args)
+</code></pre>
+<p>Every import is inside a branch. That is not stylistic — importing the Ray or gRPC stacks
+costs seconds of startup, and a serving engine that must restart under load cannot afford
+to pay for paths it will not use.</p>
+<hr />
+<h2 id="the-fourth-front-door-the-dsl"><a class="header" href="#the-fourth-front-door-the-dsl">The fourth front door: the DSL</a></h2>
+<p>The project is named for its <strong>S</strong>tructured <strong>G</strong>eneration <strong>Lang</strong>uage, and that language
+is still in the tree.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/lang/api.py#L75"><code>python/sglang/lang/api.py:75</code></a> <code>gen</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/lang/api.py#L236"><code>python/sglang/lang/api.py:236</code></a> <code>select</code>, and the role helpers
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/lang/api.py#L253"><code>python/sglang/lang/api.py:253</code></a> <code>system</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/lang/api.py#L257"><code>python/sglang/lang/api.py:257</code></a> <code>user</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/lang/api.py#L261"><code>python/sglang/lang/api.py:261</code></a> <code>assistant</code> are the primitives. A program looks like
+ordinary Python with these calls embedded, and <code>python/sglang/lang/ir.py</code> turns it into an IR —
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/lang/ir.py#L451"><code>python/sglang/lang/ir.py:451</code></a> <code>SglGen</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/lang/ir.py#L533"><code>python/sglang/lang/ir.py:533</code></a> <code>SglSelect</code>,
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/lang/ir.py#L552"><code>python/sglang/lang/ir.py:552</code></a> <code>SglFork</code> — that the runtime can reason about as a whole
+rather than as opaque strings.</p>
+<p>The payoff is co-design. Two of the IR nodes are the argument:</p>
+<p><strong><code>SglFork</code></strong> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/lang/ir.py#L552"><code>python/sglang/lang/ir.py:552</code></a>) branches a program into several
+continuations that share everything before the branch. To a plain HTTP API that is <em>n</em>
+independent requests, each re-sending and re-prefilling the shared context. To SGLang it is
+one prefix in the radix tree of Chapter 10 with <em>n</em> children — the shared part is computed
+once because the runtime can <em>see</em> that it is shared.</p>
+<p><strong><code>SglSelect</code></strong> (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/lang/ir.py#L533"><code>python/sglang/lang/ir.py:533</code></a>) picks among a fixed set of options. Without
+runtime support that means generating each option and comparing likelihoods. With it, the
+options are scored against a shared prefix in one pass.
+<code>python/sglang/lang/choices.py</code> holds the scoring methods.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/lang/interpreter.py#L274"><code>python/sglang/lang/interpreter.py:274</code></a> <code>StreamExecutor</code> runs the IR, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/lang/interpreter.py#L852"><code>:852</code></a> <code>ProgramState</code>
+holds a program's variables, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/lang/interpreter.py#L57"><code>:57</code></a> <code>run_program</code> is the entry point.
+<code>python/sglang/lang/tracer.py</code> provides the alternative: trace the program into a graph
+before executing, so the runtime can see the whole structure in advance.</p>
+<p>This is the historical seed of the whole project — prefix sharing was originally motivated
+by <em>programs</em> that obviously share prefixes, before it turned out that ordinary chat
+traffic shares them just as much.</p>
+<hr />
+<h2 id="reading-the-flag-surface"><a class="header" href="#reading-the-flag-surface">Reading the flag surface</a></h2>
+<p><code>python/sglang/srt/server_args.py</code> is about 9,900 lines. Nobody reads it linearly, and this
+book does not ask you to. Read it as a table of contents: the argument groups partition the
+feature space, and each group names a subsystem.</p>
+<p>Three habits make it tractable:</p>
+<ol>
+<li><strong>Search by flag, then read the surrounding group.</strong> The neighbours of an argument are
+almost always the rest of its subsystem.</li>
+<li><strong>Read <code>check_server_args</code> and the <code>__post_init__</code> logic.</strong> The constraints between
+flags encode which combinations actually work — often the only place that is written
+down.</li>
+<li><strong>Treat a default as a claim.</strong> <code>--mem-fraction-static</code>'s default is the outcome of the
+Chapter 9 memory calculation; <code>--chunked-prefill-size</code>'s is the Chapter 6 latency trade.</li>
+</ol>
+<p>Appendix A groups the arguments by subsystem with pointers into the chapters.</p>
+<hr />
+<h2 id="the-repos-own-rules-as-design-documents"><a class="header" href="#the-repos-own-rules-as-design-documents">The repo's own rules as design documents</a></h2>
+<p><code>.claude/rules/</code> contains short files stating invariants the codebase enforces. They were
+written for automated contributors, but they are the most concentrated design documentation
+in the repository — each one is a hazard the architecture has already hit.</p>
+<p><strong><code>.claude/rules/schedule-batch-out-of-place-mutation.md</code></strong> forbids in-place mutation of
+<code>ScheduleBatch</code> fields:</p>
+<blockquote>
+<p>Why: <code>copy()</code> snapshots and the overlap scheduler's queued references rely on old objects
+staying frozen.</p>
+</blockquote>
+<p>That is Chapter 5's overlap scheduler leaking into a style rule. Because step <em>N+1</em> is
+prepared while step <em>N</em> is still in flight, two batch objects are live at once and the
+older one must not change underneath the GPU.</p>
+<p><strong><code>.claude/rules/forward-batch-init-new-purity.md</code></strong> requires <code>ForwardBatch.init_new</code> to
+treat its input <code>ScheduleBatch</code> as read-only — the same concern one layer down (Chapter 7).
+It also lists its own tolerated exceptions, which is unusually honest for a style rule and
+tells you where the abstraction is still leaking.</p>
+<p><strong><code>.claude/rules/no-dataclasses.md</code></strong> requires <code>msgspec.Struct</code> over <code>@dataclass</code>, partly
+for strict typing and partly because these objects cross process boundaries and are
+candidates for a future Rust port (Chapter 18's gateway is the precedent).</p>
+<p><strong><code>.claude/rules/no-getattr-defensive.md</code></strong> bans defensive <code>getattr(obj, "field", default)</code>.
+In a system with this many configuration permutations, a silently-swallowed
+<code>AttributeError</code> becomes a wrong answer rather than a crash.</p>
+<p><strong><code>.claude/rules/general-code-style.md</code></strong> collects the rest, including "avoid mixins" — a
+rule that Chapter 5 will show <code>Scheduler</code> violating twenty-two times over, for reasons the
+<code>.claude/skills/large-class-style/SKILL.md</code> playbook explains.</p>
+<p>Read all five before your first patch. They will save you a review cycle each.</p>
+<hr />
+<p>Part II starts now: one request, from socket to streamed token, one chapter per stage.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 3 in one page</p><ol class="bk-card-arg"><li>Tokenization, GPU work, and detokenization are split across processes because in one process the GIL would make the GPU wait on string handling.</li><li>The schedulers are SPMD: every rank runs the same code over broadcast data and independently reaches the same conclusion.</li><li>That is chosen for per-step latency — a single controller would need a round trip per rank inside a ten-millisecond decode step.</li><li>The price is that ranks must stay deterministic in lockstep; disagreement deadlocks rather than crashes.</li><li>Output travels forward to the tokenizer manager, not back to the scheduler, because that is where the client's future lives.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Processes in the default topology</th><td>4</td></tr><tr><th scope='row'>Schedulers receiving from the front end</th><td>rank 0 only</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Topology construction</th><td><code>python/sglang/srt/entrypoints/engine.py</code></td></tr><tr><th scope='row'>Port and socket names</th><td><code>python/sglang/srt/server_args.py</code></td></tr><tr><th scope='row'>HTTP surface</th><td><code>python/sglang/srt/entrypoints/http_server.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch02-the-machine-underneath.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="part2.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch02-the-machine-underneath.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="part2.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

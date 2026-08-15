@@ -1,0 +1,584 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>14. Attention Backends - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item expanded "><a href="ch14-attention-backends.html" class="active">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch14-attention-backends.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="14-attention-backends"><a class="header" href="#14-attention-backends">14. Attention Backends</a></h1>
+<blockquote>
+<p><em>Attention is pluggable because hardware, sequence shape, and kernel maturity all vary
+independently — and the plug is a two-phase metadata/kernel contract.</em></p>
+</blockquote>
+<p>Chapter 13 ended with a single line in a model file: <code>self.attn = RadixAttention(...)</code>.
+Behind that line is the most heavily optimized operation in machine learning, and there is
+no single best implementation of it.</p>
+<p>The variation runs along four independent axes. Hardware — NVIDIA, AMD, Intel, Ascend, TPU,
+CPU. Sequence shape — a 100,000-token prefill and a batch-256 single-token decode are
+different problems wearing the same name. Attention variant — standard, grouped-query,
+DeepSeek's compressed latent form, sparse, sliding-window, or not attention at all. And
+maturity, because a new kernel library ships a fast path for one case long before it covers
+the rest.</p>
+<p>The product of those axes is a matrix no single kernel fills. So SGLang defines a contract
+and lets implementations compete for each cell.</p>
+<p>This is also where the book first goes below the PyTorch line. The Triton kernels are
+Python, and reading one is the clearest way to see what "paged attention" actually means:
+not a metaphor, but an address computation performed inside the inner loop.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 12 min</span></p><ul><li>State the two-phase metadata/kernel contract and why it exists</li><li>Derive FlashAttention's tiling and online-softmax rescaling</li><li>Read a paged attention kernel signature and name what each argument is</li><li>Explain what MLA changes about attention's memory layout</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="the-contract"><a class="header" href="#the-contract">The contract</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/base_attn_backend.py#L33"><code>python/sglang/srt/layers/attention/base_attn_backend.py:33</code></a> <code>AttentionBackend</code> documents
+itself unusually well:</p>
+<pre><code class="language-python">class AttentionBackend(ABC):
+    """The base class of attention backends.
+
+    Forward-data init contract (3 methods):
+
+      - ``init_forward_metadata(fb)`` — eager entry point. Default is a wrapper
+        that calls ``_out_graph(fb)`` then ``_in_graph(fb)``. Backends may
+        override to keep an independent eager body.
+      - ``init_forward_metadata_out_graph(fb, in_capture=False)`` — per-iter
+        metadata prep, runs outside ``with graph.capture():``. Capture
+        sites pass ``in_capture=True``; replay/eager use the default
+        ``False``.
+      - ``init_forward_metadata_in_graph(fb)`` — graph-recordable static-shape
+        GPU op, runs inside ``with graph.capture():`` at capture time and
+        is auto-replayed by ``graph.replay()``. Default is no-op.
+    """
+</code></pre>
+<p>The essential split is <strong>metadata once per forward, kernel once per layer</strong>. A batch's page
+tables, sequence-length arrays, and workspace do not change between layer 3 and layer 40,
+so computing them 80 times would be pure waste. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/base_attn_backend.py#L62"><code>:62</code></a> <code>init_forward_metadata</code> prepares;
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/base_attn_backend.py#L261"><code>:261</code></a> <code>forward_decode</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/base_attn_backend.py#L274"><code>:274</code></a> <code>forward_extend</code> consume. Nearly every backend bug is a
+violation of that split — metadata rebuilt per layer (slow) or metadata stale across layers
+(wrong).</p>
+<p>The three-way split of metadata prep is Chapter 15 intruding. CUDA graph capture records
+GPU operations for replay, but only <em>some</em> work can be recorded:</p>
+<pre><code class="language-python">    def init_forward_metadata_in_graph(self, forward_batch: ForwardBatch):
+        """Graph-recordable static-shape GPU op.
+        ...
+        Lint contract for overrides: body must NOT call ``.item()`` /
+        ``.cpu()`` / ``.tolist()`` / dynamic-shape ``torch.empty()``.
+        Such ops belong in :py:meth:`init_forward_metadata_out_graph`; they
+        cannot be recorded into a cuda graph.
+        """
+</code></pre>
+<p>A "lint contract" in a docstring: <code>.item()</code> synchronizes with the host and cannot be
+recorded; a dynamically-shaped <code>torch.empty()</code> allocates at a different address each replay.
+Work that <em>can</em> be recorded goes in-graph and is replayed for free; work that cannot goes
+out-of-graph and runs every iteration. Splitting them correctly is most of what makes a
+backend graph-compatible.</p>
+<p>The class also documents its own deprecations — the older
+<code>init_forward_metadata_capture_cuda_graph</code> / <code>..._replay_cuda_graph</code> overrides are gone,
+with a migration note for out-of-tree backends. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/base_attn_backend.py#L160"><code>:160</code></a> <code>init_cuda_graph_state</code> preallocates
+the static buffers, and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/base_attn_backend.py#L187"><code>:187</code></a> <code>get_cuda_graph_seq_len_fill_value</code> supplies the padding
+value for unused slots.</p>
+<hr />
+<h2 id="the-reference-implementation"><a class="header" href="#the-reference-implementation">The reference implementation</a></h2>
+<p><code>python/sglang/srt/layers/attention/flashinfer_backend.py</code> is the default on NVIDIA and the
+one to read for how the contract is met in earnest — 2,400 lines, mostly metadata
+management.</p>
+<p>FlashInfer's own API is built around <em>wrappers</em>: objects that plan a decode or prefill given
+page-table layout and then execute against it. The plan step is expensive and shape-
+dependent, which maps precisely onto the out-of-graph phase, so most of the backend is
+about creating wrappers, keeping them alive across iterations, and pointing them at the
+right buffers.</p>
+<p>Three responsibilities dominate:</p>
+<p><strong>Page tables.</strong> Chapter 9's <code>req_to_token</code> rows must become the <code>kv_indptr</code> / <code>kv_indices</code>
+format FlashInfer expects — a CSR-like structure where <code>indptr[i]</code> marks where sequence
+<em>i</em>'s page list begins. Building this per forward, on the GPU, without host
+synchronization, is the bulk of the metadata code.</p>
+<p><strong>Workspace.</strong> FlashInfer needs scratch memory, allocated once and reused. Under CUDA
+graphs it must be at a <em>stable address</em>, since the recorded kernel holds the pointer.</p>
+<p><strong>Mode dispatch.</strong> Decode, extend, mixed, and speculative verification each use different
+wrappers with different plans.</p>
+<p><code>python/sglang/srt/layers/attention/triton_backend.py</code> is the portable fallback and is far
+easier to read whole. It has no external dependency, runs anywhere Triton runs, and is
+where a new feature usually lands first.</p>
+<hr />
+<h2 id="the-algorithm-every-backend-implements"><a class="header" href="#the-algorithm-every-backend-implements">The algorithm every backend implements</a></h2>
+<p>All of these backends compute the same function, and they all compute it the same <em>way</em> —
+the way FlashAttention introduced. It is worth deriving, because every parameter name in the
+kernel below is a term in it.</p>
+<p>Attention is</p>
+<pre><code>O = softmax(QKᵀ / √d) V
+</code></pre>
+<p>and the naive implementation materializes <code>S = QKᵀ</code>, an <code>N × N</code> matrix, writes it to HBM,
+reads it back to softmax it, writes it again, reads it again to multiply by V. For
+<em>N</em> = 8192 at FP16 that is 128 MB per head per layer, moved four times. The arithmetic is
+<em>O</em>(<em>N</em>²<em>d</em>) but the <em>memory traffic</em> is Θ(<em>N</em>² + <em>Nd</em>), and Chapter 1 says memory traffic is what
+costs.</p>
+<p>Dao et al. (2022) observed that the matrix never needs to exist. The obstacle is softmax:
+its denominator is a sum over the entire row, so you apparently cannot emit any output until
+you have seen every key. <strong>Online softmax</strong> (Milakov and Gimelshein, 2018) removes the
+obstacle. Track a running maximum and a running normalizer, and rescale as you go:</p>
+<pre><code>m_j = max(m_{j−1}, x_j)
+d_j = d_{j−1} · e^(m_{j−1} − m_j)  +  e^(x_j − m_j)
+</code></pre>
+<p>Every time the running maximum rises, the accumulated denominator is corrected by
+<code>e^(m_old − m_new)</code>. By induction, after the last element <code>m</code> is the true row maximum and
+<code>d</code> the true denominator — the same numbers the two-pass algorithm computes, in one pass and
+with the same numerical stability.</p>
+<p>FlashAttention applies exactly that to the output accumulator as well. Process K and V in
+tiles; for each tile compute the local scores, update <code>m</code> and <code>ℓ</code>, and rescale the partial
+output before adding the tile's contribution:</p>
+<pre><code>O_i ← diag(ℓ_new)⁻¹ [ diag(ℓ_old) e^(m_old − m_new) O_i  +  e^(m̃ − m_new) P̃ V_j ]
+</code></pre>
+<p>Tiles are sized to fit SRAM: with on-chip memory <em>M</em>, the paper takes <em>B_c</em> = ⌈<em>M</em>/4<em>d</em>⌉
+columns and <em>B_r</em> = min(⌈<em>M</em>/4<em>d</em>⌉, <em>d</em>) rows. The score tile is created in SRAM, consumed in
+SRAM, and discarded. HBM never sees it.</p>
+<p>The result is Theorem 2 of the paper, and it is the reason this is not merely a constant-
+factor optimization:</p>
+<div class="table-wrapper"><table><thead><tr><th></th><th>HBM accesses</th></tr></thead><tbody>
+<tr><td>Standard attention</td><td>Θ(<em>Nd</em> + <em>N</em>²)</td></tr>
+<tr><td>FlashAttention</td><td>Θ(<em>N</em>²<em>d</em>²<em>M</em>⁻¹)</td></tr>
+</tbody></table>
+</div>
+<p>With <em>d</em> = 128 and <em>M</em> ≈ 100 KB, <em>d</em>²/<em>M</em> is around 0.16 — so FlashAttention moves several
+times less memory, and the advantage <em>grows</em> with SRAM. Proposition 3 adds that no exact
+attention algorithm can do asymptotically better across the range of SRAM sizes. This is an
+optimality result about memory traffic, which is why every serious attention kernel written
+since has this shape.</p>
+<p>Two properties of the algorithm reappear throughout the rest of this chapter.</p>
+<p><strong>It stores <em>O</em>(<em>N</em>) extra state, not <em>O</em>(<em>N</em>²)</strong> — just <em>m</em> and <em>ℓ</em> per row. Those are the
+<code>Att_Lse</code> outputs below: the log-sum-exp statistics that let partial results be combined.</p>
+<p><strong>It is associative across tiles.</strong> Two partial outputs computed over disjoint key ranges
+can be merged, given their log-sum-exps, by the same rescaling formula. That is what permits
+splitting one sequence's keys across many thread blocks — the <code>num_kv_splits</code> parameter — and
+combining them in a second pass. It is also what makes Chapter 16's ring and context
+parallelism possible at all, and what Chapter 22's determinism work has to constrain: the
+merge is associative in exact arithmetic, not in floating point, so <em>how many</em> splits there
+are changes the last bits of the answer.</p>
+<hr />
+<h2 id="down-to-the-kernel"><a class="header" href="#down-to-the-kernel">Down to the kernel</a></h2>
+<p>The Triton backend's kernels are in <code>python/sglang/kernels/ops/attention/</code>, and they are
+Python — the best place in the repository to watch paged attention actually happen.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/kernels/ops/attention/decode_attention.py#L97"><code>python/sglang/kernels/ops/attention/decode_attention.py:97</code></a> <code>_fwd_kernel_stage1</code> is the
+decode kernel. Its parameter list is the chapter in miniature:</p>
+<pre><code class="language-python">def _fwd_kernel_stage1(
+    Q,
+    K_Buffer,
+    V_Buffer,
+    sm_scale_withk,
+    kv_indptr,
+    kv_indices,
+    Att_Out,
+    Att_Lse,
+    num_kv_splits,
+    stride_qbs,
+    stride_qh,
+    stride_buf_kbs,
+    stride_buf_kh,
+    ...
+    # Page-aware strides (used when PAGE_SIZE &gt; 1). For
+    # PAGE_SIZE == 1 the address math degenerates and these are unused
+    # (Triton specializes the dead branch away at compile time).
+    stride_buf_kpage,
+    stride_buf_ktok,
+    ...
+    kv_group_num: tl.constexpr,
+    BLOCK_DMODEL: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    ...
+    PAGE_SIZE: tl.constexpr,
+</code></pre>
+<p><code>K_Buffer</code> and <code>V_Buffer</code> are Chapter 9's pools, passed whole. <code>kv_indptr</code> and <code>kv_indices</code>
+are the page table: the kernel does not receive a contiguous per-sequence tensor, it
+receives the pool plus a directory and does the indirection itself. <strong>That is what "paged
+attention" means at the kernel level</strong> — the address computation Chapter 9 described,
+performed per block inside the kernel.</p>
+<figure>
+<svg viewBox="0 0 700 326" role="img" aria-label="Query rows, a page table, and the whole KV pool handed to the attention kernel">
+<title>What a paged attention kernel receives</title>
+<rect class="dgm-box" x="20" y="54" width="140" height="66" rx="6"/>
+<text class="dgm-label" x="90.0" y="73.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">Q</text>
+<text class="dgm-small" x="90.0" y="91.4" text-anchor="middle" style="font-size:11.5px">one row per</text>
+<text class="dgm-small" x="90.0" y="109.4" text-anchor="middle" style="font-size:11.5px">sequence in batch</text>
+<rect class="dgm-box-accent" x="196" y="44" width="232" height="86" rx="6"/>
+<text class="dgm-label" x="312.0" y="64.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">kv_indptr / kv_indices</text>
+<text class="dgm-small" x="312.0" y="82.4" text-anchor="middle" style="font-size:11.5px">indptr[i] → where sequence i's</text>
+<text class="dgm-small" x="312.0" y="100.4" text-anchor="middle" style="font-size:11.5px">page list begins</text>
+<text class="dgm-small" x="312.0" y="118.4" text-anchor="middle" style="font-size:11.5px">indices → the page numbers</text>
+<rect class="dgm-box" x="464" y="44" width="216" height="86" rx="6"/>
+<text class="dgm-label" x="572.0" y="64.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">K_Buffer / V_Buffer</text>
+<text class="dgm-small" x="572.0" y="82.4" text-anchor="middle" style="font-size:11.5px">the whole pool passed in</text>
+<text class="dgm-small" x="572.0" y="100.4" text-anchor="middle" style="font-size:11.5px">as one tensor — never a</text>
+<text class="dgm-small" x="572.0" y="118.4" text-anchor="middle" style="font-size:11.5px">per-sequence copy</text>
+<rect class="dgm-box-accent" x="196" y="196" width="484" height="66" rx="6"/>
+<text class="dgm-label" x="438.0" y="215.4" text-anchor="middle" font-weight="600" style="font-size:13.0px">the kernel does the indirection itself</text>
+<text class="dgm-small" x="438.0" y="233.4" text-anchor="middle" style="font-size:11.5px">for each block of keys: look up the page, load it,</text>
+<text class="dgm-small" x="438.0" y="251.4" text-anchor="middle" style="font-size:11.5px">then accumulate a partial softmax</text>
+<path class="dgm-line" d="M160 87.0 L190 87.0" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M428 87.0 L458 87.0" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M312.0 130 L312.0 190" marker-end="url(#arrow)"/>
+<path class="dgm-line" d="M572.0 130 L572.0 190" marker-end="url(#arrow)"/>
+<text class="dgm-small" x="350.0" y="294" text-anchor="middle" style="font-size:11.5px">No [seq_len × seq_len] score matrix is ever materialised: each block emits a partial</text>
+<text class="dgm-small" x="350.0" y="312" text-anchor="middle" style="font-size:11.5px">softmax and a log-sum-exp, and a second stage combines them.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-rule)"/></marker><marker id="arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" style="fill:var(--dgm-accent)"/></marker></defs>
+</svg>
+<figcaption>“Paged attention” is not a metaphor: the address arithmetic of Chapter&nbsp;8 happens inside the kernel's inner loop.</figcaption>
+</figure>
+<p><code>kv_group_num</code> is the GQA ratio from Chapter 13 — how many query heads share one KV head.
+<code>PAGE_SIZE</code> is a <code>tl.constexpr</code>, so Triton compiles a separate specialization per page size
+and, as the comment notes, deletes the page arithmetic entirely when it is 1.</p>
+<p>The <code>Att_Lse</code> output and <code>num_kv_splits</code> parameter are the flash-attention structure. A
+sequence's KV is split across thread blocks, each computing a partial softmax over its
+chunk and emitting a log-sum-exp alongside it; a second stage
+(<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/kernels/ops/attention/decode_attention.py#L732"><code>python/sglang/kernels/ops/attention/decode_attention.py:732</code></a> <code>_fwd_kernel_stage2</code>)
+combines the partials using those LSEs. This is what makes attention memory-bounded rather
+than memory-quadratic: no <code>[seq_len, seq_len]</code> matrix is ever materialized.</p>
+<p>The first comment in the body is a good specimen of production kernel code:</p>
+<pre><code class="language-python">    # int64 to avoid overflow of flat offsets into Mid_O when
+    # batch * num_head * max_kv_splits * head_dim exceeds 2**31.
+</code></pre>
+<p>At batch 256, 64 heads, 32 splits, and 128 head dim the flat offset exceeds a 32-bit
+integer. The default index type silently wraps. This is the class of bug that appears only
+at scale and corrupts rather than crashes.</p>
+<p><code>python/sglang/kernels/ops/attention/extend_attention.py</code> is the prefill counterpart, and
+its extra difficulty is that an extend attends over <em>both</em> cached prefix KV and the new
+tokens — two different memory layouts in one kernel.</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/kernels/ops/attention/decode_attention.py#L384"><code>python/sglang/kernels/ops/attention/decode_attention.py:384</code></a> <code>_fwd_grouped_kernel_stage1</code>
+is a GQA-specialized variant: when many query heads share one KV head, loading that KV once
+for the whole group is a large saving, and it is worth a separate kernel to express.</p>
+<hr />
+<h2 id="registration-and-selection"><a class="header" href="#registration-and-selection">Registration and selection</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/attention_registry.py#L34"><code>python/sglang/srt/layers/attention/attention_registry.py:34</code></a> <code>register_attention_backend</code>
+is a decorator-based registry, with factories per backend (<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/attention_registry.py#L43"><code>:43</code></a>
+<code>create_flashinfer_backend</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/attention_registry.py#L70"><code>:70</code></a> <code>create_trtllm_mla_backend</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/attention_registry.py#L111"><code>:111</code></a>
+<code>create_aiter_backend</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/attention_registry.py#L125"><code>:125</code></a> <code>create_ascend_backend</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/layers/attention/attention_registry.py#L134"><code>:134</code></a> <code>create_dsa_backend</code>, and
+more).</p>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L927"><code>python/sglang/srt/model_executor/model_runner.py:927</code></a> <code>init_attention_backends</code> resolves
+<code>--attention-backend</code> — or separate <code>--prefill-attention-backend</code> and
+<code>--decode-attention-backend</code>, since the best choice differs by phase. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L266"><code>:266</code></a>
+<code>resolve_draft_attention_backend</code> picks one for the draft model in Chapter 19, which may
+differ again.</p>
+<hr />
+<h2 id="mla-needs-its-own-everything"><a class="header" href="#mla-needs-its-own-everything">MLA needs its own everything</a></h2>
+<p>DeepSeek's multi-head latent attention takes GQA's premise — that the KV cache is the thing
+worth shrinking — and pushes it past what sharing heads can achieve.</p>
+<p>GQA reduces the <em>number</em> of KV heads. MLA instead compresses what each token stores. A single
+down-projection maps the hidden state to a latent vector, and per-head keys and values are
+reconstructed from it on the fly:</p>
+<pre><code>c_t  = W_DKV · h_t          (the only thing cached, dimension d_c)
+k_t  = W_UK  · c_t
+v_t  = W_UV  · c_t
+</code></pre>
+<p>With <em>d_c</em> = 4·<em>d_h</em> against a full cache of 2·<em>n_h</em>·<em>d_h</em>, DeepSeek-V2 reports a <strong>93.3%</strong>
+reduction in KV bytes per token versus its own dense predecessor — roughly what GQA with
+2.25 groups would cost, at better quality than full multi-head attention.</p>
+<p>The part that makes it more than compression is that <strong>the up-projections need never be
+computed at all</strong>. Attention scores are <em>q</em>ᵀ<em>k</em> = <em>q</em>ᵀ(<em>W_UK c</em>), which is (<em>W_UK</em>ᵀ<em>q</em>)ᵀ<em>c</em>: fold
+<em>W_UK</em> into the query projection and attend directly against the latent. Fold <em>W_UV</em> into the
+output projection and the values never materialize either. What is stored is what the kernel
+reads.</p>
+<p>Except that RoPE breaks it. A rotary embedding is a position-dependent rotation applied
+<em>after</em> projection, so the fold above would require <em>R</em>(<em>mθ</em>)<em>W_UK</em> — a different matrix at
+every position, which cannot be absorbed into a fixed weight. DeepSeek's answer is
+<strong>decoupled RoPE</strong>: carry a small extra set of dimensions that exist only to hold position
+information, apply RoPE to those, and leave the compressed path un-rotated. The cached vector
+is the concatenation of a rotation-free latent and a shared rotary key. It is a workaround
+that looks arbitrary until you know what it is protecting.</p>
+<p>The engine-level consequence is the one this chapter cares about. Chapter 9 showed the pool
+(<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L3932"><code>python/sglang/srt/mem_cache/memory_pool.py:3932</code></a> <code>MLATokenToKVPool</code>); what follows from it
+is that the <em>stored</em> form is not the form ordinary attention consumes, and the head dimension
+the kernel sees is not the head dimension the model declares. Whether decompression happens
+before the kernel or inside it — whether the absorption above is exploited or the latent is
+expanded into conventional K and V first — is a genuine design choice, and it goes different
+ways depending on batch shape: absorbing wins in decode where the cache read dominates, while
+expanding can win in prefill where there is arithmetic to spare.</p>
+<p>Hence a family of MLA backends: <code>python/sglang/srt/layers/attention/flashinfer_mla_backend.py</code>,
+<code>python/sglang/srt/layers/attention/flashmla_backend.py</code>,
+<code>python/sglang/srt/layers/attention/cutlass_mla_backend.py</code>,
+<code>python/sglang/srt/layers/attention/cutedsl_mla_backend.py</code>, and
+<code>python/sglang/srt/layers/attention/trtllm_mla_backend.py</code>. Five
+implementations of one attention variant is the clearest evidence for the argument at the
+top of this chapter — and for the claim that memory layout dictates kernel design.</p>
+<hr />
+<h2 id="sparse-attention"><a class="header" href="#sparse-attention">Sparse attention</a></h2>
+<p>If attention cost is linear in sequence length, the way to serve very long contexts is to
+attend to fewer tokens.</p>
+<p><code>python/sglang/srt/layers/attention/nsa/nsa_indexer.py</code> implements the selection: a learned
+component that scores which tokens matter for this query, so attention runs over hundreds
+rather than hundreds of thousands. <code>python/sglang/srt/layers/attention/nsa_backend.py</code> is
+the backend, and <code>python/sglang/srt/layers/attention/nsa/transform_index.py</code>,
+<code>python/sglang/srt/layers/attention/nsa/quant_k_cache.py</code>, and
+<code>python/sglang/srt/layers/attention/nsa/dequant_k_cache.py</code> handle the surrounding machinery.</p>
+<p>The indexer is a <em>model component</em> — it has weights and must be loaded — which makes it the
+one place where the attention backend boundary genuinely blurs into the model.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L4348"><code>python/sglang/srt/mem_cache/memory_pool.py:4348</code></a> <code>DSATokenToKVPool</code> is its pool, and
+<code>python/sglang/srt/layers/attention/minimax_sparse_backend.py</code> is an independent take on
+the same idea.</p>
+<hr />
+<h2 id="when-it-isnt-attention-at-all"><a class="header" href="#when-it-isnt-attention-at-all">When it isn't attention at all</a></h2>
+<p>Some models replace attention with recurrence. A state-space layer carries a fixed-size
+state and updates it per token — O(1) memory per sequence rather than O(n), and no KV cache
+at all.</p>
+<p><code>python/sglang/srt/layers/attention/mamba/mamba.py</code> and
+<code>python/sglang/srt/layers/attention/mamba/causal_conv1d.py</code> implement Mamba;
+<code>python/sglang/srt/layers/attention/linear/gdn_backend.py</code>,
+<code>python/sglang/srt/layers/attention/linear/kda_backend.py</code>,
+<code>python/sglang/srt/layers/attention/linear/lightning_backend.py</code>, and
+<code>python/sglang/srt/layers/attention/linear/short_conv_backend.py</code> cover the linear-attention family.</p>
+<p>They live under <code>layers/attention/</code> because they occupy the same slot in the model and
+implement the same backend interface — but almost nothing else transfers. Chapter 9's
+<code>MambaPool</code> exists for them, and Chapter 6's separate <code>rem_mamba_slots</code> budget gate exists
+because a fixed-size state cannot be carved out of evictable token cache.</p>
+<p>Most current models are <strong>hybrids</strong>: some layers attention, some linear.
+<code>python/sglang/srt/layers/attention/hybrid_linear_attn_backend.py</code> dispatches per layer, and
+<code>python/sglang/srt/layers/attention/hybrid_attn_backend.py</code> does the same for models mixing
+full and sliding-window attention. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L3577"><code>python/sglang/srt/mem_cache/memory_pool.py:3577</code></a>
+<code>HybridLinearKVPool</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L1153"><code>python/sglang/srt/mem_cache/memory_pool.py:1153</code></a>
+<code>HybridReqToTokenPool</code> are the storage side.</p>
+<p>The <code>.claude/skills/compute-mamba-ratio/SKILL.md</code> playbook exists because sizing the two
+pools against each other is genuinely hard: too much state pool starves the KV pool and
+caps context; too little caps concurrency.</p>
+<hr />
+<h2 id="choosing-one"><a class="header" href="#choosing-one">Choosing one</a></h2>
+<p>There is no universal answer, but the shape of the decision is stable:</p>
+<ul>
+<li><strong>NVIDIA, standard attention</strong> — FlashInfer by default; FlashAttention-3 competitive on
+long prefills.</li>
+<li><strong>DeepSeek / MLA</strong> — one of the MLA backends, matched to your GPU generation.</li>
+<li><strong>AMD</strong> — AITER (<code>python/sglang/srt/layers/attention/aiter_backend.py</code>).</li>
+<li><strong>Debugging or a new feature</strong> — Triton. Readable, hackable, and the reference behavior.</li>
+<li><strong>Non-NVIDIA accelerators</strong> — the vendor backend (<code>python/sglang/srt/layers/attention/xpu_backend.py</code>,
+<code>python/sglang/srt/layers/attention/intel_amx_backend.py</code>,
+<code>python/sglang/srt/layers/attention/wave_backend.py</code>).</li>
+</ul>
+<p><code>docs/docs/advanced_features/attention_backend.mdx</code> carries the project's current
+recommendations, which move faster than a book can.</p>
+<p>Chapter 15 covers what constrains all of them equally: making the forward pass cheap.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 14 in one page</p><ol class="bk-card-arg"><li>Hardware, sequence shape, attention variant, and kernel maturity vary independently, so no single kernel fills the matrix.</li><li>Metadata is prepared once per forward and kernels run once per layer; nearly every backend bug violates that split.</li><li>FlashAttention never materializes the score matrix: online softmax lets a tiled pass produce the exact same answer.</li><li>Its `Θ(N²d²M⁻¹)` HBM bound is an optimality result about memory traffic, which is why every serious kernel has this shape.</li><li>MLA compresses KV to a latent and folds the up-projections into neighbouring matrices — except for RoPE, which needs a decoupled path.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>FlashAttention HBM accesses</th><td>Θ(N²d²M⁻¹) vs Θ(N² + Nd)</td></tr><tr><th scope='row'>MLA KV reduction, DeepSeek-V2</th><td>93.3%</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>The contract</th><td><code>python/sglang/srt/layers/attention/base_attn_backend.py</code></td></tr><tr><th scope='row'>Readable reference</th><td><code>python/sglang/srt/layers/attention/triton_backend.py</code></td></tr><tr><th scope='row'>The kernel</th><td><code>python/sglang/kernels/ops/attention/decode_attention.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="ch13-anatomy-of-a-model.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch15-cheap-forward-pass.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="ch13-anatomy-of-a-model.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch15-cheap-forward-pass.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

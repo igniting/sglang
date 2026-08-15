@@ -1,0 +1,476 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>22. Observability and Tuning - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item expanded "><a href="ch22-observability.html" class="active">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/ch22-observability.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="22-observability-and-tuning"><a class="header" href="#22-observability-and-tuning">22. Observability and Tuning</a></h1>
+<blockquote>
+<p><em>The instrumentation reveals the design — every metric the engine emits exists because
+someone needed it to answer a question this book has already raised.</em></p>
+</blockquote>
+<p>You now understand what the engine does. This chapter is about seeing what it <em>is</em> doing —
+on a particular machine, under a particular workload, right now.</p>
+<p>There is a pleasant symmetry here. Every metric SGLang emits exists because someone needed
+it to answer a question, and by this point in the book you have asked most of those
+questions yourself. Queue depth is Chapter 6's admission problem. Cache hit rate is Chapter
+10. Retraction count is what happens when Chapter 6 guesses wrong. Acceptance length is
+Chapter 19 telling you whether it is earning its keep. The instrumentation is a map back to
+the design.</p>
+<p>The chapter has three parts. First, reading the metrics — including the five numbers that
+actually tell you what is happening, out of the hundreds available. Then measuring honestly,
+which is mostly a catalogue of ways benchmarks lie. Then a tuning procedure, ordered not by
+how the flags appear in <code>--help</code> but by which constraint each one relieves.</p>
+<p>That ordering is the chapter's main practical claim: most tuning effort is spent optimizing
+something that was not the bottleneck.</p>
+<!-- objectives:begin -->
+<div class="bk-objectives"><p class="bk-objectives-head">What this chapter gives you <span class="bk-objectives-time">· about 11 min</span></p><ul><li>Name the five metrics that tell you what the engine is doing</li><li>Read a profile and decide whether a kernel is worth optimizing</li><li>Explain why latency has an asymptote rather than a slope</li><li>Tune in the order that relieves binding constraints</li></ul></div>
+<!-- objectives:end -->
+<hr />
+<h2 id="reading-the-metrics-as-a-map"><a class="header" href="#reading-the-metrics-as-a-map">Reading the metrics as a map</a></h2>
+<p><code>python/sglang/srt/observability/metrics_collector.py</code> is nearly 2,200 lines, and the
+fastest way to understand it is to notice that its collectors partition along the same lines
+as this book's chapters:</p>
+<pre><code>:238   SchedulerMetricsCollector      the loop and its queues       (Ch. 5, 5)
+:1480  TokenizerMetricsCollector      request-level latency          (Ch. 4, 7)
+:1962  RadixCacheMetricsCollector     prefix cache behavior          (Ch. 10)
+:1849  StorageMetricsCollector        HiCache tiers                  (Ch. 11)
+:1947  ExpertDispatchCollector        MoE routing balance            (Ch. 17)
+:2160  EncoderMetricsCollector        multimodal encoding            (Ch. 21)
+</code></pre>
+<p><code>:65</code> <code>SchedulerStats</code> is the core snapshot, and <code>:45</code> <code>QueueCount</code> breaks the queue down by
+state — because "queue depth" is not one number when requests can be waiting for admission,
+waiting for a grammar to compile (Chapter 20), or waiting for a KV transfer (Chapter 18).</p>
+<p><code>:172</code> <code>DPCooperationInfo</code> measures Chapter 16's imbalance, which matters because a
+data-parallel rank with nothing to do still runs an <code>IDLE</code> forward.</p>
+<p><code>:215</code> <code>_StatLoggerDIMixin</code> is dependency injection for the logging backend, so the same
+collector serves Prometheus, logs, or a test double.</p>
+<h3 id="the-five-numbers-that-matter"><a class="header" href="#the-five-numbers-that-matter">The five numbers that matter</a></h3>
+<p>Everything else is diagnostic. These five tell you what the engine is doing:</p>
+<p>For Chapter 1's support deployment these have expected values, and the gap between
+expected and observed is the whole diagnostic. Hit rate should sit near 70% — 1,800 of
+2,550 input tokens are the shared prefix — so a hit rate of 20% means requests are not
+reaching the replica that holds their prefix, which is a routing problem (Chapter 18) and
+not a cache problem.</p>
+<p><strong>Cache hit rate</strong> (Chapter 10). The single highest-leverage number. If it is low on a
+workload with shared prefixes, something is wrong — the cache is too small, requests are
+being routed badly (Chapter 18), or the <code>extra_key</code> namespace is fragmenting (Chapter 21).</p>
+<p><strong>Token pool utilization</strong> (Chapter 9). Consistently near 100% means you are memory-bound
+and admission is throttling. Consistently low means <code>--mem-fraction-static</code> is leaving
+memory unused.</p>
+<p><strong>Retraction count</strong> (Chapter 6). Should be near zero. Anything else means admission is
+over-optimistic and work is being destroyed.</p>
+<p><strong>Queue depth</strong> with <strong>waiting time</strong>. Growing queues mean you are past capacity; the
+question is whether to shed load or add replicas.</p>
+<p><strong>Spec acceptance length</strong> (Chapter 19). Must be comfortably above 1 or speculation is
+costing you. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/tokenizer_manager.py#L2766"><code>python/sglang/srt/managers/tokenizer_manager.py:2766</code></a>
+<code>_calculate_spec_decoding_metrics</code> computes it.</p>
+<p><code>python/sglang/srt/observability/forward_pass_metrics.py</code> covers per-forward timing, and
+<code>python/sglang/srt/observability/req_time_stats.py</code> the per-request breakdown that turns a
+TTFT number into "queueing versus prefill."</p>
+<h3 id="why-latency-falls-off-a-cliff-rather-than-a-slope"><a class="header" href="#why-latency-falls-off-a-cliff-rather-than-a-slope">Why latency falls off a cliff rather than a slope</a></h3>
+<p>Two of those five numbers — queue depth and waiting time — behave in a way that surprises
+people the first time they watch it, and the surprise is worth pre-empting because it changes
+what a dashboard is telling you.</p>
+<p>Chapter 1 introduced Little's Law, <code>L = λW</code>. Queueing theory adds the shape of the
+relationship between utilization and delay. For a simple queue at utilization ρ (arrival rate
+over service rate), average waiting time behaves like</p>
+<pre><code>W  ∝  1 / (1 − ρ)
+</code></pre>
+<p>Read the denominator. At ρ = 0.5, wait time is proportional to 2. At ρ = 0.9, to 10. At
+ρ = 0.99, to 100. <strong>The curve has a vertical asymptote at full utilization</strong>, and the last few
+percent of capacity cost more latency than all the preceding ones combined.</p>
+<p>This is why a serving deployment that looks healthy at 85% utilization becomes unusable at
+95% with no change in code, no bad request, and no obvious event in the logs. The dashboard
+shows GPU utilization climbing smoothly and p99 latency going vertical, and the two look
+unrelated. They are the same curve.</p>
+<p>Three practical consequences:</p>
+<p><strong>Target utilization well below 1.</strong> A serving pool run at 70–80% has headroom for the
+variance that real traffic has; one run at 95% is a queue waiting for an excuse. The cost of
+the idle 20% is far less than the cost of the latency it prevents.</p>
+<p><strong>Watch the derivative, not the level.</strong> Queue depth rising steadily is the signal, and it is
+visible well before the latency cliff. By the time p99 has moved, the queue has been growing
+for a while.</p>
+<p><strong>Variance is as expensive as the mean.</strong> The formula above understates the damage when
+service times vary — and LLM service times vary enormously, since a request generating 2,000
+tokens occupies a slot a hundred times longer than one generating 20. That variance is why
+Chapter 6's admission control and its priority policies exist, and why shedding load at the
+queue boundary beats accepting work you will time out later.</p>
+<p>None of this is visible from throughput. An engine at 99% utilization posts the best tokens
+per second it will ever post, right up to the point where every individual request misses its
+SLO — which is exactly the failure mode goodput was defined to catch.</p>
+<p>Wiring: <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L718"><code>python/sglang/srt/managers/scheduler.py:718</code></a> <code>init_metrics_collector</code>, <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L1191"><code>:1191</code></a>
+<code>init_metrics_reporter</code>, and
+<code>python/sglang/srt/managers/scheduler_components/metrics_reporter.py</code>. <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L1095"><code>:1095</code></a>
+<code>emit_metrics_constants</code> publishes static facts — model name, parallelism sizes, pool
+capacity — so dashboards can label series without separate configuration.
+<code>docs/docs/references/production_metrics.mdx</code> is the reference.</p>
+<hr />
+<h2 id="tracing-across-processes"><a class="header" href="#tracing-across-processes">Tracing across processes</a></h2>
+<p>Metrics tell you the aggregate. When one request is slow, you need its path.</p>
+<p>That path crosses Chapter 3's process boundaries, so a stack trace is useless — the request
+exists in the tokenizer process, then the scheduler, then the detokenizer, and no single
+call stack spans them.</p>
+<p><code>python/sglang/srt/observability/trace.py</code> and
+<code>python/sglang/srt/observability/trace_async.py</code> propagate a trace context by <code>rid</code> across
+those hops. <code>python/sglang/srt/observability/mooncake_trace.py</code> extends it into Chapter 18's
+KV transfers, so a disaggregated request can be followed across machines.
+<code>docs/docs/references/production_request_trace.mdx</code> covers it, and
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/http_server.py#L1160"><code>python/sglang/srt/entrypoints/http_server.py:1160</code></a> <code>set_trace_level</code> adjusts verbosity live.</p>
+<p>Startup gets its own instrumentation, because "why does the server take four minutes to
+start" is a real and frequent question. <code>python/sglang/srt/observability/startup_time.py</code>
+and
+<code>python/sglang/srt/observability/startup_func_log_and_timer.py</code> break it down;
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L656"><code>python/sglang/srt/managers/scheduler.py:656</code></a> <code>init_startup_timing_begin</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L659"><code>:659</code></a>
+<code>init_startup_timing_summary</code> produce the summary. The answer is usually weight loading
+(Chapter 12) or CUDA graph capture (Chapter 15), and the breakdown tells you which.</p>
+<p><code>python/sglang/srt/observability/cpu_monitor.py</code> watches for the case where the CPU is the
+bottleneck — the condition Chapter 5's overlap scheduler and Chapter 15's graphs both exist
+to prevent.</p>
+<hr />
+<h2 id="measuring-honestly"><a class="header" href="#measuring-honestly">Measuring honestly</a></h2>
+<p>Three harnesses, for three questions.</p>
+<p><strong><code>python/sglang/benchmark/serving.py</code></strong> — online serving. Sends requests at a configured
+rate against a running server and reports TTFT, ITL, and throughput distributions. This is
+the one that answers "how will this behave in production," and the one most easily misused.</p>
+<p><strong><code>python/sglang/benchmark/offline_throughput.py</code></strong> — maximum throughput with no latency
+constraint. Answers "what is this hardware capable of."</p>
+<p><strong><code>python/sglang/benchmark/one_batch.py</code></strong> — one batch, no server, no scheduler. Chapter 1
+used it to demonstrate the prefill/decode gap. This is what you use when you have changed a
+kernel and want to know whether it is faster, without the scheduler in the way.</p>
+<p><code>python/sglang/benchmark/one_batch_server.py</code> sits between the last two.</p>
+<p>The ways to get this wrong are consistent enough to list:</p>
+<ul>
+<li><strong>Measuring your client.</strong> At high request rates, a Python client can become the
+bottleneck and you end up benchmarking <code>asyncio</code>.</li>
+<li><strong>Not warming up.</strong> First requests pay CUDA graph capture, JIT compilation, and allocator
+warm-up — including the ROCm <code>torch.unique</code> case Chapter 9 quoted, which shows up
+precisely as a slow <em>second</em> request.</li>
+<li><strong>Accidental cache hits.</strong> Sending the same prompt repeatedly measures Chapter 10's cache,
+not the model. Sometimes that is the point; it should be deliberate.</li>
+<li><strong>Reporting the mean.</strong> Latency distributions are skewed. P50 and P99 differ by an order
+of magnitude under load, and only one of them is your SLO.</li>
+<li><strong>Comparing across configurations.</strong> Changing <code>--mem-fraction-static</code> changes concurrency,
+which changes batch size, which changes everything.</li>
+</ul>
+<p><code>docs/docs/developer_guide/bench_serving.mdx</code> documents the harness.</p>
+<hr />
+<h2 id="reading-a-profile"><a class="header" href="#reading-a-profile">Reading a profile</a></h2>
+<p>When benchmarks say "slow" and metrics do not say why, profile.</p>
+<p><code>python/sglang/profiler.py</code> wraps the PyTorch profiler, and
+<code>python/sglang/srt/managers/scheduler_components/profiler_manager.py</code> runs it inside the
+scheduler process. The endpoints are
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/http_server.py#L1139"><code>python/sglang/srt/entrypoints/http_server.py:1139</code></a> <code>start_profile_async</code> and <a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/http_server.py#L1150"><code>:1150</code></a>
+<code>stop_profile_async</code>, so you can profile a live server under real load rather than a
+synthetic reproduction.</p>
+<p><code>.claude/skills/llm-torch-profiler-analysis/SKILL.md</code> is the project's own triage procedure,
+and <code>.claude/skills/generate-profile/SKILL.md</code> drives capture. What to look for, in order:</p>
+<p><strong>Gap time.</strong> Space between kernels means the GPU is starved — a CPU-side problem. Chapter
+5's overlap loop and Chapter 15's graphs are the fixes. If gaps dominate, nothing you do to
+kernels will help.</p>
+<p><strong>Kernel time distribution.</strong> Which kernels actually cost. Usually attention (Chapter 14) and
+the large GEMMs, but for MoE models often the all-to-all (Chapter 17).</p>
+<p><strong>Communication time.</strong> Collectives on the critical path. If all-to-all dominates, Chapter
+17's two-batch overlap is the answer; if all-reduce dominates, the parallelism layout
+(Chapter 16) is wrong.</p>
+<p><strong>Fusion opportunities.</strong> Adjacent elementwise kernels that could be one — Chapter 15's
+compilation.</p>
+<h3 id="deciding-whether-a-kernel-is-worth-optimizing"><a class="header" href="#deciding-whether-a-kernel-is-worth-optimizing">Deciding whether a kernel is worth optimizing</a></h3>
+<p>A profile ranks kernels by time. It does not tell you which of them has room to improve, and
+that is the question you actually have. Chapter 1's roofline answers it, applied per kernel.</p>
+<p>For any kernel, count two quantities: the FLOPs it performs and the bytes it moves. Their
+ratio is its arithmetic intensity <em>I</em>. Compare achieved performance against the roofline
+ceiling min(π, <em>I</em> × β):</p>
+<pre><code>efficiency = achieved FLOP/s  /  min(π, I × β)
+</code></pre>
+<p>The interesting number is not the efficiency but <em>which</em> term of the <code>min</code> was binding.</p>
+<p><strong>If <em>I</em> × β is the smaller term, the kernel is memory-bound.</strong> Its ceiling is bandwidth, so
+making the arithmetic faster is worthless. What helps is moving fewer bytes — a smaller
+dtype (Chapter 15), fusing it with a neighbour so the intermediate never reaches HBM
+(Chapter 15 again), or restructuring the data so the reads coalesce. Most decode kernels are
+here, which is why most decode optimizations are about traffic rather than math.</p>
+<p><strong>If π is the smaller term, the kernel is compute-bound.</strong> Now tensor-core utilization,
+tiling, and instruction mix are the levers, and shaving bytes buys nothing. Prefill GEMMs
+live here.</p>
+<p><strong>If achieved performance is far below both</strong>, the kernel is neither — it is bound by
+occupancy, launch overhead, or synchronization. That is a different investigation entirely,
+and at decode's kernel sizes it is a common answer.</p>
+<p>Two adjustments make this usable in practice. Attention's arithmetic intensity depends on
+what is cached and what is recomputed, so a paged-attention kernel's <em>effective</em> byte count
+is the KV it actually reads, not the sequence length — which is why Chapter 10's hit rate
+changes the kernel's position on the roofline, not just the amount of work above it. And the
+ceiling to compare against is the <em>achievable</em> one for the dtype in use: an FP8 kernel is
+being measured against FP8 peak, not BF16 peak, and confusing the two makes a good kernel
+look terrible.</p>
+<p>The practical upshot is a triage rule. Rank kernels by time, then for each ask which side of
+the ridge it sits on. A memory-bound kernel at 85% of its bandwidth ceiling is <em>finished</em> —
+no amount of work will improve it, and the only remaining move is to not call it. That
+conclusion is worth reaching before spending a week on it.</p>
+<p>Two more tools: <code>python/sglang/kernel_api_logging.py</code> logs kernel API calls, which
+<code>.claude/skills/debug-cuda-crash/SKILL.md</code> uses to find the call that crashed; and
+<code>python/sglang/srt/debug_utils/comparator/</code> compares tensors layer-by-layer against a
+reference, which is how a model producing wrong output gets localized (Chapter 23).</p>
+<hr />
+<h2 id="a-tuning-order-of-operations"><a class="header" href="#a-tuning-order-of-operations">A tuning order of operations</a></h2>
+<p>Tune in the order that relieves binding constraints, not in the order the flags appear in
+<code>--help</code>.</p>
+<p><strong>1. <code>--mem-fraction-static</code></strong> (Chapter 9). Sets the KV pool, which sets concurrency, which
+sets everything. Raise until you see OOM under load, then back off. Too high fails not at
+startup but under the first large batch, when activation memory is demanded from a pool that
+already took it.</p>
+<p><strong>2. Parallelism layout</strong> (Chapters 16, 17). TP to fit the model, PP across nodes, DP
+attention for MLA, EP for MoE. Getting this wrong cannot be compensated for by anything
+below it.</p>
+<p><strong>3. <code>--chunked-prefill-size</code></strong> (Chapter 6). Smaller chunks lower ITL for active decodes and
+raise TTFT for long prompts. Set it by which latency you are being measured on.</p>
+<p><strong>4. <code>--max-running-requests</code></strong> (Chapter 6). Caps concurrency independently of memory. Useful
+when memory allows more than latency does.</p>
+<p><strong>5. Attention backend</strong> (Chapter 14). Worth benchmarking; the default is not always best for
+your shapes, and prefill and decode can be set separately.</p>
+<p><strong>6. <code>--cuda-graph-max-bs</code></strong> (Chapter 15). Higher covers more batch sizes with graphs, at
+capture memory that comes out of the KV pool. Interacts with step 1.</p>
+<p><strong>7. Speculative decoding</strong> (Chapter 19). Large wins at low batch size, negative at high.
+Check accepted length before keeping it.</p>
+<p><strong>8. HiCache</strong> (Chapter 11) and <strong>routing</strong> (Chapter 18). Only pay off with real prefix
+sharing — check the cache hit rate first.</p>
+<p><code>docs/docs/advanced_features/hyperparameter_tuning.mdx</code> carries the project's guidance, and
+<code>.claude/skills/sglang-prod-incident-triage/SKILL.md</code> is the replay-first procedure for when
+a live deployment is misbehaving rather than merely slow.</p>
+<p>The general rule: <strong>measure which of Chapter 1's two phases you are bound by, and which
+resource within it, before changing anything.</strong> Most tuning effort is spent optimizing a
+constraint that was not binding.</p>
+<p>One chapter left. Chapter 23 is about changing the engine rather than watching it — and it
+is the last check on whether everything before it landed.</p>
+<hr />
+<!-- summary:begin -->
+<div class="bk-card"><p class="bk-card-head">Chapter 22 in one page</p><ol class="bk-card-arg"><li>Every metric exists because someone needed it to answer a question this book has already raised — the instrumentation is a map back to the design.</li><li>Cache hit rate, pool utilization, retraction count, queue depth, and spec acceptance are the five that carry information.</li><li>Waiting time goes as 1/(1−ρ), so the last few percent of utilization cost more latency than all the rest combined.</li><li>In a profile, gap time means a CPU problem and no kernel work will help.</li><li>Whether a kernel is worth optimizing depends on which side of the roofline it sits on — a memory-bound kernel near its bandwidth ceiling is finished.</li></ol><p class="bk-card-sub">Numbers worth keeping</p><table class="bk-card-table"><tbody><tr><th scope='row'>Target utilization for headroom</th><td>70–80%</td></tr><tr><th scope='row'>Where p99 moves</th><td>after the queue has already grown</td></tr></tbody></table><p class="bk-card-sub">Where it lives</p><table class="bk-card-table"><tbody><tr><th scope='row'>Metrics</th><td><code>python/sglang/srt/metrics/collector.py</code></td></tr><tr><th scope='row'>Tracing</th><td><code>python/sglang/srt/observability/trace.py</code></td></tr><tr><th scope='row'>Profiler</th><td><code>python/sglang/profiler.py</code></td></tr></tbody></table></div>
+<!-- summary:end -->
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="part7.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="ch23-extending.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="part7.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="ch23-extending.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

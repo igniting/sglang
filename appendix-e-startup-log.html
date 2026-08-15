@@ -1,0 +1,357 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>E. Reading a Startup Log - SGLang Internals</title>
+
+
+        <!-- Custom HTML head -->
+        
+        <meta name="description" content="How a production LLM serving engine works, told by following one request through it.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/custom.css">
+
+    </head>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('light')
+            html.classList.add(theme);
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">About This Book</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded "><a href="part1.html">Part I — Why Any of This Exists</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch01-why-serving-engines.html">1. Why Serving Engines Exist</a></li><li class="chapter-item "><a href="ch02-the-machine-underneath.html">2. The Machine Underneath</a></li><li class="chapter-item "><a href="ch03-shape-of-sglang.html">3. The Shape of SGLang</a></li></ol></li><li class="chapter-item expanded "><a href="part2.html">Part II — The Life of a Request</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch04-http-to-token-ids.html">4. From HTTP to Token IDs</a></li><li class="chapter-item "><a href="ch05-scheduler-loop.html">5. The Scheduler Loop</a></li><li class="chapter-item "><a href="ch06-deciding-what-runs.html">6. Deciding What Runs Next</a></li><li class="chapter-item "><a href="ch07-executing-a-batch.html">7. Executing a Batch</a></li><li class="chapter-item "><a href="ch08-sampling-and-return.html">8. Sampling and the Return Path</a></li></ol></li><li class="chapter-item expanded "><a href="part3.html">Part III — The Scarce Resource</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch09-kv-pools.html">9. KV Cache Pools and Allocators</a></li><li class="chapter-item "><a href="ch10-radixattention.html">10. RadixAttention</a></li><li class="chapter-item "><a href="ch11-beyond-hbm.html">11. Caching Beyond HBM</a></li></ol></li><li class="chapter-item expanded "><a href="part4.html">Part IV — What Actually Runs</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch12-loading-weights.html">12. Loading and Updating Weights</a></li><li class="chapter-item "><a href="ch13-anatomy-of-a-model.html">13. Anatomy of a Model</a></li><li class="chapter-item "><a href="ch14-attention-backends.html">14. Attention Backends</a></li><li class="chapter-item "><a href="ch15-cheap-forward-pass.html">15. Making the Forward Pass Cheap</a></li></ol></li><li class="chapter-item expanded "><a href="part5.html">Part V — When One GPU Is Not Enough</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch16-parallelism.html">16. Tensor, Pipeline, and Data Parallelism</a></li><li class="chapter-item "><a href="ch17-moe.html">17. Mixture-of-Experts and Expert Parallelism</a></li><li class="chapter-item "><a href="ch18-disaggregation.html">18. Disaggregation and Routing</a></li></ol></li><li class="chapter-item expanded "><a href="part6.html">Part VI — Beyond Plain Generation</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch19-speculative-decoding.html">19. Speculative Decoding</a></li><li class="chapter-item "><a href="ch20-shaping-output.html">20. Shaping and Reading the Output</a></li><li class="chapter-item "><a href="ch21-per-request-variation.html">21. Per-Request Variation: LoRA and Multimodal</a></li></ol></li><li class="chapter-item expanded "><a href="part7.html">Part VII — Living With It</a><a class="toggle"><div>❱</div></a></li><li><ol class="section"><li class="chapter-item "><a href="ch22-observability.html">22. Observability and Tuning</a></li><li class="chapter-item "><a href="ch23-extending.html">23. Extending SGLang</a></li><li class="chapter-item "><a href="ch24-running-it.html">24. Running It</a></li></ol></li><li class="chapter-item expanded "><li class="spacer"></li><li class="chapter-item expanded affix "><li class="part-title">Appendices</li><li class="chapter-item expanded "><a href="appendix-a-server-args.html">A. Server Arguments</a></li><li class="chapter-item expanded "><a href="appendix-b-env-vars.html">B. Environment Variables</a></li><li class="chapter-item expanded "><a href="appendix-c-glossary.html">C. Glossary</a></li><li class="chapter-item expanded "><a href="appendix-d-repo-map.html">D. Repository Map</a></li><li class="chapter-item expanded "><a href="appendix-e-startup-log.html" class="active">E. Reading a Startup Log</a></li><li class="chapter-item expanded "><a href="appendix-f-further-reading.html">F. Further Reading</a></li><li class="chapter-item expanded affix "><li class="spacer"></li><li class="chapter-item expanded affix "><a href="colophon.html">Colophon</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">SGLang Internals</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/igniting/sglang/edit/claude/sglang-book-outline-argp1n/book/src/appendix-e-startup-log.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="appendix-e--reading-a-startup-log"><a class="header" href="#appendix-e--reading-a-startup-log">Appendix E — Reading a Startup Log</a></h1>
+<p>A server's startup log is the engine narrating its own construction. Read in order, it is a
+compressed tour of Parts I–IV, and it is the fastest way to diagnose a server that starts
+slowly, allocates the wrong amount of memory, or fails before serving anything.</p>
+<p>This appendix walks the phases and says which chapter explains each, what the numbers mean,
+and what it looks like when something is wrong. Exact wording changes between releases;
+the sequence does not.</p>
+<hr />
+<h2 id="phase-1--argument-resolution"><a class="header" href="#phase-1--argument-resolution">Phase 1 — Argument resolution</a></h2>
+<pre><code>server_args=ServerArgs(model_path='...', tokenizer_path='...', tp_size=8, ...)
+</code></pre>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L1052"><code>python/sglang/srt/entrypoints/engine.py:1052</code></a> <code>_launch_subprocesses</code> logs the fully
+resolved <code>ServerArgs</code> before anything else happens.</p>
+<p><strong>Read this first when debugging anything.</strong> These are the <em>resolved</em> values, after defaults,
+validation, and inter-flag adjustment — not what you typed. A flag you set may have been
+overridden by <code>check_server_args</code> because of an incompatible combination (Appendix A), and
+this line is where you find out.</p>
+<h2 id="phase-2--process-topology"><a class="header" href="#phase-2--process-topology">Phase 2 — Process topology</a></h2>
+<p>Subprocess spawn, one scheduler per (pipeline rank, tensor rank), plus detokenizers.
+Chapter 3 covers the topology; <code>_launch_scheduler_processes</code>
+(<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/entrypoints/engine.py#L848"><code>python/sglang/srt/entrypoints/engine.py:848</code></a>) is the code.</p>
+<p>From here, log lines carry rank identifiers. Under tensor parallelism you are reading <em>n</em>
+interleaved narratives — and when only some ranks report a phase, that asymmetry is itself
+the finding.</p>
+<h2 id="phase-3--distributed-init"><a class="header" href="#phase-3--distributed-init">Phase 3 — Distributed init</a></h2>
+<p>NCCL initialization and process group construction.
+<a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L1037"><code>python/sglang/srt/model_executor/model_runner.py:1037</code></a> <code>init_torch_distributed</code>, explained
+in Chapter 16.</p>
+<p><strong>A hang here is a connectivity problem</strong>, not a model problem: wrong <code>--dist-init-addr</code>,
+a blocked port, or a mismatched world size. It is also the most common place for a
+multi-node deployment to stall silently, which is why the watchdogs of Chapter 5 exist.</p>
+<h2 id="phase-4--weight-loading"><a class="header" href="#phase-4--weight-loading">Phase 4 — Weight loading</a></h2>
+<pre><code>Load weight begin. avail mem=78.32 GB
+...
+Load weight end. type=LlamaForCausalLM, dtype=torch.bfloat16, avail mem=61.05 GB, mem usage=17.27 GB
+</code></pre>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L1057"><code>python/sglang/srt/model_executor/model_runner.py:1057</code></a> <code>load_model</code> (Chapter 12) brackets
+this with memory readings, and the pair is the most useful arithmetic in the log.</p>
+<ul>
+<li><strong><code>mem usage</code></strong> is what the weights cost <em>this rank</em>. Under TP 8, roughly one eighth of
+the model — if it is not, your parallelism is not what you think it is.</li>
+<li><strong><code>avail mem</code> at the end</strong> is what remains for everything downstream.</li>
+</ul>
+<p>Slow loading is usually I/O; Chapter 12's <code>set_num_threads(1)</code> and load-format notes are the
+levers, and Phase 10's summary will confirm.</p>
+<h2 id="phase-5--kv-cache-allocation"><a class="header" href="#phase-5--kv-cache-allocation">Phase 5 — KV cache allocation</a></h2>
+<pre><code>KV Cache is allocated. dtype: torch.bfloat16, #tokens: 458752, K size: 28.00 GB, V size: 28.00 GB
+Memory pool end. avail mem=4.21 GB
+</code></pre>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/mem_cache/memory_pool.py#L1668"><code>python/sglang/srt/mem_cache/memory_pool.py:1668</code></a> <code>_finalize_allocation_log</code>, from Chapter 9.</p>
+<p><strong><code>#tokens</code> is the single most important number in the log.</strong> It is
+<code>max_total_num_tokens</code> — the budget Chapter 6 spends, shared across all concurrent requests.
+Divide by your expected context length for a rough concurrency ceiling: 458,752 tokens at
+4,000 tokens per conversation is about 114 concurrent requests.</p>
+<p>If it is lower than expected, the cause is one of: <code>--mem-fraction-static</code> too low, weights
+larger than expected (check Phase 4), a KV dtype that did not take effect (Chapter 15), or
+KV head replication under high TP (Chapter 13).</p>
+<p>The trailing <code>avail mem</code> is deliberately small — the pool takes what the fraction allows.
+Too small and Phase 7 will fail.</p>
+<h2 id="phase-6--attention-backend"><a class="header" href="#phase-6--attention-backend">Phase 6 — Attention backend</a></h2>
+<pre><code>Attention backend not set. Use flashinfer backend by default.
+</code></pre>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/model_executor/model_runner.py#L927"><code>python/sglang/srt/model_executor/model_runner.py:927</code></a> <code>init_attention_backends</code>
+(Chapter 14). Worth reading even when you did not set the flag, because the <em>resolved</em>
+backend may differ from the default for your model — MLA models take a different path — and
+prefill and decode may resolve differently.</p>
+<h2 id="phase-7--cuda-graph-capture"><a class="header" href="#phase-7--cuda-graph-capture">Phase 7 — CUDA graph capture</a></h2>
+<pre><code>Capture cuda graph begin. This can take up to several minutes. avail mem=4.21 GB
+Capture cuda graph bs [1, 2, 4, 8, 16, 24, 32, ...]
+Capture cuda graph end. Time elapsed: 42.31 s. mem usage=1.83 GB. avail mem=2.38 GB
+</code></pre>
+<p>Chapter 15. Three things to read here.</p>
+<p><strong>Time elapsed</strong> is often the largest single component of startup. <code>--cuda-graph-max-bs</code>
+controls it directly: fewer captured shapes, faster start, less graph coverage.</p>
+<p><strong>mem usage</strong> is the capture cost — the static buffers per shape.</p>
+<p><strong>The batch-size list</strong> is what Chapter 15's bucketing captured. A batch outside this list
+runs eager, so if your production batch sizes are larger than the largest bucket, you are
+not getting graphs where it matters.</p>
+<p>An OOM here means Phase 5 took too much: lower <code>--mem-fraction-static</code>, or reduce
+<code>--cuda-graph-max-bs</code>. Note the ordering — Chapter 7 explained that graph capture runs
+<em>after</em> pool allocation, which is why the failure appears here rather than earlier.
+<code>post_capture_resize_kv_pool</code> returns unused capture memory to the pool afterwards.</p>
+<h2 id="phase-8--warmup"><a class="header" href="#phase-8--warmup">Phase 8 — Warmup</a></h2>
+<p><code>python/sglang/srt/entrypoints/warmup.py</code> runs dummy requests through the full pipeline.
+This pays first-call costs — kernel JIT, allocator warm-up, and the ROCm <code>torch.unique</code>
+case Chapter 9 quoted — before real traffic arrives. It is also the first end-to-end proof
+that the engine works.</p>
+<h2 id="phase-9--ready"><a class="header" href="#phase-9--ready">Phase 9 — Ready</a></h2>
+<pre><code>The server is fired up and ready to roll!
+</code></pre>
+<p>At this point <code>/health_generate</code> (Chapter 3) will run a real forward pass, which is a
+stronger claim than the log line.</p>
+<h2 id="phase-10--startup-timing-summary"><a class="header" href="#phase-10--startup-timing-summary">Phase 10 — Startup timing summary</a></h2>
+<p><a href="https://github.com/sgl-project/sglang/blob/7562e741e26a4818ee78f1e63140240ec59147c0/python/sglang/srt/managers/scheduler.py#L659"><code>python/sglang/srt/managers/scheduler.py:659</code></a> <code>init_startup_timing_summary</code>, backed by
+<code>python/sglang/srt/observability/startup_time.py</code> (Chapter 22), prints the per-phase
+breakdown.</p>
+<p>For "why does startup take four minutes," this is the answer, and it is almost always weight
+loading (Phase 4) or graph capture (Phase 7).</p>
+<hr />
+<h2 id="the-three-numbers-to-extract"><a class="header" href="#the-three-numbers-to-extract">The three numbers to extract</a></h2>
+<p>From any startup log:</p>
+<ol>
+<li><strong>Weight <code>mem usage</code></strong> (Phase 4) — is the model sharded as intended?</li>
+<li><strong>KV <code>#tokens</code></strong> (Phase 5) — what concurrency does this support?</li>
+<li><strong>Graph capture time and memory</strong> (Phase 7) — what is startup costing, and how much
+memory went to graphs rather than cache?</li>
+</ol>
+<p>Those three place a deployment in the design space this book describes. Everything in
+Chapter 22's tuning order is an adjustment to one of them.</p>
+<hr />
+<h2 id="common-failure-signatures"><a class="header" href="#common-failure-signatures">Common failure signatures</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Symptom</th><th>Phase</th><th>Likely cause</th></tr></thead><tbody>
+<tr><td>Hang with no error</td><td>3</td><td>Distributed init: address, ports, world size (Ch. 16)</td></tr>
+<tr><td>OOM during capture</td><td>7</td><td><code>--mem-fraction-static</code> too high (Ch. 9, 14)</td></tr>
+<tr><td><code>#tokens</code> far lower than expected</td><td>5</td><td>Larger weights, KV dtype not applied, or KV head replication (Ch. 13, 14)</td></tr>
+<tr><td>Startup takes many minutes</td><td>4 or 7</td><td>I/O-bound loading, or a large capture matrix</td></tr>
+<tr><td>Only some ranks log a phase</td><td>any</td><td>Rank divergence — see <code>.claude/skills/debug-distributed-hang/SKILL.md</code></td></tr>
+<tr><td>Second request unexpectedly slow</td><td>8</td><td>Warmup did not cover a JIT path (Ch. 9)</td></tr>
+</tbody></table>
+</div>
+<p><code>.claude/skills/clean-startup-log/SKILL.md</code> is the project's own guidance on keeping this
+log readable — which is itself evidence that the log is treated as an interface.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="appendix-d-repo-map.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="appendix-f-further-reading.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="appendix-d-repo-map.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="appendix-f-further-reading.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/calculators.js"></script>
+
+
+    </div>
+    </body>
+</html>

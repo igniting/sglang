@@ -1,0 +1,760 @@
+/* ==========================================================================
+   SGLang Internals — typography and palette
+
+   IMPORTANT: mdBook sets `:root { font-size: 62.5% }`, so 1rem = 10px, not
+   16px. That selector outranks a plain `html { font-size: ... }` override, and
+   the rest of mdBook's layout (sidebar width, paddings, breakpoints) is built
+   on that base. So this file works in the 10px base rather than fighting it:
+   every rem below is px ÷ 10.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Type stack
+
+   Body is a transitional serif: this is long-form prose meant to be read at
+   length, and a serif holds the eye across a paragraph better than a UI sans.
+   Headings are a grotesque, so structure reads as structure and does not blur
+   into the text. Code is a mono with a large x-height and unambiguous
+   0/O/1/l/I, since a mis-read identifier is a real cost here.
+
+   All families are system-resident or common; nothing is fetched over the
+   network, so pages render identically offline and on first paint.
+   -------------------------------------------------------------------------- */
+
+:root {
+  --bk-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter,
+              "Bitstream Charter", "Source Serif 4", Georgia, Cambria, serif;
+  --bk-sans: "Inter", "SF Pro Text", -apple-system, BlinkMacSystemFont,
+             "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --bk-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", "Fira Code",
+             ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --bk-body-size: 1.9rem;   /* 19px — long-form reading size, not UI size */
+  --bk-measure: 70rem;      /* 700px ≈ 70 characters at 19px serif */
+  --bk-leading: 1.7;
+}
+
+/* --------------------------------------------------------------------------
+   Palette — warm paper, ink, and a single accent
+
+   Light is a warm off-white rather than pure #fff: less glare over long
+   sessions, and it lets code blocks sit slightly darker without a border.
+   Dark is a desaturated blue-black, not neutral grey, which keeps syntax
+   colour from looking muddy against it.
+
+   Selectors must be mdBook's own theme classes. An earlier `html:not(.dark)`
+   outranked `.navy` and silently disabled dark mode.
+   -------------------------------------------------------------------------- */
+
+.light,
+.rust {
+  --bg: #faf8f5;
+  --fg: #211e1a;
+  --sidebar-bg: #f2ede6;
+  --sidebar-fg: #3d3830;
+  --sidebar-non-existant: #a8a096;
+  --sidebar-active: #9a4b1f;
+  --sidebar-spacer: #e0d8cd;
+
+  --scrollbar: #c9bfb2;
+
+  --icons: #8c8378;
+  --icons-hover: #4a443c;
+
+  --links: #9a4b1f;
+
+  --inline-code-color: #8a3d12;
+
+  --theme-popup-bg: #f2ede6;
+  --theme-popup-border: #ddd4c7;
+  --theme-hover: #e6ded2;
+
+  --quote-bg: #f2ede1;
+  --quote-border: #dccfb8;
+
+  --table-border-color: #e2dacd;
+  --table-header-bg: #ece5da;
+  --table-alternate-bg: #f5f1ea;
+
+  --searchbar-border-color: #d8cfc0;
+  --searchbar-bg: #fffdfa;
+  --searchbar-fg: #23201c;
+  --searchbar-shadow-color: #d4cabb;
+  --searchresults-header-fg: #7a7166;
+  --searchresults-border-color: #e2dacd;
+  --searchresults-li-bg: #f2ede6;
+  --search-mark-bg: #e8c48a;
+
+  --bk-rule: #e2dacd;
+  --bk-muted: #6b6257;
+  --bk-code-bg: #f4efe7;
+  --bk-callout-bg: #f3ede2;
+}
+
+.navy,
+.coal,
+.ayu {
+  --bg: #16181d;
+  --fg: #dad7d1;
+  --sidebar-bg: #1b1e24;
+  --sidebar-fg: #b3afa8;
+  --sidebar-non-existant: #5e6068;
+  --sidebar-active: #e0a35c;
+  --sidebar-spacer: #262a32;
+
+  --scrollbar: #3a3f49;
+
+  --icons: #6d7079;
+  --icons-hover: #b3afa8;
+
+  --links: #e0a35c;
+
+  --inline-code-color: #e3a76f;
+
+  --theme-popup-bg: #1b1e24;
+  --theme-popup-border: #2c313a;
+  --theme-hover: #242830;
+
+  --quote-bg: #1c2027;
+  --quote-border: #333944;
+
+  --table-border-color: #2b2f38;
+  --table-header-bg: #21252c;
+  --table-alternate-bg: #1a1d23;
+
+  --searchbar-border-color: #2c313a;
+  --searchbar-bg: #1b1e24;
+  --searchbar-fg: #d6d3cd;
+  --searchbar-shadow-color: #0e1013;
+  --searchresults-header-fg: #8b8f98;
+  --searchresults-border-color: #2b2f38;
+  --searchresults-li-bg: #1b1e24;
+  --search-mark-bg: #6b5424;
+
+  --bk-rule: #2b2f38;
+  --bk-muted: #9aa0a8;
+  --bk-code-bg: #1b1e24;
+  --bk-callout-bg: #1c2027;
+}
+
+/* --------------------------------------------------------------------------
+   Body text
+   -------------------------------------------------------------------------- */
+
+body {
+  font-family: var(--bk-serif);
+}
+
+.content {
+  font-family: var(--bk-serif);
+  font-size: var(--bk-body-size);
+  line-height: var(--bk-leading);
+}
+
+.content main {
+  max-width: var(--bk-measure);
+  margin: 0 auto;
+  padding-bottom: 6rem;
+}
+
+.content p {
+  margin: 0 0 1.1em;
+  text-wrap: pretty;
+}
+
+/* Opening paragraph of a chapter carries slightly more weight, so the eye
+   lands somewhere deliberate. */
+.content h1 + p {
+  font-size: 1.08em;
+}
+
+/* --------------------------------------------------------------------------
+   Headings
+   -------------------------------------------------------------------------- */
+
+.content h1,
+.content h2,
+.content h3,
+.content h4,
+.content h5 {
+  font-family: var(--bk-sans);
+  font-weight: 620;
+  letter-spacing: -0.014em;
+  line-height: 1.22;
+  text-wrap: balance;
+}
+
+.content h1 {
+  font-size: 2.1em;
+  margin: 0 0 1.4rem;
+  letter-spacing: -0.022em;
+}
+
+.content h2 {
+  font-size: 1.4em;
+  margin: 4rem 0 1.2rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--bk-rule);
+}
+
+.content h3 {
+  font-size: 1.14em;
+  margin: 2.8rem 0 1rem;
+}
+
+.content h4 {
+  font-family: var(--bk-sans);
+  font-size: 0.82em;
+  margin: 2.2rem 0 0.8rem;
+  color: var(--bk-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* A markdown rule followed by a section heading would draw two lines. */
+.content hr + h2 {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+/* --------------------------------------------------------------------------
+   The chapter epigraph — the italic line under each title
+   -------------------------------------------------------------------------- */
+
+.content h1 + blockquote {
+  border: none;
+  background: none;
+  margin: 0 0 3rem;
+  padding: 0 0 0 1.6rem;
+  border-left: 3px solid var(--links);
+  color: var(--bk-muted);
+  font-size: 1.05em;
+}
+
+.content h1 + blockquote p {
+  margin: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Quotes and callouts
+   -------------------------------------------------------------------------- */
+
+.content blockquote {
+  background: var(--bk-callout-bg);
+  border-left: 3px solid var(--quote-border);
+  border-top: none;
+  border-bottom: none;
+  border-right: none;
+  margin: 2.2rem 0;
+  padding: 1.4rem 1.8rem;
+  font-size: 0.97em;
+}
+
+.content blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Code
+   -------------------------------------------------------------------------- */
+
+.content code,
+.content pre,
+.content kbd {
+  font-family: var(--bk-mono);
+  font-variant-ligatures: none;
+}
+
+/* Inline code: no background box. At this density the boxes stripe the page
+   and fight the prose. Colour alone is enough to mark an identifier. */
+.content :not(pre) > code {
+  background: none;
+  padding: 0;
+  font-size: 0.88em;
+  color: var(--inline-code-color);
+  white-space: nowrap;
+}
+
+/* A linkified code anchor. A dotted rule marks it as clickable without
+   turning the paragraph into a field of underlines. */
+.content a > code {
+  color: var(--links);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--links);
+  padding-bottom: 1px;
+}
+
+.content a:hover > code {
+  border-bottom-style: solid;
+}
+
+.content pre {
+  background: var(--bk-code-bg) !important;
+  border: 1px solid var(--bk-rule);
+  border-radius: 6px;
+  padding: 1.6rem 1.8rem;
+  margin: 2.2rem 0;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+
+.content pre code {
+  font-size: 1.5rem;         /* 15px — legible without crowding the measure */
+  white-space: pre;
+  background: none !important;
+  padding: 0;
+  border: none;
+}
+
+/* --------------------------------------------------------------------------
+   Tables
+   -------------------------------------------------------------------------- */
+
+.content table {
+  font-family: var(--bk-sans);
+  font-size: 1.55rem;
+  border-collapse: collapse;
+  margin: 2.4rem 0;
+  width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+
+.content table thead th {
+  font-weight: 600;
+  text-align: left;
+  border-bottom: 2px solid var(--bk-rule);
+}
+
+.content table td,
+.content table th {
+  padding: 0.8rem 1.2rem;
+  border: none;
+  border-bottom: 1px solid var(--bk-rule);
+}
+
+.content table tbody tr:nth-child(2n) {
+  background: var(--table-alternate-bg);
+}
+
+/* --------------------------------------------------------------------------
+   Lists
+   -------------------------------------------------------------------------- */
+
+.content ul,
+.content ol {
+  padding-left: 2.2rem;
+}
+
+.content li {
+  margin-bottom: 0.5em;
+}
+
+.content li > p {
+  margin-bottom: 0.5em;
+}
+
+/* --------------------------------------------------------------------------
+   Rules
+   -------------------------------------------------------------------------- */
+
+.content hr {
+  border: none;
+  border-top: 1px solid var(--bk-rule);
+  margin: 3.6rem 0;
+}
+
+/* --------------------------------------------------------------------------
+   Figures — inline SVG diagrams
+   -------------------------------------------------------------------------- */
+
+.content figure {
+  margin: 3rem 0;
+  text-align: center;
+}
+
+.content figure svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.content figcaption {
+  font-family: var(--bk-sans);
+  font-size: 1.45rem;
+  color: var(--bk-muted);
+  margin-top: 1.2rem;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* Diagrams draw with currentColor and these tokens so they follow the theme. */
+.content figure svg {
+  --dgm-ink: var(--fg);
+  --dgm-rule: var(--bk-muted);
+  --dgm-accent: var(--links);
+  --dgm-fill: var(--bk-callout-bg);
+  --dgm-muted: var(--bk-muted);
+}
+
+.content figure svg text {
+  font-family: var(--bk-sans);
+  fill: var(--dgm-ink);
+}
+
+/* Sizes are emitted inline by scripts/diagrams.py, which validates the layout
+   against them; these are only a fallback. */
+.content figure svg .dgm-label {
+  font-size: 13px;
+}
+
+.content figure svg .dgm-small {
+  font-size: 11.5px;
+  fill: var(--dgm-muted);
+}
+
+/* An interval where nothing happens: outlined, never filled. */
+.content figure svg .dgm-idle {
+  fill: none;
+  stroke: var(--dgm-rule);
+  stroke-width: 1.1;
+  stroke-dasharray: 4 3;
+}
+
+.content figure svg .dgm-box {
+  fill: var(--dgm-fill);
+  stroke: var(--dgm-rule);
+  stroke-width: 1.2;
+}
+
+.content figure svg .dgm-box-accent {
+  fill: var(--dgm-fill);
+  stroke: var(--dgm-accent);
+  stroke-width: 1.8;
+}
+
+.content figure svg .dgm-line {
+  stroke: var(--dgm-rule);
+  stroke-width: 1.2;
+  fill: none;
+}
+
+.content figure svg .dgm-line-accent {
+  stroke: var(--dgm-accent);
+  stroke-width: 1.6;
+  fill: none;
+}
+
+.content figure svg .dgm-dash {
+  stroke: var(--dgm-rule);
+  stroke-width: 1.1;
+  stroke-dasharray: 4 3;
+  fill: none;
+}
+
+.content figure svg .dgm-fill-accent {
+  fill: var(--dgm-accent);
+}
+
+.content figure svg .dgm-fill-muted {
+  fill: var(--dgm-rule);
+  opacity: 0.18;
+}
+
+/* --------------------------------------------------------------------------
+   Sidebar
+   -------------------------------------------------------------------------- */
+
+.sidebar {
+  font-family: var(--bk-sans);
+  font-size: 1.45rem;
+}
+
+.sidebar .sidebar-scrollbox {
+  padding: 1.8rem 1.6rem;
+}
+
+.chapter li.chapter-item {
+  line-height: 1.45;
+  margin: 0.7rem 0;
+}
+
+.chapter li.part-title {
+  font-family: var(--bk-sans);
+  font-size: 1.2rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--bk-muted);
+  margin: 2.6rem 0 0.9rem;
+}
+
+.chapter li.chapter-item a.active {
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   Menu bar and misc chrome
+   -------------------------------------------------------------------------- */
+
+.menu-title {
+  font-family: var(--bk-sans);
+  font-weight: 600;
+  font-size: 1.6rem;
+  letter-spacing: -0.01em;
+}
+
+.nav-chapters,
+#searchbar,
+.searchresults-header,
+.searchresult {
+  font-family: var(--bk-sans);
+}
+
+#searchresults {
+  font-size: 1.5rem;
+}
+
+/* --------------------------------------------------------------------------
+   Print
+   -------------------------------------------------------------------------- */
+
+@media print {
+  .content main {
+    max-width: none;
+  }
+  .content h2 {
+    border-top: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Narrow screens
+
+   Below the sidebar breakpoint the column is the viewport, so the measure is
+   set by padding rather than max-width, and the type steps down a little.
+   -------------------------------------------------------------------------- */
+
+@media only screen and (max-width: 1080px) {
+  :root {
+    --bk-body-size: 1.8rem;
+  }
+  .content main {
+    padding-left: 1.8rem;
+    padding-right: 1.8rem;
+  }
+}
+
+@media only screen and (max-width: 700px) {
+  :root {
+    --bk-body-size: 1.72rem;
+  }
+  .content pre {
+    padding: 1.2rem 1.3rem;
+  }
+  .content pre code {
+    font-size: 1.35rem;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Chapter furniture — objectives and the summary card
+
+   Generated by scripts/furniture.py. The objectives block is the reader's
+   contract, stated before the body starts; the card is what makes the book
+   returnable-to rather than read-once.
+   -------------------------------------------------------------------------- */
+
+.content .bk-objectives {
+  font-family: var(--bk-sans);
+  margin: 2.6rem 0 0;
+  padding: 1.5rem 1.8rem 1.3rem;
+  border-left: 3px solid var(--links);
+  background: var(--bk-callout-bg);
+  border-radius: 0 6px 6px 0;
+}
+
+.content .bk-objectives-head {
+  margin: 0 0 0.8rem;
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--bk-muted);
+}
+
+.content .bk-objectives-time {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+
+.content .bk-objectives ul {
+  margin: 0;
+  padding-left: 1.9rem;
+  font-size: 1.5rem;
+  line-height: 1.55;
+}
+
+.content .bk-objectives li {
+  margin: 0.35rem 0;
+}
+
+.content .bk-card {
+  font-family: var(--bk-sans);
+  margin: 3rem 0 1rem;
+  padding: 1.8rem 2rem 1.6rem;
+  border: 1px solid var(--bk-rule);
+  border-radius: 8px;
+  background: var(--bk-callout-bg);
+}
+
+.content .bk-card-head {
+  margin: 0 0 1.2rem;
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--links);
+}
+
+.content .bk-card-sub {
+  margin: 1.8rem 0 0.6rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bk-muted);
+}
+
+.content .bk-card-arg {
+  margin: 0;
+  padding-left: 2rem;
+  font-size: 1.5rem;
+  line-height: 1.55;
+}
+
+.content .bk-card-arg li {
+  margin: 0.5rem 0;
+}
+
+.content .bk-card-table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 1.4rem;
+}
+
+.content .bk-card-table th,
+.content .bk-card-table td {
+  border: none;
+  border-top: 1px solid var(--bk-rule);
+  padding: 0.5rem 0;
+  text-align: left;
+  vertical-align: baseline;
+  background: none;
+}
+
+/* mdBook stripes even rows with a specificity these class rules cannot beat. */
+.content table.bk-card-table tbody tr,
+.content table.bk-card-table tbody tr:nth-child(2n) {
+  background: none;
+}
+
+.content .bk-card-table th {
+  font-weight: 400;
+  color: var(--bk-muted);
+  width: 52%;
+  padding-right: 1.4rem;
+}
+
+.content .bk-card-table td {
+  color: var(--fg);
+}
+
+.content .bk-card-table code {
+  font-size: 0.95em;
+}
+
+/* --------------------------------------------------------------------------
+   Typed callouts
+
+   Rendered by scripts/callouts.py from `> [!kind] Title`. Four kinds, four
+   left-edge colours, so a reader can skim for definitions or for traps
+   without reading the prose between them.
+   -------------------------------------------------------------------------- */
+
+.content .bk-note {
+  font-family: var(--bk-sans);
+  margin: 2.2rem 0;
+  padding: 1.2rem 1.6rem;
+  border-left: 3px solid var(--bk-rule);
+  background: var(--bk-callout-bg);
+  border-radius: 0 6px 6px 0;
+  font-size: 1.5rem;
+  line-height: 1.55;
+}
+
+.content .bk-note p {
+  margin: 0;
+}
+
+.content .bk-note-label {
+  font-size: 1.25rem !important;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem !important;
+  color: var(--bk-muted);
+}
+
+.content .bk-note-definition {
+  border-left-color: var(--links);
+}
+
+.content .bk-note-definition .bk-note-label {
+  color: var(--links);
+}
+
+.content .bk-note-takeaway {
+  border-left-color: var(--fg);
+  background: none;
+  border-top: 1px solid var(--bk-rule);
+  border-bottom: 1px solid var(--bk-rule);
+  border-radius: 0;
+  padding-left: 1.6rem;
+}
+
+.content .bk-note-takeaway .bk-note-label {
+  color: var(--fg);
+}
+
+.content .bk-note-takeaway p:last-child {
+  font-weight: 500;
+}
+
+.content .bk-note-warning {
+  border-left-color: #b4581f;
+}
+
+.navy .content .bk-note-warning,
+.coal .content .bk-note-warning,
+.ayu .content .bk-note-warning {
+  border-left-color: #d98a4a;
+}
+
+.content .bk-note-warning .bk-note-label {
+  color: #b4581f;
+}
+
+.navy .content .bk-note-warning .bk-note-label,
+.coal .content .bk-note-warning .bk-note-label,
+.ayu .content .bk-note-warning .bk-note-label {
+  color: #d98a4a;
+}
+
+.content .bk-note-aside {
+  background: none;
+  border-left-color: var(--bk-rule);
+  color: var(--bk-muted);
+}
